@@ -38,4 +38,5 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
   Keep them; updates need them.
 - `_dev_tools\probe_atsu\keiyoushi\` (keiyoushi's Atsumaru extension, Apache-2.0) stays local only: not ours to publish.
 - Bump `versionCode` / `versionName` in app/build.gradle.kts for every APK you hand over; name it
-  `MangaCracker-<version>.apk` in this folder.
+  `MangaCracker-<version>.apk` in this folder and publish it as a GitHub release
+  (`gh release create v<version> MangaCracker-<version>.apk --repo YoruCAnime/Manga`). Exos downloads it on the phone.
