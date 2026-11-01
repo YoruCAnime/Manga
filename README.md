@@ -3,11 +3,9 @@
 A personal Android manga reader in the spirit of Tachiyomi / Mihon, with an AniList-style dark look.
 A personal project, shared as is. Not affiliated with any of the sites below.
 
-## Install
+## Download
 
-Copy `MangaCracker-<version>.apk` (from Releases, or your own build) to the phone and open it (allow "install unknown apps" for your file manager once).
-Android 10 or newer. Updates install over the old app and keep your library, because every build is signed with
-the same personal key (kept off GitHub). A build signed with another key installs only after uninstalling.
+**[Get the latest APK from Releases](https://github.com/YoruCAnime/Manga/releases/latest)** (Android 10 or newer).
 
 ## What it does
 
