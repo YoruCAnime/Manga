@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- An open book in AniList blue with a lightning crack down the spine. 108dp adaptive canvas, art inside the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- left page -->
+    <path
+        android:fillColor="#3DB4F2"
+        android:pathData="M30,36 C37,33 45,33 52,37 L52,74 C45,70 37,70 30,73 Z" />
+    <!-- right page -->
+    <path
+        android:fillColor="#6CC8F7"
+        android:pathData="M56,37 C63,33 71,33 78,36 L78,73 C71,70 63,70 56,74 Z" />
+    <!-- page lines -->
+    <path
+        android:strokeColor="#0B1622"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M35,45 C40,43.5 44,43.5 48,45 M35,52 C40,50.5 44,50.5 48,52 M35,59 C40,57.5 44,57.5 48,59 M60,45 C64,43.5 68,43.5 73,45 M60,52 C64,50.5 68,50.5 73,52" />
+    <!-- the crack -->
+    <path
+        android:fillColor="#FF5C8A"
+        android:pathData="M55,28 L50,47 L56,47 L51,80 L60,52 L54,52 L60,28 Z" />
+</vector>

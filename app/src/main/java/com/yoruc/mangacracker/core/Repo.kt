@@ -1,0 +1,272 @@
+package com.yoruc.mangacracker.core
+
+import android.content.Context
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+
+@Serializable
+data class LibraryEntry(
+    val ref: MangaRef,
+    val added: Long,
+    val genres: List<String> = emptyList(),
+    val authors: List<String> = emptyList(),
+    val knownChapters: List<String> = emptyList(),
+    val chapterCount: Int = 0,
+    val latestChapter: String = "",
+    val lastChecked: Long = 0L,
+    /** When a new chapter last appeared. */
+    val lastUpdate: Long = 0L,
+)
+
+/** Where the user is in one chapter. */
+@Serializable
+data class ReadState(
+    val page: Int,
+    val pages: Int,
+    val offset: Int = 0,
+    val read: Boolean = false,
+    val time: Long = 0L,
+) {
+    val percent: Int get() = when {
+        read -> 100
+        pages <= 0 -> 0
+        else -> ((page + 1) * 100 / pages).coerceIn(0, 100)
+    }
+}
+
+/** The last thing read in a title (one per title, newest first in History / Continue reading). */
+@Serializable
+data class HistoryEntry(
+    val ref: MangaRef,
+    val chapter: Chapter,
+    val state: ReadState,
+    val time: Long,
+)
+
+@Serializable
+data class UpdateItem(val ref: MangaRef, val chapter: Chapter, val found: Long)
+
+@Serializable
+data class Settings(
+    val disabledSources: Set<String> = emptySet(),
+    val hiddenTags: List<String> = emptyList(),
+    val updateHours: Int = 6,
+    val notifyUpdates: Boolean = true,
+    val readerGapDp: Int = 0,
+    val readerSidePaddingDp: Int = 0,
+    /** 0 = black, 1 = navy, 2 = paper white */
+    val readerBackground: Int = 0,
+    val keepScreenOn: Boolean = true,
+    val readerAutoNext: Boolean = true,
+    val showReaderPageNumber: Boolean = true,
+    val gridColumns: Int = 3,
+    val gelbooruUser: String = "",
+    val gelbooruKey: String = "",
+    val danbooruUser: String = "",
+    val danbooruKey: String = "",
+    val useExHentai: Boolean = false,
+    val lastLibraryCheck: Long = 0L,
+)
+
+object Repo {
+    private lateinit var dir: File
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private val _library = MutableStateFlow<Map<String, LibraryEntry>>(emptyMap())
+    val library: StateFlow<Map<String, LibraryEntry>> = _library
+    private val _history = MutableStateFlow<Map<String, HistoryEntry>>(emptyMap())
+    val history: StateFlow<Map<String, HistoryEntry>> = _history
+    /** "<manga key>#<chapter id>" -> state */
+    private val _progress = MutableStateFlow<Map<String, ReadState>>(emptyMap())
+    val progress: StateFlow<Map<String, ReadState>> = _progress
+    private val _updates = MutableStateFlow<List<UpdateItem>>(emptyList())
+    val updates: StateFlow<List<UpdateItem>> = _updates
+    private val _settings = MutableStateFlow(Settings())
+    val settings: StateFlow<Settings> = _settings
+
+    /** Titles opened this run (for routes that only carry the key). */
+    val refs = ConcurrentHashMap<String, MangaRef>()
+    val detailsCache = ConcurrentHashMap<String, MangaDetails>()
+    val chaptersCache = ConcurrentHashMap<String, List<Chapter>>()
+
+    private val saveJobs = ConcurrentHashMap<String, Job>()
+
+    private val libSer = MapSerializer(String.serializer(), LibraryEntry.serializer())
+    private val histSer = MapSerializer(String.serializer(), HistoryEntry.serializer())
+    private val progSer = MapSerializer(String.serializer(), ReadState.serializer())
+    private val updSer = ListSerializer(UpdateItem.serializer())
+
+    fun init(context: Context) {
+        dir = File(context.filesDir, "data").apply { mkdirs() }
+        _library.value = load("library.json", libSer) ?: emptyMap()
+        _history.value = load("history.json", histSer) ?: emptyMap()
+        _progress.value = load("progress.json", progSer) ?: emptyMap()
+        _updates.value = load("updates.json", updSer) ?: emptyList()
+        _settings.value = load("settings.json", Settings.serializer()) ?: Settings()
+        Safety.userHidden = _settings.value.hiddenTags.map { Safety.norm(it) }.toSet()
+        (_library.value.values.map { it.ref } + _history.value.values.map { it.ref }).forEach { refs[it.key] = it }
+    }
+
+    private fun <T> load(name: String, ser: KSerializer<T>): T? = runCatching {
+        val f = File(dir, name)
+        if (f.exists()) Http.json.decodeFromString(ser, f.readText()) else null
+    }.getOrNull()
+
+    private fun <T> save(name: String, ser: KSerializer<T>, value: () -> T) {
+        saveJobs[name]?.cancel()
+        saveJobs[name] = scope.launch {
+            delay(400)
+            val text = Http.json.encodeToString(ser, value())
+            val tmp = File(dir, "$name.tmp")
+            tmp.writeText(text)
+            tmp.renameTo(File(dir, name)).let { if (!it) { File(dir, name).delete(); tmp.renameTo(File(dir, name)) } }
+        }
+    }
+
+    private fun saveLibrary() = save("library.json", libSer) { _library.value }
+    private fun saveHistory() = save("history.json", histSer) { _history.value }
+    private fun saveProgress() = save("progress.json", progSer) { _progress.value }
+    private fun saveUpdates() = save("updates.json", updSer) { _updates.value }
+    private fun saveSettings() = save("settings.json", Settings.serializer()) { _settings.value }
+
+    fun remember(ref: MangaRef) {
+        val old = refs[ref.key]
+        // keep the best data we have (listings sometimes lack a cover or tags)
+        refs[ref.key] = if (old == null) ref else ref.copy(
+            cover = ref.cover.ifEmpty { old.cover },
+            tags = ref.tags.ifEmpty { old.tags },
+            subtitle = ref.subtitle.ifEmpty { old.subtitle },
+        )
+    }
+
+    // ---------- library ----------
+
+    fun inLibrary(key: String) = _library.value.containsKey(key)
+
+    fun addToLibrary(ref: MangaRef, details: MangaDetails?, chapters: List<Chapter>?) {
+        _library.update {
+            it + (ref.key to LibraryEntry(
+                ref = ref.copy(cover = details?.ref?.cover?.ifEmpty { null } ?: ref.cover),
+                added = System.currentTimeMillis(),
+                genres = details?.genres.orEmpty(),
+                authors = (details?.authors.orEmpty() + details?.artists.orEmpty()).distinct(),
+                knownChapters = chapters?.map { it.id }.orEmpty(),
+                chapterCount = chapters?.size ?: 0,
+                latestChapter = chapters?.maxByOrNull { it.number }?.name.orEmpty(),
+                lastChecked = System.currentTimeMillis(),
+            ))
+        }
+        saveLibrary()
+    }
+
+    fun removeFromLibrary(key: String) {
+        _library.update { it - key }
+        _updates.update { list -> list.filterNot { it.ref.key == key } }
+        saveLibrary(); saveUpdates()
+    }
+
+    /** Refresh what we know of a library title after its page was opened. */
+    fun refreshEntry(ref: MangaRef, details: MangaDetails?, chapters: List<Chapter>?) {
+        val e = _library.value[ref.key] ?: return
+        _library.update {
+            it + (ref.key to e.copy(
+                ref = e.ref.copy(title = details?.ref?.title ?: e.ref.title, cover = details?.ref?.cover?.ifEmpty { null } ?: e.ref.cover),
+                genres = details?.genres ?: e.genres,
+                authors = details?.let { d -> (d.authors + d.artists).distinct() } ?: e.authors,
+                knownChapters = chapters?.map { c -> c.id } ?: e.knownChapters,
+                chapterCount = chapters?.size ?: e.chapterCount,
+                latestChapter = chapters?.maxByOrNull { c -> c.number }?.name ?: e.latestChapter,
+            ))
+        }
+        saveLibrary()
+    }
+
+    /** Called by the update check: returns the chapters that are new. */
+    fun applyChapterCheck(key: String, chapters: List<Chapter>): List<Chapter> {
+        val e = _library.value[key] ?: return emptyList()
+        val known = e.knownChapters.toHashSet()
+        val fresh = if (known.isEmpty()) emptyList() else chapters.filter { it.id !in known }
+        val now = System.currentTimeMillis()
+        // the check may see only the newest chapters: keep everything known so far
+        val all = e.knownChapters + fresh.map { it.id }
+        _library.update {
+            it + (key to e.copy(
+                knownChapters = if (known.isEmpty()) chapters.map { c -> c.id } else all,
+                chapterCount = maxOf(e.chapterCount + fresh.size, chapters.size),
+                latestChapter = chapters.maxByOrNull { c -> c.number }?.name ?: e.latestChapter,
+                lastChecked = now,
+                lastUpdate = if (fresh.isNotEmpty()) now else e.lastUpdate,
+            ))
+        }
+        if (fresh.isNotEmpty()) {
+            _updates.update { list -> (fresh.map { UpdateItem(e.ref, it, now) } + list).take(500) }
+            saveUpdates()
+        }
+        saveLibrary()
+        return fresh
+    }
+
+    fun clearUpdates() { _updates.value = emptyList(); saveUpdates() }
+
+    // ---------- reading progress ----------
+
+    private fun pkey(mangaKey: String, chapterId: String) = "$mangaKey#$chapterId"
+
+    fun state(mangaKey: String, chapterId: String): ReadState? = _progress.value[pkey(mangaKey, chapterId)]
+
+    fun saveRead(ref: MangaRef, chapter: Chapter, page: Int, pages: Int, offset: Int) {
+        val now = System.currentTimeMillis()
+        val k = pkey(ref.key, chapter.id)
+        val old = _progress.value[k]
+        val done = (old?.read == true) || (pages > 0 && page >= pages - 1)
+        val st = ReadState(page, pages, offset, done, now)
+        _progress.update { it + (k to st) }
+        _history.update { it + (ref.key to HistoryEntry(refs[ref.key] ?: ref, chapter, st.copy(read = page >= pages - 1 && pages > 0), now)) }
+        saveProgress(); saveHistory()
+    }
+
+    fun setRead(ref: MangaRef, chapters: List<Chapter>, read: Boolean) {
+        val now = System.currentTimeMillis()
+        _progress.update { m ->
+            val n = m.toMutableMap()
+            chapters.forEach { c ->
+                val k = pkey(ref.key, c.id)
+                if (read) n[k] = (m[k] ?: ReadState(0, c.pages)).copy(read = true, time = now) else n.remove(k)
+            }
+            n
+        }
+        saveProgress()
+    }
+
+    fun lastRead(key: String): HistoryEntry? = _history.value[key]
+
+    fun removeHistory(key: String) { _history.update { it - key }; saveHistory() }
+    fun clearHistory() { _history.value = emptyMap(); saveHistory() }
+
+    fun unreadCount(key: String, chapters: List<String>): Int {
+        val p = _progress.value
+        return chapters.count { p[pkey(key, it)]?.read != true }
+    }
+
+    // ---------- settings ----------
+
+    fun updateSettings(f: (Settings) -> Settings) {
+        _settings.update(f)
+        Safety.userHidden = _settings.value.hiddenTags.map { Safety.norm(it) }.toSet()
+        saveSettings()
+    }
+}

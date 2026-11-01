@@ -1,0 +1,16 @@
+.gradle/
+build/
+app/build/
+local.properties
+keystore/
+*.apk
+_dev_tools/out/
+_dev_tools/**/__pycache__/
+_dev_tools/sdk_install.log
+.idea/
+*.iml
+_dev_tools/**/out/
+_dev_tools/**/bundle/
+_dev_tools/**/ref/
+_dev_tools/emu.*
+_dev_tools/probe_atsu/keiyoushi/
