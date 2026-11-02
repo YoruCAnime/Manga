@@ -85,6 +85,9 @@ jobs:
           # on a different project.
           gradle-version: wrapper
 
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
       - name: Run lint
         # abortOnError is not configured in app/build.gradle.kts, so this is
         # advisory either way. `continue-on-error` keeps the report useful
@@ -134,6 +137,9 @@ jobs:
           key: robolectric-${{ runner.os }}-${{ hashFiles('app/build.gradle.kts') }}
           restore-keys: |
             robolectric-${{ runner.os }}-
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
 
       - name: Run offline unit tests
         run: |
