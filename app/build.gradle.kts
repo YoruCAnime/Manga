@@ -31,6 +31,12 @@ android {
         targetSdk = 35
         versionCode = appVersionCode
         versionName = appVersionName
+
+        // Every string in the app is English (the UI text is written in Compose),
+        // so the translations that AndroidX, Media3 and the other libraries ship
+        // are dead weight in resources.arsc. Keeping only English removes them
+        // without changing anything the app can display.
+        resConfigs("en")
     }
 
     // A personal key kept next to the project (keystore/, git-ignored), so updates install over the old app.
@@ -76,7 +82,29 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
-    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+
+    packaging {
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+
+        // Never read at runtime: licence/readme files, build metadata, Kotlin
+        // reflection tables (this app has no kotlin-reflect) and the coroutine
+        // debug probe. Dropping them saves a little space and a lot of noise.
+        resources.excludes += setOf(
+            "/META-INF/*.md",
+            "/META-INF/version-control-info.textproto",
+            "/DebugProbesKt.bin",
+            "/kotlin/**",
+        )
+
+        // minSdk is 29, so AGP's default is to store classes.dex uncompressed
+        // ("If null, dex files will be uncompressed when minSdk >= 28"). That
+        // trades download size for install time: 4.8 MB of dex sat uncompressed
+        // in a 5.3 MB APK, so every update downloaded ~2x the bytes it needed to.
+        // This app is sideloaded and updates itself over GitHub, where the
+        // download is the cost a user actually notices, so use the legacy
+        // (compressed) packaging mode. Deflate brings the dex to ~2.4 MB.
+        dex { useLegacyPackaging = true }
+    }
     testOptions {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true

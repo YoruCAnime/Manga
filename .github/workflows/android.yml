@@ -309,6 +309,36 @@ jobs:
 
           mkdir -p release-artifacts
           cp "$APK" "release-artifacts/MangaCracker-${VERSION}.apk"
+
+          # Regression guard for the biggest bytes in the APK. With minSdk 29,
+          # AGP stores classes.dex uncompressed unless package.dex is set to the
+          # legacy mode; that made the 4.8 MB dex sit raw inside a 5.3 MB APK,
+          # so every in-app update downloaded about twice what it needed to.
+          # A future AGP/default change would silently restore the old size.
+          python3 - "$APK" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              dex = [i for i in apk.infolist() if i.filename.startswith("classes") and i.filename.endswith(".dex")]
+              if not dex:
+                  raise SystemExit("error: no classes*.dex in the APK")
+              for info in dex:
+                  if info.compress_type != zipfile.ZIP_DEFLATED:
+                      raise SystemExit(
+                          f"error: {info.filename} is stored uncompressed; "
+                          "packaging.dex.useLegacyPackaging was lost"
+                      )
+                  print(f"{info.filename}: {info.compress_size} / {info.file_size} bytes compressed")
+          PY
+
+          SIZE_BYTES=$(stat -c%s "release-artifacts/MangaCracker-${VERSION}.apk")
+          SIZE_MIB=$(awk -v b="$SIZE_BYTES" 'BEGIN { printf "%.2f", b / 1048576 }')
+          echo "APK size: ${SIZE_MIB} MiB (${SIZE_BYTES} bytes)"
+          {
+            echo "### APK size"
+            echo ""
+            echo "MangaCracker ${VERSION}: **${SIZE_MIB} MiB** (${SIZE_BYTES} bytes)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
           ls -lh release-artifacts
 
       - name: Upload the APK artifact
