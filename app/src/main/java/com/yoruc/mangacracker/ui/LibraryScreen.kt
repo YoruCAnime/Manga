@@ -45,6 +45,19 @@ import androidx.compose.ui.unit.sp
 import com.yoruc.mangacracker.core.Repo
 import com.yoruc.mangacracker.sources.Sources
 import com.yoruc.mangacracker.ui.theme.Mc
+import com.yoruc.mangacracker.video.FavVideo
+import com.yoruc.mangacracker.video.VideoRef
+import com.yoruc.mangacracker.video.VideoRepo
+import com.yoruc.mangacracker.video.VideoSources
+import com.yoruc.mangacracker.video.WatchState
+import com.yoruc.mangacracker.video.clock
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.rounded.DeleteSweep
 
 private val SORTS = listOf("Last read", "Recently added", "New chapters", "Title")
 
@@ -60,6 +73,11 @@ fun LibraryScreen(nav: Nav) {
     var sourceFilter by rememberSaveable { mutableStateOf("") }
     var sort by rememberSaveable { mutableStateOf(0) }
     var sortMenu by remember { mutableStateOf(false) }
+    /** 0 = manga favourites, 1 = favourite videos, 2 = watched videos */
+    var tab by rememberSaveable { mutableStateOf(0) }
+    var clearAsk by remember { mutableStateOf(false) }
+    val favs by VideoRepo.favs.collectAsState()
+    val watch by VideoRepo.watch.collectAsState()
 
     val list = remember(lib, hist, query, sourceFilter, sort, progress) {
         lib.values.asSequence()
@@ -83,7 +101,7 @@ fun LibraryScreen(nav: Nav) {
         ) {
             if (searching) {
                 TextField(
-                    value = query, onValueChange = { query = it }, singleLine = true, placeholder = { Text("Title, author or genre") },
+                    value = query, onValueChange = { query = it }, singleLine = true, placeholder = { Text(if (tab == 0) "Title, author or genre" else "Title or series") },
                     modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Mc.Card, unfocusedContainerColor = Mc.Card,
@@ -93,9 +111,9 @@ fun LibraryScreen(nav: Nav) {
                 IconButton(onClick = { searching = false; query = "" }) { Icon(Icons.Rounded.Close, "Close", tint = Mc.Text2) }
             } else {
                 Text("Library", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Mc.Text, modifier = Modifier.weight(1f))
-                Text("${lib.size}", color = Mc.Text3, modifier = Modifier.padding(end = 4.dp))
                 IconButton(onClick = { searching = true }) { Icon(Icons.Rounded.Search, "Search library", tint = Mc.Text2) }
-                IconButton(onClick = { sortMenu = true }) { Icon(Icons.Rounded.Sort, "Sort", tint = Mc.Text2) }
+                if (tab == 0) IconButton(onClick = { sortMenu = true }) { Icon(Icons.Rounded.Sort, "Sort", tint = Mc.Text2) }
+                if (tab == 2 && watch.isNotEmpty()) IconButton(onClick = { clearAsk = true }) { Icon(Icons.Rounded.DeleteSweep, "Clear watched", tint = Mc.Text2) }
                 DropdownMenu(sortMenu, onDismissRequest = { sortMenu = false }, containerColor = Mc.Card2) {
                     SORTS.forEachIndexed { i, s ->
                         DropdownMenuItem(text = { Text(s, color = if (i == sort) Mc.Blue else Mc.Text) }, onClick = { sort = i; sortMenu = false })
@@ -103,6 +121,22 @@ fun LibraryScreen(nav: Nav) {
                 }
             }
         }
+        // the three shelves
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(12.dp)).background(Mc.Card).padding(4.dp)) {
+            listOf("Manga" to lib.size, "Fav videos" to favs.size, "Watched" to watch.size).forEachIndexed { i, (label, n) ->
+                val on = tab == i
+                Row(
+                    Modifier.weight(1f).clip(RoundedCornerShape(9.dp)).background(if (on) Mc.Blue else androidx.compose.ui.graphics.Color.Transparent)
+                        .clickable { tab = i }.padding(vertical = 9.dp),
+                    horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(label, color = if (on) Mc.Bg else Mc.Text2, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    if (n > 0) Text("  $n", color = if (on) Mc.Bg.copy(alpha = 0.7f) else Mc.Text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+        if (tab == 1) { FavVideos(nav, favs.values.toList(), watch, query); return@Column }
+        if (tab == 2) { WatchedVideos(nav, watch, query); return@Column }
         if (usedSources.size > 1) {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { FilterPill("All", sourceFilter.isEmpty()) { sourceFilter = "" } }
@@ -134,6 +168,71 @@ fun LibraryScreen(nav: Nav) {
                         onLongClick = { if (h != null) nav.reader(e.ref, h.chapter) },
                     ) { nav.details(e.ref) }
                 }
+            }
+        }
+    }
+
+    if (clearAsk) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { clearAsk = false }, containerColor = Mc.Card,
+            title = { Text("Clear watched videos?", color = Mc.Text) },
+            text = { Text("Removes the list and every resume point. Favourite videos stay.", color = Mc.Text2) },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { VideoRepo.clearWatched(); clearAsk = false }) { Text("Clear", color = Mc.Pink) } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { clearAsk = false }) { Text("Keep", color = Mc.Text2) } },
+        )
+    }
+}
+
+private fun matches(r: VideoRef, q: String) = q.isBlank() || r.title.contains(q, true) || r.series.contains(q, true)
+
+/** Library → Favourite videos: newest first, long-press a card to remove it. */
+@Composable
+private fun FavVideos(nav: Nav, favs: List<FavVideo>, watch: Map<String, WatchState>, query: String) {
+    val list = remember(favs, query) { favs.sortedByDescending { it.added }.map { it.ref }.filter { matches(it, query) } }
+    if (list.isEmpty()) {
+        EmptyBox(if (favs.isEmpty()) "No favourite videos yet" else "Nothing matches", if (favs.isEmpty()) "Tap ♥ in the player, or long-press a video." else "Try another word.")
+        return
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(170.dp),
+        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        items(list, key = { it.key }) { v -> VideoCard(v, watch[v.key], onSeries = { nav.videoSeries(v) }) { nav.player(v) } }
+    }
+}
+
+/** Library → Watched: every video you started, newest first, with how far you got. */
+@Composable
+private fun WatchedVideos(nav: Nav, watch: Map<String, WatchState>, query: String) {
+    val list = remember(watch, query) { watch.values.sortedByDescending { it.time }.filter { matches(it.ref, query) } }
+    if (list.isEmpty()) {
+        EmptyBox(if (watch.isEmpty()) "Nothing watched yet" else "Nothing matches", if (watch.isEmpty()) "Videos you play show up here, ready to resume." else "Try another word.")
+        return
+    }
+    LazyColumn(contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
+        items(list, key = { it.ref.key }) { w ->
+            Row(
+                Modifier.fillMaxWidth().clickable { nav.player(w.ref) }.padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.width(138.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(Mc.Card)) {
+                    VideoCover(w.ref, Modifier.fillMaxSize())
+                    Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(androidx.compose.ui.graphics.Color(0x55000000))) {
+                        Box(Modifier.fillMaxWidth(if (w.done) 1f else w.percent / 100f).fillMaxHeight().background(if (w.done) Mc.Green else Mc.Pink))
+                    }
+                }
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text(w.ref.series.ifEmpty { w.ref.title } + "  ›", color = Mc.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.clickable { nav.videoSeries(w.ref) })
+                    Text(listOfNotNull(w.ref.episode.ifEmpty { null }?.let { "Episode $it" }, VideoSources.byId(w.ref.source)?.name).joinToString(" · "),
+                        color = Mc.Text2, fontSize = 12.5.sp, maxLines = 1)
+                    Text((if (w.done) "Watched" else "${w.percent}% · ${clock((w.durationMs - w.positionMs) / 1000)} left") + " · " + timeAgo(w.time),
+                        color = if (w.done) Mc.Green else Mc.Text3, fontSize = 12.sp, maxLines = 1)
+                }
+                IconButton(onClick = { VideoRepo.remove(w.ref.key) }) { Icon(Icons.Rounded.Close, "Remove", tint = Mc.Text3) }
             }
         }
     }

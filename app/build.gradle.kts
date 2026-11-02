@@ -15,8 +15,8 @@ android {
         applicationId = "com.yoruc.mangacracker"
         minSdk = 29
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
     }
 
     // A personal key kept next to the project (keystore/, git-ignored), so updates install over the old app.

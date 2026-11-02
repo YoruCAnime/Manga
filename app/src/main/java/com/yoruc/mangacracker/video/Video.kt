@@ -64,6 +64,8 @@ interface VideoSource {
     suspend fun search(q: SearchQuery, page: Int): VideoPage
     /** Stream, tags and the series' episodes. Throws when the video is blocked (minors). */
     suspend fun details(ref: VideoRef): VideoDetails
+    /** Every video of [ref]'s series in every language (Raw / subbed / Spanish / preview), by episode. */
+    suspend fun series(ref: VideoRef): List<VideoRef> = details(ref).episodes
     /** Called before playing / recording (muchohentai: unlock the stream key). */
     suspend fun beforePlay() {}
     /** HTTP client for the player and the clip recorder (no cache; keeps the site's cookies). */
@@ -137,3 +139,9 @@ fun episodeOf(title: String): String =
         ?: ""
 
 fun episodeNumber(e: String): Float = e.toFloatOrNull() ?: Float.MAX_VALUE
+
+/** Series lists: by episode, then English, Raw, Spanish, preview. */
+val seriesOrder: Comparator<VideoRef> = compareBy({ episodeNumber(it.episode) }, { listOf("EN", "RAW", "ES", "PV", "").indexOf(it.lang).let { i -> if (i < 0) 9 else i } })
+
+/** Language badge names in full. */
+fun langName(l: String) = when (l) { "EN" -> "English"; "RAW" -> "Raw"; "ES" -> "Español"; "PV" -> "Preview"; else -> l }

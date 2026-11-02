@@ -8,6 +8,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import org.junit.Rule
@@ -48,6 +50,12 @@ class VideoScreensTest {
         shot("20_videos_hentaigasm")
         text("MuchoHentai")[0].performClick(); pump(30000)
         shot("21_videos_mucho")
+        // favourite the first MuchoHentai video (long-press), then its series page
+        text("Episode")[0].performTouchInput { longClick() }; pump(1500)
+        shot("21a_videos_mucho_fav")
+        text(" ›")[0].performClick(); pump(15000)
+        shot("25_series")
+        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }; pump(1500)
         text("Oppai.stream")[0].performClick(); pump(30000)
         shot("21b_videos_oppai")
         val box = rule.onAllNodes(hasSetTextAction())[0]
@@ -60,5 +68,13 @@ class VideoScreensTest {
         shot("23_player")
         text("1×")[0].performClick(); pump(600)
         shot("24_player_speeds")
+        // the player saves where we were: Library -> Watched and Fav videos (first Back closes the speed row)
+        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }; pump(600)
+        rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }; pump(1500)
+        rule.onAllNodesWithContentDescription("Library", useUnmergedTree = true)[0].performClick(); pump(1500)
+        text("Fav videos")[0].performClick(); pump(8000)
+        shot("26_library_fav_videos")
+        text("Watched")[0].performClick(); pump(6000)
+        shot("27_library_watched")
     }
 }

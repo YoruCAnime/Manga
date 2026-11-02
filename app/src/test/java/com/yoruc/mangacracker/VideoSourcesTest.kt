@@ -57,6 +57,9 @@ class VideoSourcesTest {
         val first = (latest.items + pop.items).first()
         val d = src.details(first)
         log("${src.id} details: kind=${d.stream.kind} subs=${d.stream.subs.size} episodes=${d.episodes.size} tags=${d.tags.size} lang=${d.ref.lang} ep=${d.ref.episode}")
+        val series = src.series(first)
+        log("${src.id} series: ${series.size} videos, ${series.map { it.episode }.distinct().size} episodes, langs=${series.groupingBy { it.lang }.eachCount()}")
+        assertTrue("${src.id} series empty", series.isNotEmpty())
         src.beforePlay()
         val client = src.playerClient
         if (d.stream.kind == "hls") {

@@ -38,6 +38,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.ClosedCaptionDisabled
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.FiberManualRecord
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Pause
@@ -403,8 +405,9 @@ fun PlayerScreen(nav: Nav, key: String) {
                 // top
                 Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { nav.back() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = Color.White) }
-                    Column(Modifier.weight(1f)) {
-                        Text(r?.series?.ifEmpty { null } ?: r?.title.orEmpty(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // tap the title: the series page (every episode, every language)
+                    Column(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { r?.let { nav.videoSeries(it) } }.padding(vertical = 2.dp)) {
+                        Text((r?.series?.ifEmpty { null } ?: r?.title.orEmpty()) + "  ›", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(listOfNotNull(r?.episode?.ifEmpty { null }?.let { "Episode $it" }, r?.lang?.ifEmpty { null }, src.name).joinToString(" · "),
                             color = Color(0xCCFFFFFF), fontSize = 12.5.sp, maxLines = 1)
                     }
@@ -417,6 +420,15 @@ fun PlayerScreen(nav: Nav, key: String) {
                         }
                     }
                     if (d?.stream?.kind == "hls") CtlIcon(Icons.Rounded.HighQuality, "Quality") { showQuality = !showQuality; showSpeeds = false; show() }
+                    if (d != null) {
+                        val favs by VideoRepo.favs.collectAsState()
+                        val fav = d.ref.key in favs
+                        IconButton(onClick = {
+                            val on = VideoRepo.toggleFav(d.ref)
+                            Toast.makeText(ctx, if (on) "Added to favourite videos" else "Removed from favourite videos", Toast.LENGTH_SHORT).show()
+                            show()
+                        }) { Icon(if (fav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "Favourite", tint = if (fav) Mc.Pink else Color.White) }
+                    }
                     if ((d?.episodes?.size ?: 0) > 1) CtlIcon(Icons.Rounded.VideoLibrary, "Episodes") { showEpisodes = true }
                 }
                 // centre

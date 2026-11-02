@@ -172,7 +172,10 @@ object MuchoHentaiSource : VideoSource {
         val subList = if (subs.isNullOrEmpty()) emptyList()
         else listOf(VideoSub(baseUrl + subs, if (subs.endsWith("es.vtt")) "es" else "en", subName.ifEmpty { if (subs.endsWith("es.vtt")) "Español" else "English" }))
 
-        val me = ref.copy(tags = (ref.tags + genres).distinct(), series = seriesLink?.text()?.ifEmpty { null } ?: ref.series)
+        val me = ref.copy(
+            tags = (ref.tags.filter { !it.startsWith("series:") } + genres + listOfNotNull(seriesSlug.ifEmpty { null }?.let { "series:$it" })).distinct(),
+            series = seriesLink?.text()?.ifEmpty { null } ?: ref.series,
+        )
         val eps = if (seriesSlug.isEmpty()) listOf(me) else runCatching { seriesEpisodes(seriesSlug, me) }.getOrDefault(listOf(me))
         val d = VideoDetails(
             ref = me,
@@ -184,8 +187,10 @@ object MuchoHentaiSource : VideoSource {
         return d
     }
 
-    /** All posts of the series in the same language as [me] (Raw when that episode has no such post yet). */
-    private suspend fun seriesEpisodes(slug: String, me: VideoRef): List<VideoRef> {
+    private val seriesCache = ConcurrentHashMap<String, List<VideoRef>>()
+
+    /** Every post of a series page (Raw, English, Spanish, previews), cached for the run. */
+    private suspend fun seriesAll(slug: String): List<VideoRef> = seriesCache[slug] ?: run {
         val all = mutableListOf<VideoRef>()
         var p = 1
         while (p <= 5) {
@@ -194,6 +199,20 @@ object MuchoHentaiSource : VideoSource {
             if (!r.hasNext) break
             p++
         }
+        all.distinctBy { it.id }.also { seriesCache[slug] = it }
+    }
+
+    override suspend fun series(ref: VideoRef): List<VideoRef> {
+        val slug = ref.tags.firstOrNull { it.startsWith("series:") }?.removePrefix("series:")?.ifEmpty { null }
+            ?: details(ref).ref.tags.firstOrNull { it.startsWith("series:") }?.removePrefix("series:")?.ifEmpty { null }
+            ?: return listOf(ref)
+        if (slug in blockedSeries) return emptyList()
+        return seriesAll(slug).sortedWith(seriesOrder)
+    }
+
+    /** All posts of the series in the same language as [me] (Raw when that episode has no such post yet). */
+    private suspend fun seriesEpisodes(slug: String, me: VideoRef): List<VideoRef> {
+        val all = seriesAll(slug)
         val byEp = all.filter { it.lang != "PV" && it.episode.isNotEmpty() }.groupBy { it.episode }
         return byEp.values.mapNotNull { posts -> posts.firstOrNull { it.lang == me.lang } ?: posts.firstOrNull { it.lang == "RAW" } ?: posts.firstOrNull() }
             .let { l -> if (l.none { it.id == me.id }) l + me else l }

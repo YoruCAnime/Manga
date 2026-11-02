@@ -24,11 +24,21 @@ data class WatchState(val ref: VideoRef, val positionMs: Long, val durationMs: L
     val percent: Int get() = if (durationMs > 0) (positionMs * 100 / durationMs).toInt().coerceIn(0, 100) else 0
 }
 
+/** A favourite video (Library → Favourite videos). */
+@Serializable
+data class FavVideo(val ref: VideoRef, val added: Long)
+
 object VideoRepo {
     private var file: File? = null
+    private var favFile: File? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var saveJob: Job? = null
+    private var favJob: Job? = null
     private val ser = MapSerializer(String.serializer(), WatchState.serializer())
+    private val favSer = MapSerializer(String.serializer(), FavVideo.serializer())
+
+    private val _favs = MutableStateFlow<Map<String, FavVideo>>(emptyMap())
+    val favs: StateFlow<Map<String, FavVideo>> = _favs
 
     private val _watch = MutableStateFlow<Map<String, WatchState>>(emptyMap())
     val watch: StateFlow<Map<String, WatchState>> = _watch
@@ -41,7 +51,34 @@ object VideoRepo {
         file = File(context.filesDir, "data/videos.json").apply { parentFile?.mkdirs() }
         _watch.value = runCatching { Http.json.decodeFromString(ser, file!!.readText()) }.getOrDefault(emptyMap())
         _watch.value.values.forEach { refs[it.ref.key] = it.ref }
+        favFile = File(context.filesDir, "data/video_favs.json")
+        _favs.value = runCatching { Http.json.decodeFromString(favSer, favFile!!.readText()) }.getOrDefault(emptyMap())
+        _favs.value.values.forEach { refs.putIfAbsent(it.ref.key, it.ref) }
     }
+
+    fun isFav(key: String) = key in _favs.value
+
+    /** Adds or removes; returns true when it is a favourite now. */
+    fun toggleFav(ref: VideoRef): Boolean {
+        val now = ref.key !in _favs.value
+        _favs.update { if (now) it + (ref.key to FavVideo(ref, System.currentTimeMillis())) else it - ref.key }
+        val f = favFile
+        if (f != null) {
+            favJob?.cancel()
+            favJob = scope.launch {
+                delay(300)
+                val tmp = File(f.path + ".tmp")
+                tmp.writeText(Http.json.encodeToString(favSer, _favs.value))
+                if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
+            }
+        }
+        return now
+    }
+
+    /** Every watched video, newest first (Library → Watched). */
+    fun watched(): List<WatchState> = _watch.value.values.sortedByDescending { it.time }
+
+    fun clearWatched() { _watch.update { emptyMap() }; persist() }
 
     fun remember(ref: VideoRef) { refs[ref.key] = ref }
 

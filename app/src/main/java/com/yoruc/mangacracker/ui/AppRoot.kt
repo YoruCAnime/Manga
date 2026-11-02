@@ -79,6 +79,10 @@ class Nav(val c: NavHostController) {
         com.yoruc.mangacracker.video.VideoRepo.remember(v)
         c.navigate("player/${Uri.encode(v.key)}") { launchSingleTop = true }
     }
+    fun videoSeries(v: com.yoruc.mangacracker.video.VideoRef) {
+        com.yoruc.mangacracker.video.VideoRepo.remember(v)
+        c.navigate("vseries/${Uri.encode(v.key)}") { launchSingleTop = true }
+    }
     fun history() = c.navigate("history")
     fun settings() = c.navigate("settings")
     fun tab(route: String) = c.navigate(route) {
@@ -158,6 +162,7 @@ fun AppRoot(open: String?) {
                 composable("sources") { SourcesScreen(nav) }
                 composable("videos") { VideosScreen(nav) }
                 composable("player/{key}") { b -> PlayerScreen(nav, b.arguments?.getString("key") ?: "") }
+                composable("vseries/{key}") { b -> VideoSeriesScreen(nav, b.arguments?.getString("key") ?: "") }
                 composable("updates") { UpdatesScreen(nav) }
                 composable("more") { MoreScreen(nav) }
                 composable("history") { HistoryScreen(nav) }

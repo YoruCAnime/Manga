@@ -37,6 +37,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Tune
@@ -268,7 +270,7 @@ fun VideosScreen(nav: Nav) {
                     Text(if (vm.mode == 1) "Popular on ${vm.source.name}" else "New on ${vm.source.name}", color = Mc.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
                 }
             }
-            items(vm.paged.items, key = { it.key }) { v -> VideoCard(v, watch[v.key]) { nav.player(v) } }
+            items(vm.paged.items, key = { it.key }) { v -> VideoCard(v, watch[v.key], onSeries = { nav.videoSeries(v) }) { nav.player(v) } }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 when {
                     vm.paged.error != null -> ErrorBox(vm.paged.error!!, onRetry = { vm.paged.more() }, onOpenWeb = { nav.web(it) })
@@ -320,12 +322,26 @@ private fun Badge(text: String, modifier: Modifier, bg: Color = Color(0xCC000000
         modifier = modifier.padding(6.dp).clip(RoundedCornerShape(5.dp)).background(bg).padding(horizontal = 6.dp, vertical = 2.dp))
 }
 
+/** A video in a grid. Long-press adds it to / removes it from the favourites (Library → Favourite videos). */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun VideoCard(v: VideoRef, w: WatchState?, onClick: () -> Unit) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick)) {
+fun VideoCard(v: VideoRef, w: WatchState?, onSeries: (() -> Unit)? = null, heading: String? = null, onClick: () -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val favs by VideoRepo.favs.collectAsState()
+    val fav = v.key in favs
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).combinedClickable(
+        onClick = onClick,
+        onLongClick = {
+            val on = VideoRepo.toggleFav(v)
+            android.widget.Toast.makeText(ctx, if (on) "Added to favourite videos" else "Removed from favourite videos", android.widget.Toast.LENGTH_SHORT).show()
+        },
+    )) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(Mc.Card)) {
             VideoCover(v, Modifier.fillMaxSize())
             if (v.lang.isNotEmpty()) Badge(v.lang, Modifier.align(Alignment.TopStart), if (v.lang == "EN") Mc.Blue.copy(alpha = 0.9f) else Color(0xCC000000))
+            if (fav) Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(24.dp).clip(CircleShape).background(Mc.Pink), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Favorite, "Favourite", tint = Color.White, modifier = Modifier.size(14.dp))
+            }
             if (v.duration.isNotEmpty()) Badge(v.duration, Modifier.align(Alignment.BottomEnd))
             if (w != null && w.percent > 0) {
                 Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color(0x55000000))) {
@@ -333,9 +349,16 @@ fun VideoCard(v: VideoRef, w: WatchState?, onClick: () -> Unit) {
                 }
             }
         }
-        Text(v.series.ifEmpty { v.title }, color = Mc.Text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 2.dp, top = 6.dp, end = 2.dp))
-        val sub = listOfNotNull(v.episode.ifEmpty { null }?.let { "Episode $it" }, v.views.ifEmpty { null }?.let { "$it views" }).joinToString(" · ")
+        // the series name opens the series page (every episode and language); the › stays visible on long names
+        Row(
+            Modifier.padding(start = 2.dp, top = 6.dp, end = 2.dp).then(if (onSeries != null) Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onSeries) else Modifier),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Text(heading ?: v.series.ifEmpty { v.title }, color = Mc.Text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 2,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            if (onSeries != null) Text(" ›", color = Mc.Blue, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        }
+        val sub = listOfNotNull(v.episode.ifEmpty { null }?.takeIf { heading == null }?.let { "Episode $it" }, v.views.ifEmpty { null }?.let { "$it views" }).joinToString(" · ")
         if (sub.isNotEmpty()) Text(sub, color = Mc.Text3, fontSize = 12.sp, maxLines = 1, modifier = Modifier.padding(horizontal = 2.dp))
     }
 }

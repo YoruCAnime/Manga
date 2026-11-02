@@ -14,7 +14,9 @@ Later); Later keeps it under Settings → App updates.
 - **Home**: Continue reading (page and % of where you stopped), Updates for you (new chapters of your library),
   Recommended for you (built from the genres you favourite and read, plus "more like this" of what you read last),
   and a Popular row for every source. Pull down to check for new chapters.
-- **Library**: your favourites (tap ♥ on a title). Search by title / author / genre, sort, filter by source,
+- **Library** has three shelves: **Manga**, **Fav videos** (♥ in the player, or long-press any video) and
+  **Watched** (every video you started, newest first, with % and time left; tap to resume, ✕ to remove, the bin
+  clears the list). **Manga**: your favourites (tap ♥ on a title). Search by title / author / genre, sort, filter by source,
   "N new" badges, a reading bar on each cover. Long-press a cover to jump straight back into it.
 - **Browse**: every source, Popular / Latest, search, and a filter sheet: sort, type, status, author / artist, and
   genres / tags (tap once to include ✓, twice to exclude ✕, as many as you like). "Search every source" at the top.
@@ -30,7 +32,9 @@ Later); Later keeps it under Settings → App updates.
   have the same Gallery button on their title page). Animated GIFs play (Danbooru / Gelbooru animated posts load the
   original moving file).
 - **Videos** (own tab): Hentaigasm, Oppai.stream and MuchoHentai. Latest / Popular, search with genre autocomplete,
-  a genre sheet (include / exclude), Continue watching (resumes where you stopped), covers that fall back to other
+  a genre sheet (include / exclude), Continue watching (resumes where you stopped). Tap a **series name ›** (on a
+  card, the player's title or in Watched) for the series page: every episode in every language (Raw / English /
+  Español / previews) with language filters. Long-press a video to add it to your favourites. covers that fall back to other
   sizes / the same series when a site refuses a picture. The player opens in landscape (forced: works with
   auto-rotate locked; Rotate switches to portrait and back), controls hide after 3 s, tap to show them:
   −1s / +1s buttons, double-tap the left / right side to step 1 s (taps stack), double-tap the middle to pause, hold

@@ -53,6 +53,11 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
   ImagePipelineTest (every cover through Coil), VideoScreensTest (screens; no video decode on the PC; ExoPlayer
   diagnostics and the TextureView are skipped under Robolectric).
 
+- 1.3.0: `VideoSource.series(ref)` = every video of the series in all languages (hentaigasm: the post's category
+  via tag "cat:<id>"; MuchoHentai: /series/<slug> via tag "series:<slug>", cached; oppai: the watch page's
+  episodes) -> `ui/VideoSeriesScreen.kt` (route vseries/{key}). Video favourites `VideoRepo.favs`
+  (data/video_favs.json); Library shelves Manga / Fav videos / Watched in `LibraryScreen.kt`.
+
 ## Rules / facts learnt
 - Chapters are newest first. `chaptersFlow` lets slow sources (comix, 2.5-4.8 s between chapter pages) fill in;
   `latestChapters` = what the update check fetches.

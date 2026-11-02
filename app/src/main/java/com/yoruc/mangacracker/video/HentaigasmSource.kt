@@ -169,4 +169,14 @@ object HentaigasmSource : VideoSource {
         VideoSafety.check(d)
         return d
     }
+
+    /** The series = the post's category: every post in it, subbed and raw. */
+    override suspend fun series(ref: VideoRef): List<VideoRef> {
+        safetyCheck()
+        val cat = ref.tags.firstOrNull { it.startsWith("cat:") && it != "cat:$NEW_RELEASES" }?.removePrefix("cat:")
+            ?: post(ref.id)["categories"].arr.map { it.text }.firstOrNull { it != NEW_RELEASES.toString() }
+            ?: return listOf(ref)
+        if (cat.toIntOrNull() in blockedCats) return emptyList()
+        return api("posts?categories=$cat&per_page=100&_fields=$FIELDS${excl()}").first.arr.mapNotNull { toRef(it) }.sortedWith(seriesOrder)
+    }
 }
