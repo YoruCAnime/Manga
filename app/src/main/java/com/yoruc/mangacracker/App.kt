@@ -27,6 +27,7 @@ class App : Application(), ImageLoaderFactory {
             NotificationChannel(UpdateWorker.APP_CHANNEL, "App updates", NotificationManager.IMPORTANCE_DEFAULT),
         ))
         runCatching { UpdateWorker.schedule(this) }
+        com.yoruc.mangacracker.core.Backup.autoIfDue(this)
     }
 
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)

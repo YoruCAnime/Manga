@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SystemUpdate
@@ -161,7 +162,8 @@ fun MoreScreen(nav: Nav) {
             }
         }
         item { MoreRow(Icons.Rounded.History, "History", "Everything you've read") { nav.history() } }
-        item { MoreRow(Icons.Rounded.Settings, "Settings", "Reader, updates, sources, hidden tags, logins") { nav.settings() } }
+        item { MoreRow(Icons.Rounded.Settings, "Settings", "Reader, updates, sources, hidden tags, logins, backup") { nav.settings() } }
+        item { MoreRow(Icons.Rounded.NetworkCheck, "Test sources", "Check that every site still loads") { nav.sourceTest() } }
         item {
             val upd by AppUpdate.state.collectAsState()
             val rel = upd.release
@@ -255,13 +257,16 @@ fun SettingsScreen(nav: Nav) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     (2..5).forEach { n -> FilterPill("$n", s.gridColumns == n) { Repo.updateSettings { it.copy(gridColumns = n) } } }
                 }
+                SwitchRow("Hide titles I've finished", s.hideFinished, sub = "In Browse, Home and search, not in Library or History. Covers show how far you've read.") { v ->
+                    Repo.updateSettings { it.copy(hideFinished = v) }
+                }
             }
         }
 
         item { SectionHeader("Reader") }
         item { Box(Modifier.padding(horizontal = 0.dp)) { ReaderSettings() } }
 
-        item { SectionHeader("Sources") }
+        item { SectionHeader("Sources", action = "Test all", onAction = { nav.sourceTest() }) }
         items(Sources.all, key = { "src" + it.id }) { src ->
             Box(Modifier.padding(horizontal = 16.dp)) {
                 SwitchRow(src.name, src.id !in s.disabledSources, sub = src.blurb) { on ->
@@ -326,6 +331,9 @@ fun SettingsScreen(nav: Nav) {
                 }
             }
         }
+        item { SectionHeader("Backup & restore") }
+        item { BackupCard() }
+
         item { SectionHeader("Storage") }
         item {
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

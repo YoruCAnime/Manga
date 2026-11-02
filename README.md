@@ -31,6 +31,20 @@ Later); Later keeps it under Settings → App updates.
   The grid button shows every page: tap one to jump there, hold to pick several and save them at once (galleries
   have the same Gallery button on their title page). Animated GIFs play (Danbooru / Gelbooru animated posts load the
   original moving file).
+  - **Auto-scroll**: ▶ in the bottom bar starts it. The strip glides on by itself (smoothly, not in jumps); a small
+    − / speed / + / ⏸ pill sits at the bottom right while it runs, and the bar has a speed slider (0.25× to 5×), so
+    you can change the speed without stopping. Touching the screen pauses it; it carries on a moment after you let
+    go. It flows into the next chapter and stops at the very end.
+  - **Night filter** (moon button, or reader settings): darkens the pages and/or gives them a warm tint, each with
+    its own slider, remembered. It never touches the phone's own brightness.
+  - **Two pages side by side** (reader settings, for doujins / galleries): with the phone turned sideways, pages show
+    in pairs like a book, fitted to the screen height. The cover and wide two-page spreads stay on their own.
+    **Right to left** (on by default: Japanese order, page 2 on the right) can be switched off. Pinch zoom, the page
+    slider, saving your place and the next chapter all still work.
+- **Read badges**: covers everywhere (Browse, Home rows, search, Library, Recommended) show how far you are:
+  "Ch. 12/40" with a thin bar, "Reading", or a green "✓ Read" once every chapter is read (a gallery: read to the
+  end). **Hide titles I've finished** (Settings → Library, off by default) takes finished titles out of Browse, Home
+  and search; Library and History keep them.
 - **Videos** (own tab): Hentaigasm, Oppai.stream, MuchoHentai, HentaiMama, NSFW R34, Porcore, SFM Compile and Rule34Video. Latest / Popular, search with genre autocomplete,
   a genre sheet (include / exclude), Continue watching (resumes where you stopped). Tap a **series name ›** (on a
   card, the player's title or in Watched) for the series page: every episode in every language (Raw / English /
@@ -58,7 +72,21 @@ Later); Later keeps it under Settings → App updates.
 - **Updates**: new chapters grouped by day; checked in the background (every 6 h by default, Settings) with a
   notification.
 - **Settings**: app updates (check now, install, what's new, automatic check on / off), update interval, covers per
-  row, reader options, switch sources on / off, ExHentai sign-in, Danbooru key, hidden tags, Hide AI-generated, clear the picture cache.
+  row, Hide titles I've finished, reader options, switch sources on / off, ExHentai sign-in, Danbooru key, hidden
+  tags, Hide AI-generated, backup & restore, clear the picture cache.
+- **Backup & restore** (Settings): **Back up now** writes one file, `MangaCracker-backup-<date>.json`, to
+  Download/MangaCracker; **Save to…** lets you pick the place (Drive, a folder...). It holds your library, history,
+  reading progress, settings, favourite videos and video resume points; logins and API keys are never in it.
+  **Restore…** opens a backup and first shows what's inside (how many titles, chapters, videos, settings), right in
+  the settings page. **Merge** adds it to what's on the phone (where both have the same title, chapter or video, the
+  newer one wins); **Replace** swaps the phone's reading for the backup's (tap twice to be sure). Files from older or
+  newer app versions open too; damaged entries are skipped and counted. **Weekly backup** (off by default) puts a
+  file in the same folder once a week and keeps the last 4.
+- **Test sources** (More, or Settings → Sources → Test all): checks every switched-on manga source and every video
+  source, two at a time so no site is hammered: the latest page loads, the first cover answers, one title / video
+  page opens. Each gets a row: OK, Slow, **Needs VPN** (UK blocks and age checks, e.g. E-Hentai, Rule34Video), Browser
+  check (Cloudflare: open the site once from Browse) or Broken, with a short reason and the time it took. Cancel
+  stops it.
 - **Recommended** uses the manga / doujin sources only (no image boards).
 
 ## Sources
@@ -117,6 +145,9 @@ uses the debug key. Checks:
   against the real frames, sizes / quality against ffmpeg's GIF recipes; the measuring parts need frames made with
   ffmpeg in `_dev_tools\out\gif\frames`), `GifScreensTest` (the player's bottom controls, the seek bar and the GIF
   panel in landscape).
+- `BackupTest` (backup round trip, merge, bad / old / newer files, weekly files), `ReaderLogicTest` (two-page pairing,
+  read badges, hide finished), `FeatureScreensTest` (badges, backup panel, auto-scroll, night filter, and "Test
+  sources" run live against every site), `TwoPageShotTest` (the two-page view in landscape).
 
 Releasing: bump `versionCode` / `versionName` in `app/build.gradle.kts`, build, then
 `gh release create v<version> MangaCracker-<version>.apk --repo YoruCAnime/Manga --title "MangaCracker <version>" --notes-file NOTES.md`.

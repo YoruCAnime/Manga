@@ -55,6 +55,8 @@ data class HistoryEntry(
     val chapter: Chapter,
     val state: ReadState,
     val time: Long,
+    /** How many chapters the title had when it was last read (0 = unknown); read badges use it. */
+    val chapterCount: Int = 0,
 )
 
 @Serializable
@@ -73,7 +75,21 @@ data class Settings(
     val keepScreenOn: Boolean = true,
     val readerAutoNext: Boolean = true,
     val showReaderPageNumber: Boolean = true,
+    /** Auto-scroll speed, 1 = 60 dp a second. */
+    val autoScrollSpeed: Float = 1f,
+    /** Night filter: dim (0-80 %) and warm tint (0-100 %) over the pages; never the system brightness. */
+    val readerNight: Boolean = false,
+    val readerDim: Int = 30,
+    val readerWarm: Int = 40,
+    /** Two pages side by side when the phone is landscape; right-to-left order for Japanese books. */
+    val readerTwoPage: Boolean = false,
+    val readerRtl: Boolean = true,
     val gridColumns: Int = 3,
+    /** Browse / Home / search grids leave out titles whose every known chapter is read. */
+    val hideFinished: Boolean = false,
+    /** Weekly backup file in Download/MangaCracker. */
+    val autoBackup: Boolean = false,
+    val lastAutoBackup: Long = 0L,
     val gelbooruUser: String = "",
     val gelbooruKey: String = "",
     val danbooruUser: String = "",
@@ -243,14 +259,15 @@ object Repo {
 
     fun state(mangaKey: String, chapterId: String): ReadState? = _progress.value[pkey(mangaKey, chapterId)]
 
-    fun saveRead(ref: MangaRef, chapter: Chapter, page: Int, pages: Int, offset: Int) {
+    fun saveRead(ref: MangaRef, chapter: Chapter, page: Int, pages: Int, offset: Int, chapterCount: Int = 0) {
         val now = System.currentTimeMillis()
         val k = pkey(ref.key, chapter.id)
         val old = _progress.value[k]
         val done = (old?.read == true) || (pages > 0 && page >= pages - 1)
         val st = ReadState(page, pages, offset, done, now)
         _progress.update { it + (k to st) }
-        _history.update { it + (ref.key to HistoryEntry(refs[ref.key] ?: ref, chapter, st.copy(read = page >= pages - 1 && pages > 0), now)) }
+        val count = chapterCount.takeIf { it > 0 } ?: _history.value[ref.key]?.chapterCount ?: 0
+        _history.update { it + (ref.key to HistoryEntry(refs[ref.key] ?: ref, chapter, st.copy(read = page >= pages - 1 && pages > 0), now, count)) }
         saveProgress(); saveHistory()
     }
 
@@ -284,5 +301,18 @@ object Repo {
         Safety.userHidden = _settings.value.hiddenTags.map { Safety.norm(it) }.toSet()
         Safety.hideAi = _settings.value.hideAi
         saveSettings()
+    }
+
+    // ---------- backup ----------
+
+    /** Puts restored data in place (see Backup): saved at once; update items of titles no longer in the library go. */
+    fun restore(library: Map<String, LibraryEntry>, history: Map<String, HistoryEntry>, progress: Map<String, ReadState>, settings: Settings) {
+        _library.value = library
+        _history.value = history
+        _progress.value = progress
+        _updates.update { list -> list.filter { it.ref.key in library } }
+        (library.values.map { it.ref } + history.values.map { it.ref }).forEach { refs[it.key] = it }
+        saveLibrary(); saveHistory(); saveProgress(); saveUpdates()
+        updateSettings { settings }
     }
 }

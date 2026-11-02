@@ -121,6 +121,45 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
   Not checked without a phone: Transformer cut + MMR decoding of real streams, MediaStore save, share, real speed,
   the Coil preview of the finished GIF (black under Robolectric).
 
+- Backup, read badges, reader extras, source test (2026-11-02, not released yet).
+  Backup: `core/Backup.kt` = one JSON file `{"app":"MangaCracker backup","format":1,created,appVersion,library,history,
+  progress,settings,videoWatch,videoFavs}`. Logins / keys / update bookkeeping are never written and always stay the
+  phone's (`withDeviceOnly`). `read()` refuses non-JSON / other apps / format < 1 (BackupException, message shown),
+  reads newer formats (unknown keys ignored, "made by a newer app" note), decodes entry by entry (a broken one is
+  skipped and counted). `apply(MERGE)` = newer wins per key (library by max(added, lastChecked, lastUpdate), history /
+  progress / watch by time; favs union; hidden tags joined; other settings from the file), REPLACE = the file's data.
+  `Repo.restore` / `VideoRepo.restore` put it in place. Writes: MediaStore Download/MangaCracker (`saveToDownloads`),
+  SAF CreateDocument / OpenDocument in `ui/BackupUi.kt` (Settings card + in-window restore preview, Replace needs a
+  second tap, no dialogs). Weekly: `Settings.autoBackup` (off), `autoIfDue` from App start and UpdateWorker, keeps 4
+  `MangaCracker-auto-*` files. Test seams: `Backup.folderOverride`, `BackupTestHooks.openText`.
+  Read badges: `core/ReadMarks.kt` (combine of library / history / progress -> map key -> ReadMark(read, total,
+  percent, finished); total = max(library chapterCount, `HistoryEntry.chapterCount` (new field, the reader passes
+  `vm.chapters.size` to `saveRead`), chaptersCache); galleries (`hasChapters=false`) = 1). `MangaCard` draws the pill
+  ("✓ Read" / "Ch. 12/40" / "Reading") + bar for every caller (`readMark=false` to opt out). `Settings.hideFinished`
+  filters BrowseScreen (load-more keyed on the raw item count so hidden pages keep loading) and `CardRow` (Home rows,
+  Recommended, global search, More like this); Library / History unchanged.
+  Reader (`ui/ReaderScreen.kt`): the LazyColumn now shows `rows` (`readerRows`: one item per line, or in the two-page
+  view each chapter's pages paired by `ui/Spreads.kt` `spreads()`: first page alone, wide (> 1.05) alone, a page
+  before a wide one alone; `screenOrder` = RTL). All index work (start spot, slider, page grid, long-press, preload,
+  current page) goes through rows; `rows` is ONE remembered derivedStateOf reading `rememberUpdatedState(twoPage)`
+  (effects / gestures started once must see the current lines). `vm.ratios` is a snapshot map so pairs re-form when
+  a page turns out wide. Two-page only when `readerTwoPage` and the window is wider than tall; lines fit the screen
+  height (`SpreadRow`). Auto-scroll: `withFrameNanos` loop + `dispatchRawDelta` (60 dp/s x `autoScrollSpeed` / zoom),
+  held while a finger is down (+1.2 s), a fling, the grid / sheet / page menu; waits for an appended chapter, stops at
+  the real end. Progress saving switched from debounce(350) to sample(400) (auto-scroll never stands still).
+  Night filter = a dim + warm layer drawn over the list (`readerNight/readerDim/readerWarm`), never system brightness.
+  Source test: `core/SourceCheck.kt` (latest page -> first covers through Coil with caches off -> details; videos the
+  same; 45 s timeout, > 8 s = slow; message with "VPN" or a 451 = VPN, CloudflareException = browser check) +
+  `ui/SourceTestScreen.kt` (route `sourcetest`, from More and Settings › Sources "Test all"; 2 at a time; Cancel).
+  `SourceCheck.unavailable` marks sources that can't run here (tests: comix).
+  Tests: `BackupTest` (round trip, merge, bad / old / newer files, weekly prune), `ReaderLogicTest` (pairs, RTL, rows
+  per chapter, read marks incl. '#' in chapter ids, hide finished), `FeatureScreensTest` (shots 60-70, 73-75; the
+  live source check), `TwoPageShotTest` (landscape shots 71, 72, 72b). Live check 2026-11-02 (PC, UK): 19 OK, E-Hentai
+  and Rule34Video "needs VPN", comix skipped (no WebView in Robolectric); slowest SFM Compile 5.8 s, HentaiMama 5.0 s.
+  Harness gotcha: Coil's cross-fade freezes part way under Robolectric, so freshly loaded pages can look black / dim in
+  shots (TwoPageShotTest re-draws from the memory cache). Not checked without a phone: SAF pickers, MediaStore
+  Downloads write / prune, real auto-scroll smoothness and speed, rotation into the two-page view.
+
 ## Rules / facts learnt
 - Chapters are newest first. `chaptersFlow` lets slow sources (comix, 2.5-4.8 s between chapter pages) fill in;
   `latestChapters` = what the update check fetches.

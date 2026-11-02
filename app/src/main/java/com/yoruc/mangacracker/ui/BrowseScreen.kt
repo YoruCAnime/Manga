@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.yoruc.mangacracker.core.ReadMarks
 import com.yoruc.mangacracker.core.Repo
 import com.yoruc.mangacracker.core.Safety
 import com.yoruc.mangacracker.core.SearchQuery
@@ -145,10 +146,15 @@ fun BrowseScreen(nav: Nav, sourceId: String, startSearch: Boolean) {
         vm.search(vm.query.copy(text = rest, include = (vm.query.include + t).distinctBy { it.id }, exclude = vm.query.exclude.filter { it.id != t.id }))
     }
 
-    // load more as the end comes near
+    // Settings › "Hide titles I've finished"
+    val marks by ReadMarks.state.collectAsState()
+    val hide = settings.hideFinished
+    val shown by remember(hide, marks) { derivedStateOf { if (hide) ReadMarks.dropFinished(vm.paged.items.toList(), marks) { it.key } else vm.paged.items } }
+
+    // load more as the end comes near (also when a whole page was hidden)
     LaunchedEffect(grid) {
-        snapshotFlow { grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }.collectLatest { last ->
-            if (last >= vm.paged.items.size - 9) vm.paged.more()
+        snapshotFlow { (grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) to vm.paged.items.size }.collectLatest { (last, _) ->
+            if (last >= shown.size - 9) vm.paged.more()
         }
     }
 
@@ -196,7 +202,7 @@ fun BrowseScreen(nav: Nav, sourceId: String, startSearch: Boolean) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            itemsIndexed(vm.paged.items, key = { _, r -> r.key }) { _, r ->
+            itemsIndexed(shown, key = { _, r -> r.key }) { _, r ->
                 MangaCard(r, ratio = src.coverRatio, inLibrary = r.key in lib) { nav.details(r) }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
@@ -204,6 +210,7 @@ fun BrowseScreen(nav: Nav, sourceId: String, startSearch: Boolean) {
                     vm.paged.error != null -> ErrorBox(vm.paged.error!!, onRetry = { vm.paged.more() }, onOpenWeb = { nav.web(it) })
                     vm.paged.loading -> Loading(Modifier.height(120.dp))
                     vm.paged.items.isEmpty() -> EmptyBox("Nothing found", "Try other words or fewer filters.")
+                    shown.isEmpty() -> EmptyBox("All finished", "You've read everything here. Titles you finished are hidden (Settings).")
                     !vm.paged.hasNext -> Text("· end ·", color = Mc.Text3, modifier = Modifier.fillMaxWidth().padding(16.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
             }

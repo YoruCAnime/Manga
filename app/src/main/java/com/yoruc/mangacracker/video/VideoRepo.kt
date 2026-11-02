@@ -62,17 +62,28 @@ object VideoRepo {
     fun toggleFav(ref: VideoRef): Boolean {
         val now = ref.key !in _favs.value
         _favs.update { if (now) it + (ref.key to FavVideo(ref, System.currentTimeMillis())) else it - ref.key }
-        val f = favFile
-        if (f != null) {
-            favJob?.cancel()
-            favJob = scope.launch {
-                delay(300)
-                val tmp = File(f.path + ".tmp")
-                tmp.writeText(Http.json.encodeToString(favSer, _favs.value))
-                if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
-            }
-        }
+        persistFavs()
         return now
+    }
+
+    private fun persistFavs() {
+        val f = favFile ?: return
+        favJob?.cancel()
+        favJob = scope.launch {
+            delay(300)
+            val tmp = File(f.path + ".tmp")
+            tmp.writeText(Http.json.encodeToString(favSer, _favs.value))
+            if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
+        }
+    }
+
+    /** Restored resume points and favourites (see Backup) replace what is here. */
+    fun restore(watch: Map<String, WatchState>, favs: Map<String, FavVideo>) {
+        _watch.value = watch
+        _favs.value = favs
+        watch.values.forEach { refs[it.ref.key] = it.ref }
+        favs.values.forEach { refs.putIfAbsent(it.ref.key, it.ref) }
+        persist(); persistFavs()
     }
 
     /** Every watched video, newest first (Library → Watched). */

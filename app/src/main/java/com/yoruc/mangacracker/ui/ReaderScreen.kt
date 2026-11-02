@@ -18,6 +18,7 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -36,10 +37,17 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material.icons.rounded.Settings
@@ -65,15 +73,20 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -91,6 +104,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -115,12 +129,13 @@ import com.yoruc.mangacracker.sources.Sources
 import com.yoruc.mangacracker.ui.theme.Mc
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.flowOn
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.roundToInt
 
 /** One row of the endless strip. */
 sealed class ReaderItem {
@@ -138,8 +153,8 @@ class ReaderVM(val src: Source, val ref: MangaRef, startId: String) : ViewModel(
     /** Index to scroll to once the first chapter is in (with its pixel offset). */
     var startAt by mutableStateOf<Pair<Int, Int>?>(null); private set
     private val loaded = HashSet<String>()
-    /** Remembered page shapes so heights do not jump when scrolling back. */
-    val ratios = ConcurrentHashMap<String, Float>()
+    /** Remembered page shapes so heights do not jump when scrolling back (observed: the two-page view pairs by them). */
+    val ratios = mutableStateMapOf<String, Float>()
     /** Resolved addresses for sources that look pictures up per page. */
     val resolved = ConcurrentHashMap<String, String>()
     private var startChapterId = startId
@@ -213,6 +228,10 @@ class ReaderVM(val src: Source, val ref: MangaRef, startId: String) : ViewModel(
         }
     }
 
+    /** Width / height of a page once known (from the source or the loaded picture). */
+    fun ratioOf(page: Page): Float? =
+        ratios[page.pageUrl.ifEmpty { page.url }] ?: if (page.width > 0 && page.height > 0) page.width.toFloat() / page.height else null
+
     suspend fun urlOf(page: Page): String {
         if (page.url.isNotEmpty()) return page.url
         resolved[page.pageUrl]?.let { return it }
@@ -221,6 +240,24 @@ class ReaderVM(val src: Source, val ref: MangaRef, startId: String) : ViewModel(
         return u
     }
 }
+
+/**
+ * The lines of the strip: one item each, or in the two-page view the pages of each chapter paired by [spreads]
+ * (headers and footers stay lines of their own). Pages wider than tall count as spreads.
+ */
+fun readerRows(items: List<ReaderItem>, twoPage: Boolean, wide: (ReaderItem.PageItem) -> Boolean): List<List<ReaderItem>> {
+    if (!twoPage) return items.map { listOf(it) }
+    val out = ArrayList<List<ReaderItem>>()
+    var run = ArrayList<ReaderItem.PageItem>()
+    fun flush() { if (run.isNotEmpty()) { out += spreads(run, wide); run = ArrayList() } }
+    for (it in items) { if (it is ReaderItem.PageItem) run += it else { flush(); out += listOf(it) } }
+    flush()
+    return out
+}
+
+/** Auto-scroll speeds the − / + buttons step through (1 = 60 dp a second). */
+private val SPEEDS = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 2.5f, 3f, 4f, 5f)
+private fun speedLabel(v: Float) = String.format(java.util.Locale.US, "%.2f", v).trimEnd('0').trimEnd('.') + "×"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -247,6 +284,27 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
     var pivot by remember { mutableStateOf(TransformOrigin.Center) }
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
 
+    // auto-scroll: paused while a finger is down and a moment after
+    var auto by remember { mutableStateOf(false) }
+    var touching by remember { mutableStateOf(false) }
+    var releasedAt by remember { mutableLongStateOf(0L) }
+
+    // ---- two-page view (landscape, when turned on) ----
+    val conf = LocalConfiguration.current
+    val twoPage = settings.readerTwoPage && conf.screenWidthDp > conf.screenHeightDp
+    val twoPageNow by rememberUpdatedState(twoPage)
+    // one State for good: effects and gestures started once keep reading the current lines
+    val rows by remember { derivedStateOf { readerRows(vm.items, twoPageNow) { p -> (vm.ratioOf(p.page) ?: 0f) > 1.05f } } }
+    fun rowOfKey(k: String) = rows.indexOfFirst { r -> r.any { it.key == k } }
+    val viewH = with(density) { if (boxSize.height > 0) boxSize.height.toDp() else conf.screenHeightDp.dp }
+    // stay on the same page when the view changes (turning the phone)
+    var lastKey by remember { mutableStateOf<String?>(null) }
+    val keyBefore = remember(twoPage) { lastKey }
+    LaunchedEffect(twoPage) {
+        val k = keyBefore ?: return@LaunchedEffect
+        rowOfKey(k).takeIf { it >= 0 }?.let { list.scrollToItem(it) }
+    }
+
     // ---- full screen + keep awake ----
     DisposableEffect(overlay) {
         val win = (ctx as Activity).window
@@ -266,7 +324,8 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
     // ---- jump to the saved spot once ----
     LaunchedEffect(vm.startAt) {
         val s = vm.startAt ?: return@LaunchedEffect
-        list.scrollToItem(s.first, s.second)
+        val k = vm.items.getOrNull(s.first)?.key
+        list.scrollToItem(k?.let { rowOfKey(it) }?.takeIf { it >= 0 } ?: s.first, s.second)
     }
 
     // ---- where are we: chapter, page, percent ----
@@ -274,46 +333,68 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
         derivedStateOf {
             val info = list.layoutInfo
             val vis = info.visibleItemsInfo
-            if (vis.isEmpty() || vm.items.isEmpty()) return@derivedStateOf null
-            // the page that holds the upper third of the screen
+            val rs = rows
+            if (vis.isEmpty() || rs.isEmpty()) return@derivedStateOf null
+            // the line that holds the upper third of the screen (in the two-page view: its later page)
             val probe = info.viewportStartOffset + (info.viewportEndOffset - info.viewportStartOffset) / 3
             val hit = vis.lastOrNull { it.offset <= probe } ?: vis.first()
-            var idx = hit.index
-            var it = vm.items.getOrNull(idx)
-            if (it is ReaderItem.Header) it = vm.items.getOrNull(idx + 1)
-            if (it is ReaderItem.Footer) { idx--; it = vm.items.getOrNull(idx) }
-            val p = it as? ReaderItem.PageItem ?: return@derivedStateOf null
+            var ri = hit.index
+            if (rs.getOrNull(ri)?.firstOrNull() is ReaderItem.Header) ri++
+            if (rs.getOrNull(ri)?.firstOrNull() is ReaderItem.Footer) ri--
+            val p = rs.getOrNull(ri)?.lastOrNull() as? ReaderItem.PageItem ?: return@derivedStateOf null
             val atEnd = !list.canScrollForward
-            val lastOfChapter = vm.items.getOrNull(hit.index + 1).let { n -> n is ReaderItem.Footer } ||
-                vis.any { v -> (vm.items.getOrNull(v.index) as? ReaderItem.Footer)?.chapter?.id == p.chapter.id && v.offset < info.viewportEndOffset - 40 }
+            val lastOfChapter = rs.getOrNull(ri + 1)?.firstOrNull() is ReaderItem.Footer ||
+                vis.any { v -> (rs.getOrNull(v.index)?.firstOrNull() as? ReaderItem.Footer)?.chapter?.id == p.chapter.id && v.offset < info.viewportEndOffset - 40 }
             val page = if (atEnd || lastOfChapter) p.total - 1 else p.page.index
-            Triple(p, page, (vm.items.indexOf(p).let { i -> list.firstVisibleItemScrollOffset.takeIf { list.firstVisibleItemIndex == i } ?: 0 }))
+            Triple(p, page, list.firstVisibleItemScrollOffset.takeIf { list.firstVisibleItemIndex == ri } ?: 0)
         }
     }
+    LaunchedEffect(vm) { snapshotFlow { current?.first?.key }.collect { if (it != null) lastKey = it } }
 
-    // save progress while reading (debounced) and pull in the next chapter near the end
+    // save progress while reading (the latest spot every 0.4 s: auto-scroll never stands still long enough for a
+    // debounce) and pull in the next chapter near the end
     LaunchedEffect(vm) {
         snapshotFlow { current?.let { Triple(it.first.chapter, it.second, it.third) } }
             .distinctUntilChanged()
-            .debounce(350)
+            .sample(400)
             .collectLatest { c ->
                 if (c == null) return@collectLatest
                 val total = (vm.items.firstOrNull { it is ReaderItem.PageItem && it.chapter.id == c.first.id } as? ReaderItem.PageItem)?.total ?: 0
-                Repo.saveRead(ref, c.first, c.second, total, c.third)
+                Repo.saveRead(ref, c.first, c.second, total, c.third, vm.chapters.size)
             }
     }
     LaunchedEffect(vm) {
         snapshotFlow { list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }.distinctUntilChanged().collectLatest { last ->
             // preload the next pictures
             val loader = ctx.imageLoader
-            for (i in last + 1..last + 4) {
-                val p = vm.items.getOrNull(i) as? ReaderItem.PageItem ?: continue
+            val rs = rows
+            for (p in (last + 1..last + 4).flatMap { rs.getOrNull(it).orEmpty() }.filterIsInstance<ReaderItem.PageItem>().take(4)) {
                 val u = runCatching { vm.urlOf(p.page) }.getOrNull() ?: continue
                 loader.enqueue(ImageRequest.Builder(ctx).data(u).size(pageSize(screenW)).precision(coil.size.Precision.INEXACT).build())
             }
-            if (settings.readerAutoNext && last >= vm.items.size - 4) {
+            if (settings.readerAutoNext && last >= rs.size - 4) {
                 (vm.items.lastOrNull() as? ReaderItem.Footer)?.let { vm.loadNext(it.chapter) }
             }
+        }
+    }
+
+    // ---- auto-scroll: a little every frame, held while touched / flung / a panel is open; stops at the very end ----
+    LaunchedEffect(auto) {
+        if (!auto) return@LaunchedEffect
+        val base = with(density) { 60.dp.toPx() }
+        var last = 0L
+        while (auto) {
+            val now = withFrameNanos { it }
+            val dt = if (last == 0L) 0f else ((now - last) / 1e9f).coerceIn(0f, 0.1f)
+            last = now
+            if (touching || list.isScrollInProgress || System.currentTimeMillis() - releasedAt < 1200 || showGrid || showSettings || pageMenu != null) continue
+            if (!list.canScrollForward) {
+                // the next chapter is on its way: wait for it; the real end: stop
+                val end = vm.items.lastOrNull() as? ReaderItem.Footer
+                if (end?.next == null || !settings.readerAutoNext) { auto = false; break }
+                continue
+            }
+            list.dispatchRawDelta(base * settings.autoScrollSpeed * dt / scale)
         }
     }
 
@@ -328,7 +409,8 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
-                    do {
+                    touching = true
+                    try { do {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
                         val fingers = event.changes.count { it.pressed }
                         if (fingers >= 2) {
@@ -344,7 +426,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                         val maxX = (scale - 1f) * boxSize.width / 2f + 1f
                         panX = panX.coerceIn(-maxX, maxX)
                         if (scale <= 1.02f) { scale = 1f; panX = 0f }
-                    } while (event.changes.any { it.pressed })
+                    } while (event.changes.any { it.pressed }) } finally { touching = false; releasedAt = System.currentTimeMillis() }
                 }
             }
             .pointerInput(Unit) {
@@ -357,7 +439,10 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                     onLongPress = { o ->
                         val y = o.y
                         val hit = list.layoutInfo.visibleItemsInfo.firstOrNull { y >= it.offset && y < it.offset + it.size }
-                        (hit?.let { vm.items.getOrNull(it.index) } as? ReaderItem.PageItem)?.let { pageMenu = it }
+                        val line = hit?.let { rows.getOrNull(it.index) }.orEmpty().filterIsInstance<ReaderItem.PageItem>()
+                        // two pages side by side: the one under the finger
+                        val onScreen = if (twoPageNow) screenOrder(line, settings.readerRtl) else line
+                        (if (onScreen.size == 2) onScreen[if (o.x < boxSize.width / 2f) 0 else 1] else onScreen.firstOrNull())?.let { pageMenu = it }
                     },
                 )
             }
@@ -373,14 +458,27 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                 contentPadding = PaddingValues(horizontal = settings.readerSidePaddingDp.dp),
                 verticalArrangement = Arrangement.spacedBy(settings.readerGapDp.dp),
             ) {
-                itemsIndexed(vm.items, key = { _, it -> it.key }, contentType = { _, it -> it::class }) { _, item ->
-                    when (item) {
+                itemsIndexed(
+                    rows, key = { _, r -> if (r.size == 1) r[0].key else r.joinToString("+") { it.key } },
+                    contentType = { _, r -> if (twoPage && r[0] is ReaderItem.PageItem) "spread" else r[0]::class },
+                ) { _, r ->
+                    when (val item = r[0]) {
                         is ReaderItem.Header -> ChapterHeader(item, fg, vm, nav, ref)
-                        is ReaderItem.PageItem -> PageView(item, vm, screenW, fg)
+                        is ReaderItem.PageItem ->
+                            if (twoPage) SpreadRow(r.filterIsInstance<ReaderItem.PageItem>(), vm, screenW, fg, settings.readerRtl, viewH)
+                            else PageView(item, vm, screenW, fg)
                         is ReaderItem.Footer -> ChapterFooter(item, fg, vm, settings.readerAutoNext)
                     }
                 }
             }
+        }
+
+        // night filter: a dim and a warm layer over the pages (the phone's own brightness is never touched)
+        if (settings.readerNight && (settings.readerDim > 0 || settings.readerWarm > 0)) {
+            Box(Modifier.fillMaxSize().drawBehind {
+                if (settings.readerWarm > 0) drawRect(Color(0xFFFF8A1E).copy(alpha = settings.readerWarm / 100f * 0.35f))
+                if (settings.readerDim > 0) drawRect(Color.Black.copy(alpha = settings.readerDim.coerceIn(0, 80) / 100f))
+            })
         }
 
         // always-on tiny page counter
@@ -395,6 +493,25 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
             )
         }
 
+        // auto-scroll running: slower / speed / faster / stop, always at hand
+        if (auto && !overlay) {
+            Row(
+                Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 10.dp, bottom = 34.dp)
+                    .clip(RoundedCornerShape(50)).background(Color(0xD90B1622)),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val sp = settings.autoScrollSpeed
+                IconButton(onClick = { Repo.updateSettings { it.copy(autoScrollSpeed = SPEEDS.lastOrNull { v -> v < sp - 0.01f } ?: SPEEDS.first()) } }, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Rounded.Remove, "Slower", tint = Mc.Text)
+                }
+                Text(speedLabel(sp), color = Mc.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                IconButton(onClick = { Repo.updateSettings { it.copy(autoScrollSpeed = SPEEDS.firstOrNull { v -> v > sp + 0.01f } ?: SPEEDS.last()) } }, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Rounded.Add, "Faster", tint = Mc.Text)
+                }
+                IconButton(onClick = { auto = false }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Pause, "Stop auto-scroll", tint = Mc.Blue) }
+            }
+        }
+
         // ---- overlay ----
         AnimatedVisibility(overlay, enter = fadeIn() + slideInVertically { -it }, exit = fadeOut() + slideOutVertically { -it }, modifier = Modifier.align(Alignment.TopCenter)) {
             Row(
@@ -406,6 +523,9 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                 Column(Modifier.weight(1f)) {
                     Text(ref.title, color = Mc.Text, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(cur?.first?.chapter?.name ?: "", color = Mc.Text3, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                IconButton(onClick = { Repo.updateSettings { it.copy(readerNight = !it.readerNight) } }) {
+                    Icon(Icons.Rounded.DarkMode, "Night filter", tint = if (settings.readerNight) Mc.Blue else Mc.Text)
                 }
                 IconButton(onClick = { showGrid = true; overlay = false }) { Icon(Icons.Rounded.GridView, "All pages", tint = Mc.Text) }
                 IconButton(onClick = {
@@ -429,6 +549,19 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                 Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xC00B1622), Color(0xF00B1622))))
                     .navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
+                // auto-scroll: start / stop, speed can change while it runs
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { auto = !auto; if (auto) overlay = false }) {
+                        Icon(if (auto) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (auto) "Stop auto-scroll" else "Auto-scroll", tint = Mc.Blue)
+                    }
+                    Text("Auto-scroll", color = Mc.Text2, fontSize = 13.sp)
+                    Slider(
+                        settings.autoScrollSpeed, { v -> Repo.updateSettings { it.copy(autoScrollSpeed = (v * 20).roundToInt() / 20f) } },
+                        valueRange = 0.25f..5f, modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
+                        colors = SliderDefaults.colors(thumbColor = Mc.Blue, activeTrackColor = Mc.Blue, inactiveTrackColor = Mc.Card2),
+                    )
+                    Text(speedLabel(settings.autoScrollSpeed), color = Mc.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(44.dp), textAlign = TextAlign.End)
+                }
                 if (cur != null) {
                     val total = cur.first.total
                     val pct = (cur.second + 1) * 100 / total.coerceAtLeast(1)
@@ -446,7 +579,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                                     onValueChangeFinished = {
                                         val target = drag?.toInt() ?: return@Slider
                                         drag = null
-                                        val i = vm.items.indexOfFirst { it is ReaderItem.PageItem && it.chapter.id == cur.first.chapter.id && it.page.index == target }
+                                        val i = rows.indexOfFirst { r -> r.any { it is ReaderItem.PageItem && it.chapter.id == cur.first.chapter.id && it.page.index == target } }
                                         if (i >= 0) scope.launch { list.scrollToItem(i) }
                                     },
                                     valueRange = 0f..(total - 1).toFloat(),
@@ -483,7 +616,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                 vm = vm,
                 onJump = { p ->
                     showGrid = false
-                    val i = vm.items.indexOfFirst { it.key == p.key }
+                    val i = rowOfKey(p.key)
                     if (i >= 0) scope.launch { list.scrollToItem(i) }
                 },
                 onClose = { showGrid = false },
@@ -516,7 +649,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
 
     if (showSettings) {
         ModalBottomSheet(onDismissRequest = { showSettings = false }, containerColor = Mc.Card) {
-            ReaderSettings()
+            Column(Modifier.verticalScroll(rememberScrollState())) { ReaderSettings() }
         }
     }
 }
@@ -536,8 +669,23 @@ private fun SheetAction(icon: androidx.compose.ui.graphics.vector.ImageVector, l
     }
 }
 
+/** Two-page view line: one or two pages fitted to the screen height (narrower when the pair is too wide). */
 @Composable
-private fun PageView(item: ReaderItem.PageItem, vm: ReaderVM, screenW: Int, fg: Color) {
+private fun SpreadRow(pages: List<ReaderItem.PageItem>, vm: ReaderVM, screenW: Int, fg: Color, rtl: Boolean, viewH: Dp) {
+    BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val shown = screenOrder(pages, rtl)
+        val ratios = shown.map { vm.ratioOf(it.page)?.takeIf { r -> r > 0f } ?: 0.7f }
+        val sum = ratios.sum()
+        val h = if (viewH * sum > maxWidth) maxWidth / sum else viewH
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            shown.forEachIndexed { i, p -> PageView(p, vm, screenW, fg, Modifier.width(h * ratios[i]).height(h)) }
+        }
+    }
+}
+
+/** [fixed] = the page's box size in the two-page view (else full width at the picture's own shape). */
+@Composable
+private fun PageView(item: ReaderItem.PageItem, vm: ReaderVM, screenW: Int, fg: Color, fixed: Modifier? = null) {
     val ctx = LocalContext.current
     val known = item.page.pageUrl.ifEmpty { item.page.url }
     var url by remember(item.key) { mutableStateOf(item.page.url.ifEmpty { vm.resolved[item.page.pageUrl] ?: "" }) }
@@ -549,7 +697,7 @@ private fun PageView(item: ReaderItem.PageItem, vm: ReaderVM, screenW: Int, fg: 
     LaunchedEffect(item.key, retry) {
         if (url.isEmpty()) runCatching { url = vm.urlOf(item.page) }.onFailure { failed = true }
     }
-    val boxMod = if (ratio > 0f) Modifier.fillMaxWidth().aspectRatio(ratio) else Modifier.fillMaxWidth().height(with(LocalDensity.current) { (screenW * 1.42f).toDp() })
+    val boxMod = fixed ?: if (ratio > 0f) Modifier.fillMaxWidth().aspectRatio(ratio) else Modifier.fillMaxWidth().height(with(LocalDensity.current) { (screenW * 1.42f).toDp() })
     Box(boxMod, contentAlignment = Alignment.Center) {
         if (url.isNotEmpty() && !failed) {
             var state by remember(item.key, retry) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
@@ -557,15 +705,15 @@ private fun PageView(item: ReaderItem.PageItem, vm: ReaderVM, screenW: Int, fg: 
                 model = ImageRequest.Builder(ctx).data(url).size(pageSize(screenW)).precision(coil.size.Precision.INEXACT)
                     .setParameter("retry", retry).crossfade(120).build(),
                 contentDescription = "Page ${item.page.index + 1}",
-                contentScale = ContentScale.FillWidth,
-                modifier = Modifier.fillMaxWidth(),
+                contentScale = if (fixed != null) ContentScale.Fit else ContentScale.FillWidth,
+                modifier = if (fixed != null) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
                 onState = { s ->
                     state = s
                     if (s is AsyncImagePainter.State.Success) {
                         val d = s.result.drawable
                         if (d.intrinsicWidth > 0 && d.intrinsicHeight > 0) {
                             val r = d.intrinsicWidth.toFloat() / d.intrinsicHeight
-                            vm.ratios[known] = r
+                            if (vm.ratios[known] != r) vm.ratios[known] = r
                             ratio = r
                         }
                     }
@@ -639,6 +787,22 @@ fun ReaderSettings() {
         Text("Side margin · ${s.readerSidePaddingDp} dp", color = Mc.Text2, fontSize = 13.sp)
         Slider(s.readerSidePaddingDp.toFloat(), { v -> Repo.updateSettings { it.copy(readerSidePaddingDp = v.toInt()) } }, valueRange = 0f..64f,
             colors = SliderDefaults.colors(thumbColor = Mc.Blue, activeTrackColor = Mc.Blue, inactiveTrackColor = Mc.Card2))
+        Text("Auto-scroll speed · ${speedLabel(s.autoScrollSpeed)}", color = Mc.Text2, fontSize = 13.sp)
+        Slider(s.autoScrollSpeed, { v -> Repo.updateSettings { it.copy(autoScrollSpeed = (v * 20).roundToInt() / 20f) } }, valueRange = 0.25f..5f,
+            colors = SliderDefaults.colors(thumbColor = Mc.Blue, activeTrackColor = Mc.Blue, inactiveTrackColor = Mc.Card2))
+        SwitchRow("Night filter", s.readerNight, sub = "Dims and warms the pages (the phone's brightness stays as it is)") { v -> Repo.updateSettings { it.copy(readerNight = v) } }
+        if (s.readerNight) {
+            Text("Dim · ${s.readerDim}%", color = Mc.Text2, fontSize = 13.sp)
+            Slider(s.readerDim.toFloat(), { v -> Repo.updateSettings { it.copy(readerDim = v.roundToInt()) } }, valueRange = 0f..80f,
+                colors = SliderDefaults.colors(thumbColor = Mc.Blue, activeTrackColor = Mc.Blue, inactiveTrackColor = Mc.Card2))
+            Text("Warm tint · ${s.readerWarm}%", color = Mc.Text2, fontSize = 13.sp)
+            Slider(s.readerWarm.toFloat(), { v -> Repo.updateSettings { it.copy(readerWarm = v.roundToInt()) } }, valueRange = 0f..100f,
+                colors = SliderDefaults.colors(thumbColor = Mc.Orange, activeTrackColor = Mc.Orange, inactiveTrackColor = Mc.Card2))
+        }
+        SwitchRow("Two pages side by side in landscape", s.readerTwoPage, sub = "For doujins and galleries. The cover and wide spreads stay alone.") { v ->
+            Repo.updateSettings { it.copy(readerTwoPage = v) }
+        }
+        if (s.readerTwoPage) SwitchRow("Right to left", s.readerRtl, sub = "Japanese order: the first page on the right") { v -> Repo.updateSettings { it.copy(readerRtl = v) } }
         SwitchRow("Flow straight into the next chapter", s.readerAutoNext) { v -> Repo.updateSettings { it.copy(readerAutoNext = v) } }
         SwitchRow("Show page number", s.showReaderPageNumber) { v -> Repo.updateSettings { it.copy(showReaderPageNumber = v) } }
         SwitchRow("Keep the screen on", s.keepScreenOn) { v -> Repo.updateSettings { it.copy(keepScreenOn = v) } }
