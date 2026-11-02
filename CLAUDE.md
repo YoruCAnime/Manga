@@ -68,7 +68,7 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
   "shoutacon", now in both filters), `NsfwR34Source` (StreamTube WP, Bunny HLS), `PorcoreSource` (ajax lists, HLS),
   `SfmCompileSource` (WP REST, MP4), `Rule34VideoSource` (KVS flashvars + license_code unscramble; in the UK the site
   puts an ageverif.com check in front: the source stops with "turn your VPN on" and never reads past it, so it is
-  only testable on a VPN). manhwaread.com: Cloudflare Turnstile box that needs a human tick, not built yet.
+  only testable on a VPN). manhwaread.com: dropped (its Cloudflare Turnstile box loops in embedded browsers; Exos said ignore it).
   Specs for all in `_dev_tools\specs\`. Live check of every source incl. every first-page cover through Coil:
   `python _dev_tools\run_tests.py NewSourcesTest -Psources=id1,id2` (no -P = all); screens: `NewScreensTest`
   (never `performScrollToNode` there: it waits for idle and the app animates forever; swipe instead).
