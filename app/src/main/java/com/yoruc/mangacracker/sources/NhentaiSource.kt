@@ -154,7 +154,8 @@ object NhentaiSource : Source {
         if (q.isEmpty()) return emptyList()
         // nhentai has no tag-name search: offer matches from the list, and the typed words as they are
         val local = tags().filter { it.label.contains(q, true) }
-        val typed = listOf(Tag(q, "$q (tag)"), Tag("artist:$q", "artist: $q"), Tag("parody:$q", "parody: $q"), Tag("character:$q", "character: $q"))
+        // group "typed": the filter sheet offers them, the search box's autocomplete leaves them out
+        val typed = listOf(Tag(q, "$q (tag)", "typed"), Tag("artist:$q", "artist: $q", "typed"), Tag("parody:$q", "parody: $q", "typed"), Tag("character:$q", "character: $q", "typed"))
         return (local + typed).distinctBy { it.id }
     }
 

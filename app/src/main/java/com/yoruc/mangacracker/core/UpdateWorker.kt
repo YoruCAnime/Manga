@@ -32,11 +32,19 @@ class UpdateWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
     override suspend fun doWork(): Result {
         val fresh = checkLibrary()
         if (fresh.isNotEmpty() && Repo.settings.value.notifyUpdates) notify(applicationContext, fresh)
+        if (Repo.settings.value.autoAppUpdates) {
+            val rel = AppUpdate.check()
+            if (rel != null && rel.version != Repo.settings.value.notifiedAppVersion) {
+                notifyApp(applicationContext, rel)
+                Repo.updateSettings { it.copy(notifiedAppVersion = rel.version) }
+            }
+        }
         return Result.success()
     }
 
     companion object {
         const val CHANNEL = "updates"
+        const val APP_CHANNEL = "app-updates"
         private const val NAME = "library-updates"
 
         fun schedule(ctx: Context) {
@@ -91,6 +99,24 @@ class UpdateWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
                 .setColor(0xFF3DB4F2.toInt())
                 .build()
             NotificationManagerCompat.from(ctx).notify(7001, n)
+        }
+
+        /** "MangaCracker x.y ready": opens the app on its update pop-up. */
+        fun notifyApp(ctx: Context, rel: AppRelease) {
+            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+            val open = PendingIntent.getActivity(
+                ctx, 1, Intent(ctx, MainActivity::class.java).putExtra("open", "appupdate"),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            val n = NotificationCompat.Builder(ctx, APP_CHANNEL)
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setContentTitle("MangaCracker ${rel.version} is ready")
+                .setContentText("Tap to update")
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .setColor(0xFF3DB4F2.toInt())
+                .build()
+            NotificationManagerCompat.from(ctx).notify(7002, n)
         }
     }
 }

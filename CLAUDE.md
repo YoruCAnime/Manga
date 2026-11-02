@@ -24,6 +24,20 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
   Settings, WebScreen).
 - Theme: AniList navy (`ui/theme/Theme.kt`, `Mc.*`).
 
+- App updates (1.1.0+): `core/AppUpdate.kt` reads GitHub `releases/latest` of YoruCAnime/Manga (anonymous API,
+  60/h, so automatic checks at most every 3 h; Settings "Check now" forces), downloads the release's .apk asset into
+  cache/updates (FileProvider root `updates/`), checks it is our package, opens Android's installer (ACTION_VIEW,
+  REQUEST_INSTALL_PACKAGES). UI `ui/AppUpdateUi.kt`: pop-up on the main tabs (never over the reader), "Later" =
+  `dismissedAppVersion`, More tab dot, Settings card; UpdateWorker also notifies once per version. A RELEASE is what
+  users get: every APK handed over must be published as a GitHub release with notes (they show in the pop-up).
+- Search box autocomplete: `BrowseScreen` asks `src.suggestTags(last word)`, `rankTags` = prefix first, then
+  `Tag.count` (Danbooru / Gelbooru post counts), dedup by label; nhentai's made-up "typed" entries only in the sheet.
+- `ui/PageGrid.kt`: page grid (jump / pick and save). Reader route `reader/{key}/{chapter}?grid=1` opens it.
+- Animated booru posts use the ORIGINAL file (samples are still JPEGs); Coil uses ImageDecoderDecoder on phones
+  (GifDecoder only under Robolectric). Recommended skips danbooru / gelbooru.
+- Tests: `python _dev_tools\run_tests.py AppUpdateTest GifAndTagsTest ScreensTest LiveSourcesTest`. FileProvider can't
+  match Windows paths under Robolectric (AppUpdateTest skips just that step on Windows).
+
 ## Rules / facts learnt
 - Chapters are newest first. `chaptersFlow` lets slow sources (comix, 2.5-4.8 s between chapter pages) fill in;
   `latestChapters` = what the update check fetches.

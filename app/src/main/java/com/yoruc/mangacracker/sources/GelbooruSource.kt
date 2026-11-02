@@ -13,6 +13,7 @@ import com.yoruc.mangacracker.core.SourceException
 import com.yoruc.mangacracker.core.Tag
 import com.yoruc.mangacracker.core.TagGroup
 import com.yoruc.mangacracker.core.arr
+import com.yoruc.mangacracker.core.int
 import com.yoruc.mangacracker.core.str
 import com.yoruc.mangacracker.core.urlEncode
 import org.jsoup.nodes.Document
@@ -91,7 +92,10 @@ object GelbooruSource : Source {
     override suspend fun suggestTags(query: String): List<Tag> {
         if (query.trim().length < 2) return emptyList()
         val j = Http.getJson("$baseUrl/index.php?page=autocomplete2&term=${query.trim().replace(' ', '_').urlEncode()}&type=tag_query&limit=20")
-        return j.arr.map { Tag(it.str("value"), it.str("label"), it.str("category")) }
+        return j.arr.map {
+            val group = when (it.str("category")) { "artist" -> "Artist"; "character" -> "Character"; "copyright" -> "Series"; "metadata" -> "Meta"; else -> "Tag" }
+            Tag(it.str("value"), it.str("label"), group, it.int("post_count"))
+        }
     }
 
     override suspend fun tags(): List<Tag> = DanbooruSource.tags()
@@ -139,6 +143,12 @@ object GelbooruSource : Source {
         if (video != null) throw SourceException("This post is a video - open it on the site")
         val url = doc.selectFirst("#image")?.attr("abs:src")?.replace("//samples/", "/samples/")?.replace("//images/", "/images/")
             ?: throw SourceException("No picture on this post")
+        // animated posts: the sample is a still JPEG, so play the original file
+        val original = doc.select("a[href*='/images/']").firstOrNull { it.text().contains("original", true) }?.attr("abs:href")
+        val tags = sec?.attr("data-tags").orEmpty().split(' ')
+        if (original != null && (original.substringAfterLast('.').lowercase() in setOf("gif", "webp", "apng") ||
+                "animated" in tags || "animated_gif" in tags || "animated_png" in tags)
+        ) return listOf(Page(0, original, sec?.attr("data-width")?.toIntOrNull() ?: 0, sec?.attr("data-height")?.toIntOrNull() ?: 0))
         val w = sec?.attr("data-large-width")?.toIntOrNull() ?: 0
         val h = sec?.attr("data-large-height")?.toIntOrNull() ?: 0
         return listOf(Page(0, url, w, h))

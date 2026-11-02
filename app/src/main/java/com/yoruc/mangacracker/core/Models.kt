@@ -60,9 +60,12 @@ data class Page(
 
 data class PageResult(val items: List<MangaRef>, val hasNext: Boolean)
 
-/** A tag / genre the user can include or exclude in a search. [id] is what the site wants, [label] what we show. */
+/**
+ * A tag / genre the user can include or exclude in a search. [id] is what the site wants, [label] what we show.
+ * [count] = how many posts / titles use it (0 = unknown), for ranking suggestions.
+ */
 @Serializable
-data class Tag(val id: String, val label: String, val group: String = "")
+data class Tag(val id: String, val label: String, val group: String = "", val count: Int = 0)
 
 data class SelectDef(val key: String, val label: String, val options: List<Pair<String, String>>)
 

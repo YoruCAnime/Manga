@@ -80,6 +80,15 @@ data class Settings(
     val danbooruKey: String = "",
     val useExHentai: Boolean = false,
     val lastLibraryCheck: Long = 0L,
+    /** App updates from GitHub releases */
+    val autoAppUpdates: Boolean = true,
+    val lastAppCheck: Long = 0L,
+    /** What the last check found (the latest release, newer or not). */
+    val appRelease: AppRelease? = null,
+    /** "Later" on the update pop-up: no pop-up again for this version (it stays in Settings). */
+    val dismissedAppVersion: String = "",
+    /** Background check: one notification per version. */
+    val notifiedAppVersion: String = "",
 )
 
 object Repo {

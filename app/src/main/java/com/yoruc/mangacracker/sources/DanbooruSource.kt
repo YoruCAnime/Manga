@@ -141,7 +141,7 @@ object DanbooruSource : Source {
         if (query.trim().length < 2) return emptyList()
         return api("/autocomplete.json?search[query]=${query.trim().replace(' ', '_').urlEncode()}&search[type]=tag_query&limit=20").arr
             .filter { it.str("value").isNotEmpty() && ':' !in it.str("value") }
-            .map { Tag(it.str("value"), it.str("value").replace('_', ' '), when (it.int("category")) { 1 -> "Artist"; 3 -> "Series"; 4 -> "Character"; else -> "Tag" }) }
+            .map { Tag(it.str("value"), it.str("value").replace('_', ' '), when (it.int("category")) { 1 -> "Artist"; 3 -> "Series"; 4 -> "Character"; else -> "Tag" }, it.int("post_count")) }
     }
 
     override suspend fun tags(): List<Tag> = listOf(
@@ -204,7 +204,7 @@ object DanbooruSource : Source {
     override suspend fun pages(ref: MangaRef, chapter: Chapter): List<Page> {
         if (!ref.id.startsWith("pool")) {
             val p = post(ref.id.removePrefix("p"))
-            return listOf(Page(0, p.str("large_file_url").ifEmpty { p.str("file_url") }, sampleW(p), sampleH(p)))
+            return listOf(pageOf(0, p) ?: throw SourceException("This post is a video - open it on the site"))
         }
         val id = ref.id.removePrefix("pool")
         val out = mutableListOf<JsonElement>()
@@ -216,7 +216,18 @@ object DanbooruSource : Source {
             page++
         }
         return out.filter { it.str("large_file_url").isNotEmpty() && !Safety.blocked(it.str("tag_string").split(' ')) }
-            .mapIndexed { i, p -> Page(i, p.str("large_file_url"), sampleW(p), sampleH(p)) }
+            .mapNotNull { pageOf(0, it) }.mapIndexed { i, pg -> pg.copy(index = i) }
+    }
+
+    /** Animated posts (GIF, animated PNG / WebP) need the original file: the sample is a still JPEG. Videos: null. */
+    private fun pageOf(i: Int, p: JsonElement): Page? {
+        val ext = p.str("file_ext").lowercase()
+        if (ext in setOf("mp4", "webm", "zip", "swf")) return null
+        val tags = p.str("tag_string").split(' ')
+        val animated = ext == "gif" || "animated" in tags || "animated_png" in tags || "animated_gif" in tags
+        val original = p.str("file_url")
+        return if (animated && original.isNotEmpty()) Page(i, original, p.int("image_width"), p.int("image_height"))
+        else Page(i, p.str("large_file_url").ifEmpty { original }, sampleW(p), sampleH(p))
     }
 
     private fun sampleW(p: JsonElement) = p["media_asset"]?.get("variants").arr.firstOrNull { it.str("type") == "sample" }?.int("width") ?: p.int("image_width")

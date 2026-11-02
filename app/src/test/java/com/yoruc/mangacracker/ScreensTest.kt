@@ -9,6 +9,12 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
@@ -94,6 +100,12 @@ class ScreensTest {
         text("Atsumaru").performClick(); pump(9000)
         shot("04_browse_atsu")
 
+        // autocomplete under the search box
+        val box = rule.onAllNodes(hasSetTextAction())[0]
+        box.performTextInput("rom"); pump(2500)
+        shot("04b_autocomplete")
+        box.performTextClearance(); pump(500)
+
         desc("Filters").performClick(); pump(4000)
         shot("05_filters")
         back()
@@ -106,6 +118,12 @@ class ScreensTest {
         shot("07_reader")
         rule.onRoot().performTouchInput { click() }; pump(1500)
         shot("08_reader_overlay")
+        desc("All pages").performClick(); pump(6000)
+        shot("08b_page_grid")
+        text("3").performTouchInput { longClick() }; pump(800)
+        text("5").performClick(); pump(800)
+        shot("08c_page_grid_pick")
+        back(); pump(300); back()
         back(); back()
 
         desc("Updates").performClick(); pump(2500)

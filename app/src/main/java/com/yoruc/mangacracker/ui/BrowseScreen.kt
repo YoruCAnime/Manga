@@ -64,6 +64,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -124,6 +126,24 @@ fun BrowseScreen(nav: Nav, sourceId: String, startSearch: Boolean) {
     var text by remember { mutableStateOf(vm.query.text.ifEmpty { vm.query.artist }) }
     var showFilters by remember { mutableStateOf(false) }
     val grid = rememberLazyGridState()
+    // autocomplete for the word being typed (ignore it by typing on)
+    var focused by remember { mutableStateOf(false) }
+    var suggestions by remember { mutableStateOf<List<Tag>>(emptyList()) }
+    val word = text.substringAfterLast(' ')
+    LaunchedEffect(word, focused) {
+        if (!focused || word.trim().length < 2) { suggestions = emptyList(); return@LaunchedEffect }
+        delay(220)
+        val got = withContext(Dispatchers.IO) { runCatching { src.suggestTags(word) }.getOrDefault(emptyList()) }
+        suggestions = rankTags(word, Safety.cleanTags(got).filter { it.group != "typed" })
+            .distinctBy { it.label.lowercase() }
+            .filter { s -> vm.query.include.none { it.id == s.id } }.take(8)
+    }
+    fun pick(t: Tag) {
+        val rest = text.dropLast(word.length).trimEnd()
+        text = rest
+        suggestions = emptyList()
+        vm.search(vm.query.copy(text = rest, include = (vm.query.include + t).distinctBy { it.id }, exclude = vm.query.exclude.filter { it.id != t.id }))
+    }
 
     // load more as the end comes near
     LaunchedEffect(grid) {
@@ -141,8 +161,8 @@ fun BrowseScreen(nav: Nav, sourceId: String, startSearch: Boolean) {
                 leadingIcon = { Icon(Icons.Rounded.Search, null, tint = Mc.Text3) },
                 trailingIcon = { if (text.isNotEmpty()) IconButton(onClick = { text = ""; vm.search(vm.query.copy(text = "", artist = "")) }) { Icon(Icons.Rounded.Close, "Clear", tint = Mc.Text3) } },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { vm.search(vm.query.copy(text = text, artist = if (text == vm.query.artist) text else "")) }),
-                modifier = Modifier.weight(1f).heightIn(min = 50.dp), shape = RoundedCornerShape(10.dp),
+                keyboardActions = KeyboardActions(onSearch = { suggestions = emptyList(); vm.search(vm.query.copy(text = text, artist = if (text == vm.query.artist) text else "")) }),
+                modifier = Modifier.weight(1f).heightIn(min = 50.dp).onFocusChanged { focused = it.isFocused }, shape = RoundedCornerShape(10.dp),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Mc.Card, unfocusedContainerColor = Mc.Card,
                     focusedIndicatorColor = Mc.Bg, unfocusedIndicatorColor = Mc.Bg,
@@ -158,6 +178,7 @@ fun BrowseScreen(nav: Nav, sourceId: String, startSearch: Boolean) {
             }
             IconButton(onClick = { nav.web(src.baseUrl) }) { Icon(Icons.Rounded.Public, "Open site", tint = Mc.Text2) }
         }
+        if (suggestions.isNotEmpty()) TagSuggestions(suggestions, ::pick)
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item { FilterPill("Popular", vm.mode == 0) { vm.switchMode(0) } }
             item { FilterPill("Latest", vm.mode == 1) { vm.switchMode(1) } }
@@ -214,7 +235,7 @@ fun FilterSheet(src: Source, start: SearchQuery, allTags: List<Tag>, onApply: (S
     LaunchedEffect(find) {
         if (find.isBlank()) { suggestions = emptyList(); return@LaunchedEffect }
         delay(250)
-        suggestions = Safety.cleanTags(withContext(Dispatchers.IO) { runCatching { src.suggestTags(find) }.getOrDefault(emptyList()) })
+        suggestions = rankTags(find, Safety.cleanTags(withContext(Dispatchers.IO) { runCatching { src.suggestTags(find) }.getOrDefault(emptyList()) }))
     }
     val shown by remember(allTags, suggestions, find) {
         derivedStateOf { if (find.isNotBlank()) suggestions else allTags }
@@ -295,6 +316,44 @@ fun FilterSheet(src: Source, start: SearchQuery, allTags: List<Tag>, onApply: (S
                     onClick = { onApply(SearchQuery(start.text, include.toList(), exclude.toList(), selects.toMap(), artist.trim())) },
                     modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Mc.Blue)
                 ) { Text("Apply") }
+            }
+        }
+    }
+}
+
+/** Words that start with what was typed first, then the most used; otherwise the site's own order. */
+fun rankTags(typed: String, tags: List<Tag>): List<Tag> {
+    val q = typed.trim().replace(' ', '_')
+    fun starts(t: Tag) = t.label.replace(' ', '_').startsWith(q, true) || t.id.substringAfter(':').startsWith(q, true)
+    return tags.withIndex().sortedWith(compareBy({ !starts(it.value) }, { -it.value.count }, { it.index })).map { it.value }
+}
+
+fun shortCount(n: Int): String = when {
+    n >= 1_000_000 -> "%.1fM".format(n / 1_000_000.0).replace(".0M", "M")
+    n >= 1_000 -> "%.1fk".format(n / 1_000.0).replace(".0k", "k")
+    n > 0 -> n.toString()
+    else -> ""
+}
+
+/** The autocomplete list under a search box: tag, its kind, how often it's used. */
+@Composable
+fun TagSuggestions(tags: List<Tag>, onPick: (Tag) -> Unit) {
+    Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Mc.Card)) {
+        tags.forEach { t ->
+            Row(
+                Modifier.fillMaxWidth().clickable { onPick(t) }.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.Search, null, tint = Mc.Text3, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(t.label, color = Mc.Text, fontSize = 14.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                val kind = t.group.takeIf { it.isNotBlank() && !it.equals("tag", true) && !it.equals("genre", true) }
+                if (kind != null) {
+                    val c = when (kind.lowercase()) { "artist" -> Mc.Pink; "character" -> Mc.Green; "series", "parody" -> Mc.Blue; else -> Mc.Text3 }
+                    Text(kind.replaceFirstChar { it.uppercase() }, color = c, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(5.dp)).background(c.copy(alpha = 0.14f)).padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+                shortCount(t.count).takeIf { it.isNotEmpty() }?.let { Text(it, color = Mc.Text3, fontSize = 12.sp, modifier = Modifier.padding(start = 10.dp)) }
             }
         }
     }

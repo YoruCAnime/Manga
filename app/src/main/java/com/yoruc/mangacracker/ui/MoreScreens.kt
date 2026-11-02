@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -65,6 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.yoruc.mangacracker.core.AppUpdate
 import com.yoruc.mangacracker.core.Http
 import com.yoruc.mangacracker.core.LoginKind
 import com.yoruc.mangacracker.core.Repo
@@ -160,7 +162,12 @@ fun MoreScreen(nav: Nav) {
         }
         item { MoreRow(Icons.Rounded.History, "History", "Everything you've read") { nav.history() } }
         item { MoreRow(Icons.Rounded.Settings, "Settings", "Reader, updates, sources, hidden tags, logins") { nav.settings() } }
-        item { MoreRow(Icons.Rounded.Info, "About", "Version 1.0.0 · sources: atsu, comix, nhentai, E-Hentai, Danbooru, Gelbooru") {} }
+        item {
+            val upd by AppUpdate.state.collectAsState()
+            val rel = upd.release
+            if (rel != null) MoreRow(Icons.Rounded.SystemUpdate, "Update ready: ${rel.version}", "You have ${AppUpdate.current} · tap to update") { nav.settings() }
+            else MoreRow(Icons.Rounded.Info, "About", "Version ${AppUpdate.current} · sources: atsu, comix, nhentai, E-Hentai, Danbooru, Gelbooru") { nav.settings() }
+        }
     }
 }
 
@@ -228,6 +235,9 @@ fun SettingsScreen(nav: Nav) {
     var newTag by remember { mutableStateOf("") }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item { TopTitle("Settings", nav) }
+
+        item { SectionHeader("App updates") }
+        item { AppUpdateCard() }
 
         item { SectionHeader("Library") }
         item {

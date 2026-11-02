@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -217,6 +218,14 @@ fun DetailsScreen(nav: Nav, key: String) {
                         Icon(Icons.Rounded.PlayArrow, null)
                         Spacer(Modifier.width(6.dp))
                         Text(resume?.second ?: if (vm.loading) "Loading…" else "No chapters", maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
+                    }
+                    // galleries (one chapter of many pages): open the page grid straight away
+                    if (!src.hasChapters && (d?.pageCount ?: 2) > 1 && resume != null && !blocked) {
+                        Box(
+                            Modifier.size(46.dp).clip(RoundedCornerShape(8.dp)).background(Mc.Card2)
+                                .clickable { nav.reader(shown, resume.first, grid = true) },
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Rounded.GridView, "Gallery", tint = Mc.Text) }
                     }
                     Box(
                         Modifier.size(46.dp).clip(RoundedCornerShape(8.dp)).background(if (inLib) Mc.Pink else Mc.Card2)

@@ -27,6 +27,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -36,6 +39,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.yoruc.mangacracker.core.AppUpdate
 import com.yoruc.mangacracker.core.Chapter
 import com.yoruc.mangacracker.core.MangaRef
 import com.yoruc.mangacracker.core.Repo
@@ -59,9 +63,9 @@ class Nav(val c: NavHostController) {
         Repo.remember(ref)
         c.navigate("details/${Uri.encode(ref.key)}")
     }
-    fun reader(ref: MangaRef, chapter: Chapter) {
+    fun reader(ref: MangaRef, chapter: Chapter, grid: Boolean = false) {
         Repo.remember(ref)
-        c.navigate("reader/${Uri.encode(ref.key)}/${Uri.encode(chapter.id)}") { launchSingleTop = true }
+        c.navigate("reader/${Uri.encode(ref.key)}/${Uri.encode(chapter.id)}?grid=${if (grid) 1 else 0}") { launchSingleTop = true }
     }
     fun browse(sourceId: String, query: SearchQuery? = null) {
         Pending.query = query
@@ -89,8 +93,21 @@ fun AppRoot(open: String?) {
     val route = entry?.destination?.route ?: "home"
     val updates by Repo.updates.collectAsState()
     val showBar = tabs.any { it.route == route }
+    val appUpd by AppUpdate.state.collectAsState()
+    val settings by Repo.settings.collectAsState()
+    var updateAsked by remember { mutableStateOf(open == "appupdate") }
 
     LaunchedEffect(open) { if (open == "updates") nav.tab("updates") }
+    LaunchedEffect(Unit) { if (settings.autoAppUpdates) AppUpdate.check() }
+
+    // the update pop-up: on the main tabs only (never over the reader), once per version unless opened from the notification
+    val newRel = appUpd.release
+    if (newRel != null && (updateAsked || (showBar && settings.autoAppUpdates && newRel.version != settings.dismissedAppVersion))) {
+        AppUpdatePopup(onClose = {
+            updateAsked = false
+            Repo.updateSettings { it.copy(dismissedAppVersion = newRel.version) }
+        })
+    }
 
     Scaffold(
         containerColor = Mc.Bg,
@@ -106,6 +123,8 @@ fun AppRoot(open: String?) {
                                     BadgedBox(badge = { Badge(containerColor = Mc.Pink) { Text(if (updates.size > 99) "99+" else updates.size.toString()) } }) {
                                         Icon(t.icon, t.label)
                                     }
+                                } else if (t.route == "more" && newRel != null) {
+                                    BadgedBox(badge = { Badge(containerColor = Mc.Pink) }) { Icon(t.icon, t.label) }
                                 } else Icon(t.icon, t.label)
                             },
                             label = { Text(t.label) },
@@ -140,8 +159,8 @@ fun AppRoot(open: String?) {
                 }
                 composable("search?q={q}") { b -> GlobalSearchScreen(nav, b.arguments?.getString("q") ?: "") }
                 composable("details/{key}") { b -> DetailsScreen(nav, b.arguments?.getString("key") ?: "") }
-                composable("reader/{key}/{chapter}") { b ->
-                    ReaderScreen(nav, b.arguments?.getString("key") ?: "", b.arguments?.getString("chapter") ?: "")
+                composable("reader/{key}/{chapter}?grid={grid}") { b ->
+                    ReaderScreen(nav, b.arguments?.getString("key") ?: "", b.arguments?.getString("chapter") ?: "", b.arguments?.getString("grid") == "1")
                 }
                 composable("web?url={url}") { b -> WebScreen(nav, b.arguments?.getString("url") ?: "") }
             }

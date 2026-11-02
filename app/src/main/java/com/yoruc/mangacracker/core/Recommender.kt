@@ -13,6 +13,9 @@ import kotlinx.coroutines.withTimeoutOrNull
  * plus "more like this" of what you read last. Titles you already have are left out.
  */
 object Recommender {
+    /** Image boards (single pictures) never show up in recommendations. */
+    private val IMAGE_BOARDS = setOf("danbooru", "gelbooru")
+
     private var cache: List<MangaRef> = emptyList()
     private var cachedAt = 0L
 
@@ -33,7 +36,7 @@ object Recommender {
         lib.forEach { add(it.ref.source, it.genres.ifEmpty { it.ref.tags }, 2) }
         hist.take(30).forEach { h -> add(h.ref.source, Repo.detailsCache[h.ref.key]?.genres ?: h.ref.tags, 1) }
 
-        val enabled = Sources.enabled()
+        val enabled = Sources.enabled().filter { it.id !in IMAGE_BOARDS }
         val usedSources = (lib.map { it.ref.source } + hist.map { it.ref.source })
             .groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key }
             .mapNotNull { id -> enabled.firstOrNull { it.id == id } }
@@ -55,7 +58,7 @@ object Recommender {
                 if (picks.isEmpty()) jobs += async { withTimeoutOrNull(20_000) { runCatching { src.popular(1).items }.getOrNull() }.orEmpty() }
             }
             // more like the last three things read
-            hist.take(3).forEach { h ->
+            hist.filter { it.ref.source !in IMAGE_BOARDS }.take(3).forEach { h ->
                 val src = Sources.byId(h.ref.source) ?: return@forEach
                 val d = Repo.detailsCache[h.ref.key]
                 jobs += async {
@@ -75,7 +78,7 @@ object Recommender {
             for (i in its) if (i.hasNext()) {
                 any = true
                 val r = i.next()
-                if (r.key !in owned && !Safety.blocked(r)) out.putIfAbsent(r.key, r)
+                if (r.key !in owned && r.source !in IMAGE_BOARDS && !Safety.blocked(r)) out.putIfAbsent(r.key, r)
             }
         }
         cache = out.values.toList()

@@ -6,6 +6,8 @@ A personal project, shared as is. Not affiliated with any of the sites below.
 ## Download
 
 **[Get the latest APK from Releases](https://github.com/YoruCAnime/Manga/releases/latest)** (Android 10 or newer).
+From 1.1.0 on the app updates itself: when a new release is out it shows an "Update ready" pop-up (Update now /
+Later); Later keeps it under Settings → App updates.
 
 ## What it does
 
@@ -16,16 +18,22 @@ A personal project, shared as is. Not affiliated with any of the sites below.
   "N new" badges, a reading bar on each cover. Long-press a cover to jump straight back into it.
 - **Browse**: every source, Popular / Latest, search, and a filter sheet: sort, type, status, author / artist, and
   genres / tags (tap once to include ✓, twice to exclude ✕, as many as you like). "Search every source" at the top.
+  Typing in the search box suggests tags (e.g. "smi" → smile, smirk), most used first, with their kind (artist,
+  character, series); tap one to add it as a filter, or just keep typing.
 - **Title page**: blurred cover banner, authors and artists (tap one to see their other works), genre pills (tap
   to search that genre), description, chapter list with read marks and %, a big Continue button, More like this.
 - **Reader**: one smooth vertical strip (no page turns). It remembers the exact page when you leave and opens
   there again, flows straight into the next chapter, preloads the next pages, pinch or double-tap to zoom, tap for
   the bar (page n of N · %, a page slider, previous / next chapter, save the whole chapter, reader settings:
   background, page gap, side margin). Long-press a page to save or share it (Pictures/MangaCracker/<title>).
+  The grid button shows every page: tap one to jump there, hold to pick several and save them at once (galleries
+  have the same Gallery button on their title page). Animated GIFs play (Danbooru / Gelbooru animated posts load the
+  original moving file).
 - **Updates**: new chapters grouped by day; checked in the background (every 6 h by default, Settings) with a
   notification.
-- **Settings**: update interval, covers per row, reader options, switch sources on / off, ExHentai sign-in,
-  Danbooru key, hidden tags, clear the picture cache.
+- **Settings**: app updates (check now, install, what's new, automatic check on / off), update interval, covers per
+  row, reader options, switch sources on / off, ExHentai sign-in, Danbooru key, hidden tags, clear the picture cache.
+- **Recommended** uses the manga / doujin sources only (no image boards).
 
 ## Sources
 
@@ -50,3 +58,10 @@ uses the debug key. Checks:
 - `gradlew.bat :app:testDebugUnitTest --tests "*LiveSourcesTest*"`: every source against the real sites.
 - `gradlew.bat :app:testDebugUnitTest --tests "*ScreensTest*"`: renders the app on the PC (Robolectric) and saves
   screenshots to `_dev_tools\out\screens`.
+- `AppUpdateTest` (GitHub release check, download, installer hand-off, pop-up shots), `GifAndTagsTest` (animated
+  posts give real GIFs, autocomplete on every source). `python _dev_tools\run_tests.py <Test> ...` runs tests and
+  prints only results.
+
+Releasing: bump `versionCode` / `versionName` in `app/build.gradle.kts`, build, then
+`gh release create v<version> MangaCracker-<version>.apk --repo YoruCAnime/Manga --title "MangaCracker <version>" --notes-file NOTES.md`.
+The release notes show in the app's pop-up ("**bold**", "- " lists are fine).

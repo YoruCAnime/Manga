@@ -40,6 +40,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SkipNext
@@ -222,7 +224,7 @@ class ReaderVM(val src: Source, val ref: MangaRef, startId: String) : ViewModel(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReaderScreen(nav: Nav, key: String, chapterId: String) {
+fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = false) {
     val ref = Repo.refs[key] ?: Repo.library.value[key]?.ref ?: Repo.history.value[key]?.ref ?: return
     val src = Sources.byId(ref.source) ?: return
     val vm: ReaderVM = viewModel(key = "reader-$key-$chapterId") { ReaderVM(src, ref, chapterId) }
@@ -237,6 +239,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String) {
     var showSettings by remember { mutableStateOf(false) }
     var pageMenu by remember { mutableStateOf<ReaderItem.PageItem?>(null) }
     var savingAll by remember { mutableStateOf<String?>(null) }
+    var showGrid by rememberSaveable { mutableStateOf(openGrid) }
 
     // zoom state (whole strip)
     var scale by remember { mutableFloatStateOf(1f) }
@@ -404,6 +407,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String) {
                     Text(ref.title, color = Mc.Text, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(cur?.first?.chapter?.name ?: "", color = Mc.Text3, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                IconButton(onClick = { showGrid = true; overlay = false }) { Icon(Icons.Rounded.GridView, "All pages", tint = Mc.Text) }
                 IconButton(onClick = {
                     val ch = cur?.first?.chapter ?: return@IconButton
                     val pages = vm.items.filterIsInstance<ReaderItem.PageItem>().filter { it.chapter.id == ch.id }
@@ -460,6 +464,30 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String) {
         }
         savingAll?.let {
             Text(it, color = Color.White, modifier = Modifier.align(Alignment.Center).clip(RoundedCornerShape(10.dp)).background(Color(0xCC0B1622)).padding(16.dp))
+        }
+
+        // ---- every page as a grid: jump to one, or pick several to save ----
+        if (showGrid && vm.items.isNotEmpty()) {
+            val ch = cur?.first?.chapter ?: (vm.items.firstOrNull { it is ReaderItem.PageItem } as? ReaderItem.PageItem)?.chapter
+            val pages = vm.items.filterIsInstance<ReaderItem.PageItem>().filter { it.chapter.id == ch?.id }
+            DisposableEffect(Unit) {
+                val ctl = WindowCompat.getInsetsController((ctx as Activity).window, view)
+                ctl.show(WindowInsetsCompat.Type.systemBars())
+                onDispose { if (!overlay) ctl.hide(WindowInsetsCompat.Type.systemBars()) }
+            }
+            PageGrid(
+                title = if (src.hasChapters) "${ref.title} · ${ch?.name.orEmpty()}" else ref.title,
+                folder = ref.title,
+                pages = pages,
+                current = if (cur?.first?.chapter?.id == ch?.id) cur?.second ?: 0 else 0,
+                vm = vm,
+                onJump = { p ->
+                    showGrid = false
+                    val i = vm.items.indexOfFirst { it.key == p.key }
+                    if (i >= 0) scope.launch { list.scrollToItem(i) }
+                },
+                onClose = { showGrid = false },
+            )
         }
     }
 
