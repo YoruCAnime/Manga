@@ -53,7 +53,9 @@ Later); Later keeps it under Settings → App updates.
   the panel, and [MobileSAM](https://huggingface.co/Acly/MobileSAM) (Apache-2.0) picks the one you pressed when two
   touch. Speech bubbles full of text and stray bits are left out by themselves. The window shows the panel with
   everything that is not kept dimmed: **Add** + a tap brings back a missing part, **Remove** + a tap drops one (a
-  speech bubble goes whole), ↶ undoes, 👁 previews only what Save keeps. Manhwa strips are cut at their panel gaps,
+  speech bubble goes whole), the **Erase** brush removes whatever you paint over (it is highlighted while you paint
+  and goes when you lift your finger), **Restore** paints parts back, S / M / L brush sizes, two fingers zoom in for
+  fine edges, ↶ undoes, 👁 previews only what Save keeps. Manhwa strips are cut at their panel gaps,
   so a 20 000 px strip is never handled whole. Works best on clean art; very busy black-and-white pages full of tone
   may need a few taps.
 - **Videos** (own tab): Hentaigasm, Oppai.stream, MuchoHentai, HentaiMama, NSFW R34, Porcore, SFM Compile and Rule34Video. Latest / Popular, search with genre autocomplete,

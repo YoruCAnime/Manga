@@ -254,6 +254,10 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
     exhentai.org in the same WebView after the forum login and reads the answer (list = OK and the switch turns on;
     empty / igneous=mystery = no access; 451 = VPN). Or paste ipb_member_id / ipb_pass_hash / igneous. A login in
     the phone's browser never reaches the app (separate cookie stores); the Settings card says so.
+  - 1.7.1: cutout brush. `CutoutScreen` keeps one undo list of `Edit.Tap` (models) and `Edit.Brush` (stroke in
+    panel px + radius, erase / restore); the models' alpha for a tap list is cached, so strokes are only painted on
+    top (`Mask.paint`: distance to the polyline <= r sets 0 / 1, 1.5 px soft rim). `Picture` = one custom gesture:
+    one finger taps or draws (live highlight, applied on lift), two fingers zoom 1-6x / pan. Shots 64-66.
   - Reader long-press undoes the strip zoom before finding the page (zoomed in, it used to pick the wrong page) and
     records where on the page the finger was (two-page spreads included).
 

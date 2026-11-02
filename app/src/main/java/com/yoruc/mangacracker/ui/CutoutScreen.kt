@@ -7,7 +7,12 @@ import android.graphics.Rect
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +32,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.AddCircle
+import androidx.compose.material.icons.rounded.AutoFixHigh
+import androidx.compose.material.icons.rounded.Brush
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.RemoveCircle
@@ -52,13 +59,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -70,24 +80,36 @@ import com.yoruc.mangacracker.core.Http
 import com.yoruc.mangacracker.core.ImageSaver
 import com.yoruc.mangacracker.cutout.Cutter
 import com.yoruc.mangacracker.cutout.CutoutModels
+import com.yoruc.mangacracker.cutout.Mask
 import com.yoruc.mangacracker.cutout.Nets
 import com.yoruc.mangacracker.cutout.OrtNets
 import com.yoruc.mangacracker.ui.theme.Mc
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
 /** What the reader hands over: the page picture and where it was long-pressed (0..1 of the page). */
 class CutoutRequest(val url: String, val fx: Float, val fy: Float, val folder: String, val name: String)
 
+/** One fix in the cutout window, in panel pixels: a tap for the models, or a brush stroke painted on top. */
+private sealed class Edit {
+    class Tap(val p: Cutter.Point) : Edit()
+    class Brush(val pts: FloatArray, val r: Float, val erase: Boolean) : Edit()
+}
+
+private enum class Tool { ADD, REMOVE, ERASE, RESTORE }
+
 /** Builds the networks; tests swap in their own. */
 var cutoutNets: (android.content.Context) -> Nets = { ctx -> OrtNets(CutoutModels.dir(ctx)) }
 
 /**
  * Character cutout: the character under the long-press, cut out of its panel. The panel shows with everything that
- * is not cut out dimmed; "Add" / "Remove" + a tap on the picture fix the edges; Save writes a transparent PNG.
+ * is not cut out dimmed. "Add" / "Remove" + a tap ask the models again; the "Erase" / "Restore" brush paints over an
+ * area by hand (highlighted while the finger is down, applied on lift). Two fingers zoom and move the picture.
+ * Save writes a transparent PNG.
  */
 @Composable
 fun CutoutScreen(req: CutoutRequest, onClose: () -> Unit) {
@@ -100,17 +122,29 @@ fun CutoutScreen(req: CutoutRequest, onClose: () -> Unit) {
     var job by remember { mutableStateOf<Cutter.Job?>(null) }
     var cut by remember { mutableStateOf<Triple<IntArray, Int, Int>?>(null) }
     var shown by remember { mutableStateOf<Bitmap?>(null) }
-    var keepMode by remember { mutableStateOf(true) }
+    var tool by remember { mutableStateOf(Tool.ADD) }
+    var brushDp by remember { mutableStateOf(14f) }
     var preview by remember { mutableStateOf(false) }
     var alphaNow by remember { mutableStateOf<FloatArray?>(null) }
-    val taps = remember { mutableStateListOf<Cutter.Point>() }
+    val edits = remember { mutableStateListOf<Edit>() }
+    /** the models' answer for a list of taps, so brush strokes never run them again */
+    var base by remember { mutableStateOf<Pair<List<Cutter.Point>, FloatArray>?>(null) }
     var nets by remember { mutableStateOf<Nets?>(null) }
     DisposableEffect(Unit) { onDispose { nets?.close() } }
 
     suspend fun redo() {
         val j = job ?: return
-        phase = "Cutting out…"
-        val a = withContext(Dispatchers.Default) { j.alpha(taps.toList()) }
+        val list = edits.toList()
+        val taps = list.filterIsInstance<Edit.Tap>().map { it.p }
+        val b = base?.takeIf { it.first == taps }?.second ?: run {
+            phase = "Cutting out…"
+            withContext(Dispatchers.Default) { j.alpha(taps) }.also { base = taps to it }
+        }
+        val a = withContext(Dispatchers.Default) {
+            val a = b.copyOf()
+            list.filterIsInstance<Edit.Brush>().forEach { Mask.paint(a, j.w, j.h, it.pts, it.r, if (it.erase) 0f else 1f) }
+            a
+        }
         alphaNow = a
         cut = withContext(Dispatchers.Default) { j.render(a) }
         phase = null
@@ -166,9 +200,14 @@ fun CutoutScreen(req: CutoutRequest, onClose: () -> Unit) {
                 else -> {
                     Box(Modifier.weight(1f).fillMaxWidth().padding(8.dp)) {
                         val b = shown
-                        if (b != null) Picture(b, job, if (preview) emptyList() else taps) { x, y ->
-                            if (phase == null && !preview) { taps += Cutter.Point(x, y, keepMode); scope.launch { redo() } }
-                        }
+                        val brush = tool == Tool.ERASE || tool == Tool.RESTORE
+                        if (b != null) Picture(b, if (preview) emptyList() else edits, brush && !preview, tool == Tool.ERASE, brushDp,
+                            onTap = { x, y ->
+                                if (phase == null && !preview && !brush) { edits += Edit.Tap(Cutter.Point(x, y, tool == Tool.ADD)); scope.launch { redo() } }
+                            },
+                            onStroke = { pts, r ->
+                                if (phase == null && !preview) { edits += Edit.Brush(pts, r, tool == Tool.ERASE); scope.launch { redo() } }
+                            })
                         phase?.let {
                             Column(Modifier.align(Alignment.Center).clip(RoundedCornerShape(12.dp)).background(Color(0xE60B1622)).padding(20.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally) {
@@ -179,13 +218,30 @@ fun CutoutScreen(req: CutoutRequest, onClose: () -> Unit) {
                         }
                     }
                     if (job != null) {
-                        Text(if (preview) "This is what Save keeps." else if (keepMode) "Tap a part that is missing to add it." else "Tap a part that shouldn't be there (a speech bubble goes whole).",
-                            color = Mc.Text3, fontSize = 12.5.sp, modifier = Modifier.padding(horizontal = 16.dp))
-                        Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            ModeButton("Add", Icons.Rounded.AddCircle, keepMode) { keepMode = true }
-                            ModeButton("Remove", Icons.Rounded.RemoveCircle, !keepMode) { keepMode = false }
-                            IconButton(enabled = taps.isNotEmpty() && phase == null, onClick = { taps.removeAt(taps.lastIndex); scope.launch { redo() } }) {
-                                Icon(Icons.AutoMirrored.Rounded.Undo, "Undo", tint = if (taps.isNotEmpty()) Mc.Text2 else Mc.Text3)
+                        Text(when {
+                            preview -> "This is what Save keeps."
+                            tool == Tool.ADD -> "Tap a part that is missing to add it."
+                            tool == Tool.REMOVE -> "Tap a part that shouldn't be there (a speech bubble goes whole)."
+                            tool == Tool.ERASE -> "Paint over what should go; it's removed when you lift your finger. Two fingers zoom."
+                            else -> "Paint over what should come back. Two fingers zoom."
+                        }, color = Mc.Text3, fontSize = 12.5.sp, modifier = Modifier.padding(horizontal = 16.dp))
+                        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            ModeButton("Add", Icons.Rounded.AddCircle, tool == Tool.ADD) { tool = Tool.ADD }
+                            ModeButton("Remove", Icons.Rounded.RemoveCircle, tool == Tool.REMOVE) { tool = Tool.REMOVE }
+                            ModeButton("Erase", Icons.Rounded.Brush, tool == Tool.ERASE) { tool = Tool.ERASE }
+                            ModeButton("Restore", Icons.Rounded.AutoFixHigh, tool == Tool.RESTORE) { tool = Tool.RESTORE }
+                        }
+                        Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (tool == Tool.ERASE || tool == Tool.RESTORE) {
+                                listOf(7f to "S", 14f to "M", 26f to "L").forEach { (d, l) ->
+                                    Box(Modifier.size(34.dp).clip(RoundedCornerShape(50)).background(if (brushDp == d) Mc.Blue else Mc.Card2)
+                                        .clickable { brushDp = d }, contentAlignment = Alignment.Center) {
+                                        Text(l, color = if (brushDp == d) Mc.Bg else Mc.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
+                            IconButton(enabled = edits.isNotEmpty() && phase == null, onClick = { edits.removeAt(edits.lastIndex); scope.launch { redo() } }) {
+                                Icon(Icons.AutoMirrored.Rounded.Undo, "Undo", tint = if (edits.isNotEmpty()) Mc.Text2 else Mc.Text3)
                             }
                             Spacer(Modifier.weight(1f))
                             Button(enabled = cut != null && phase == null, onClick = {
@@ -221,45 +277,104 @@ private fun DownloadCard(progress: Pair<Long, Long>?, error: String?, onStart: (
 }
 
 @Composable
-private fun ModeButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean, onClick: () -> Unit) {
-    Button(onClick = onClick, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = if (on) Mc.Blue else Mc.Card2, contentColor = if (on) Mc.Bg else Mc.Text)) {
-        Icon(icon, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(label, fontSize = 13.sp)
+private fun androidx.compose.foundation.layout.RowScope.ModeButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean, onClick: () -> Unit) {
+    Column(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(if (on) Mc.Blue else Mc.Card2).clickable(onClick = onClick).padding(vertical = 7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(icon, null, Modifier.size(20.dp), tint = if (on) Mc.Bg else Mc.Text)
+        Text(label, fontSize = 12.sp, color = if (on) Mc.Bg else Mc.Text, maxLines = 1)
     }
 }
 
-/** The panel fitted to the box, the add / remove taps on it; taps come back in panel pixels. */
+/**
+ * The panel fitted to the box (two fingers zoom up to 6x and move it), with the fixes drawn on it. One finger: a tap
+ * ([onTap]) or, with [brush], a stroke ([onStroke]: panel pixels + radius) highlighted while it is drawn.
+ */
 @Composable
-private fun Picture(b: Bitmap, job: Cutter.Job?, taps: List<Cutter.Point>, onTap: (Float, Float) -> Unit) {
+private fun Picture(
+    b: Bitmap, edits: List<Edit>, brush: Boolean, erase: Boolean, brushDp: Float,
+    onTap: (Float, Float) -> Unit, onStroke: (FloatArray, Float) -> Unit,
+) {
     val img = remember(b) { b.asImageBitmap() }
-    Canvas(Modifier.fillMaxSize().pointerInput(b) {
-        detectTapGestures { o ->
-            val s = min(size.width / b.width.toFloat(), size.height / b.height.toFloat())
-            val ox = (size.width - b.width * s) / 2f; val oy = (size.height - b.height * s) / 2f
-            val x = (o.x - ox) / s; val y = (o.y - oy) / s
-            if (x in 0f..b.width.toFloat() && y in 0f..b.height.toFloat()) onTap(x, y)
+    var zoom by remember { mutableStateOf(1f) }
+    var pan by remember { mutableStateOf(Offset.Zero) }
+    val live = remember { mutableStateListOf<Offset>() }
+    val brushPx = with(LocalDensity.current) { brushDp.dp.toPx() }
+    Canvas(Modifier.fillMaxSize().clipToBounds().pointerInput(b, brush, brushPx) {
+        fun fit() = min(size.width / b.width.toFloat(), size.height / b.height.toFloat())
+        fun origin(s: Float) = Offset((size.width - b.width * s) / 2f, (size.height - b.height * s) / 2f)
+        /** screen -> panel pixels */
+        fun toPanel(o: Offset): Offset { val s = fit(); return (o - origin(s) - pan) / (s * zoom) }
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            val path = arrayListOf(down.position)
+            var multi = false
+            var moved = false
+            if (brush) { live.clear(); live += down.position }
+            while (true) {
+                val ev = awaitPointerEvent()
+                val pressed = ev.changes.count { it.pressed }
+                if (pressed >= 2) {
+                    multi = true; live.clear()
+                    val f = ev.calculateZoom(); val c = ev.calculateCentroid()
+                    val nz = (zoom * f).coerceIn(1f, 6f)
+                    val k = nz / zoom
+                    val o = origin(fit())
+                    pan = (c - o) - (c - o - pan) * k + ev.calculatePan()
+                    zoom = nz
+                    if (zoom <= 1.01f) { zoom = 1f; pan = Offset.Zero }
+                    ev.changes.forEach { it.consume() }
+                } else if (pressed == 1 && !multi) {
+                    val p = ev.changes.first { it.pressed }.position
+                    if ((p - down.position).getDistance() > viewConfiguration.touchSlop) moved = true
+                    path += p
+                    if (brush) live += p
+                }
+                if (pressed == 0) break
+            }
+            live.clear()
+            if (multi) return@awaitEachGesture
+            if (brush) {
+                val pts = FloatArray(path.size * 2)
+                path.forEachIndexed { i, o -> val q = toPanel(o); pts[2 * i] = q.x; pts[2 * i + 1] = q.y }
+                onStroke(pts, brushPx / (fit() * zoom))
+            } else if (!moved) {
+                val q = toPanel(down.position)
+                if (q.x in 0f..b.width.toFloat() && q.y in 0f..b.height.toFloat()) onTap(q.x, q.y)
+            }
         }
     }) {
-        val s = min(size.width / b.width, size.height / b.height)
+        val s0 = min(size.width / b.width, size.height / b.height)
+        val s = s0 * zoom
         val dw = b.width * s; val dh = b.height * s
-        val ox = (size.width - dw) / 2f; val oy = (size.height - dh) / 2f
-        // checkerboard under the picture, so see-through parts read as see-through
+        val ox = (size.width - b.width * s0) / 2f + pan.x; val oy = (size.height - b.height * s0) / 2f + pan.y
+        // checkerboard under the picture (fixed to the screen), so see-through parts read as see-through
         val cell = 12.dp.toPx()
-        var yy = 0f; var row = 0
-        while (yy < dh) {
-            var xx = 0f; var col = row % 2
-            while (xx < dw) {
-                drawRect(if (col % 2 == 0) Color(0xFF2A3546) else Color(0xFF1C2532), Offset(ox + xx, oy + yy), Size(min(cell, dw - xx), min(cell, dh - yy)))
+        val cx0 = max(0f, ox); val cy0 = max(0f, oy); val cx1 = min(size.width, ox + dw); val cy1 = min(size.height, oy + dh)
+        var yy = cy0; var row = 0
+        while (yy < cy1) {
+            var xx = cx0; var col = row % 2
+            while (xx < cx1) {
+                drawRect(if (col % 2 == 0) Color(0xFF2A3546) else Color(0xFF1C2532), Offset(xx, yy), Size(min(cell, cx1 - xx), min(cell, cy1 - yy)))
                 xx += cell; col++
             }
             yy += cell; row++
         }
         drawImage(img, srcOffset = IntOffset.Zero, srcSize = IntSize(b.width, b.height), dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()),
             dstSize = IntSize(dw.roundToInt(), dh.roundToInt()))
-        if (job != null) taps.forEach { t ->
-            val c = Offset(ox + t.x * s, oy + t.y * s)
-            drawCircle(if (t.keep) Color(0xFF7BD555) else Color(0xFFFF5C8A), 9.dp.toPx(), c)
-            drawCircle(Color.White, 9.dp.toPx(), c, style = Stroke(2.dp.toPx()))
+        edits.forEach { e ->
+            if (e is Edit.Tap) {
+                val c = Offset(ox + e.p.x * s, oy + e.p.y * s)
+                drawCircle(if (e.p.keep) Color(0xFF7BD555) else Color(0xFFFF5C8A), 9.dp.toPx(), c)
+                drawCircle(Color.White, 9.dp.toPx(), c, style = Stroke(2.dp.toPx()))
+            }
+        }
+        // the stroke being drawn: highlighted now, applied on lift
+        if (live.isNotEmpty()) {
+            val col = if (erase) Color(0x88FF3B6B) else Color(0x887BD555)
+            for (i in live.indices) {
+                drawCircle(col, brushPx, live[i])
+                if (i > 0) drawLine(col, live[i - 1], live[i], strokeWidth = brushPx * 2, cap = StrokeCap.Round)
+            }
         }
     }
 }

@@ -54,6 +54,19 @@ class CutoutTest {
         assertTrue("inner point $ix,$iy", ix in 60..85 && iy in 70..80)
         val r = Mask.resize(floatArrayOf(0f, 1f, 2f, 3f), 2, 2, 4, 4)
         assertEquals(0f, r[0], 1e-4f); assertEquals(3f, r[15], 1e-4f)
+
+        // brush: a stroke from (10, 50) to (90, 50), radius 5, erases a band and nothing else
+        val a = FloatArray(100 * 100) { 1f }
+        Mask.paint(a, 100, 100, floatArrayOf(10f, 50f, 90f, 50f), 5f, 0f)
+        assertEquals(0f, a[50 * 100 + 50], 0f)
+        assertEquals(0f, a[54 * 100 + 30], 0f)
+        assertEquals(1f, a[58 * 100 + 50], 0f)
+        assertEquals(1f, a[50 * 100 + 97], 0f)
+        // a single dot, then the same spot brought back
+        Mask.paint(a, 100, 100, floatArrayOf(20f, 20f), 3f, 0f)
+        assertEquals(0f, a[20 * 100 + 20], 0f)
+        Mask.paint(a, 100, 100, floatArrayOf(20f, 20f), 3f, 1f)
+        assertEquals(1f, a[20 * 100 + 20], 0f)
     }
 
     @Test fun models() {

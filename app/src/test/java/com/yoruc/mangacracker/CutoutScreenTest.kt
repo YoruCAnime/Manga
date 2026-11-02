@@ -4,10 +4,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureScreenRoboImage
+import androidx.compose.ui.geometry.Offset
 import com.yoruc.mangacracker.core.Http
 import com.yoruc.mangacracker.cutout.CutoutModels
 import com.yoruc.mangacracker.ui.CutoutRequest
@@ -78,6 +82,20 @@ class CutoutScreenTest {
         rule.onAllNodesWithContentDescription("Preview", useUnmergedTree = true)[0].performClick(); pump(3000)
         assertTrue("preview", has("what Save keeps"))
         shot("63_cutout_preview")
+        // back to the panel; Erase brush: a stroke across the figure is highlighted while drawn, removed on lift
+        rule.onAllNodesWithContentDescription("Show the panel", useUnmergedTree = true)[0].performClick(); pump(2000)
+        rule.onAllNodesWithText("Erase", useUnmergedTree = true)[0].performClick(); pump(400)
+        assertTrue("erase hint", has("Paint over what should go"))
+        val root = rule.onAllNodes(isRoot()).onLast()
+        root.performTouchInput { down(Offset(width * 0.12f, height * 0.56f)) }
+        for (k in 1..12) { root.performTouchInput { moveTo(Offset(width * (0.12f + 0.012f * k), height * (0.56f + 0.004f * k))) }; pump(60) }
+        pump(300)
+        shot("64_cutout_brush_drawing")
+        root.performTouchInput { up() }
+        pump(2500)
+        shot("65_cutout_brush_erased")
+        rule.onAllNodesWithContentDescription("Undo", useUnmergedTree = true)[0].performClick(); pump(2000)
+        shot("66_cutout_brush_undone")
         CutoutModels.dirOverride = null
     }
 }

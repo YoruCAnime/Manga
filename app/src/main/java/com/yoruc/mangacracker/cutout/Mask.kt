@@ -93,4 +93,39 @@ object Mask {
     }
 
     fun diag(w: Int, h: Int) = sqrt((w.toFloat() * w + h.toFloat() * h))
+
+    /**
+     * A brush stroke through [pts] (x, y pairs in w x h pixels) with radius [r]: inside, alpha becomes [value]
+     * (0 = erase, 1 = bring back); a 1.5 px soft rim blends into what was there.
+     */
+    fun paint(a: FloatArray, w: Int, h: Int, pts: FloatArray, r: Float, value: Float) {
+        val n = pts.size / 2
+        if (n == 0) return
+        val feather = 1.5f
+        val reach = r + feather
+        // closest distance from each pixel near the stroke to any of its segments
+        var minX = Float.MAX_VALUE; var minY = Float.MAX_VALUE; var maxX = -Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
+        for (k in 0 until n) { minX = min(minX, pts[2 * k]); maxX = kotlin.math.max(maxX, pts[2 * k]); minY = min(minY, pts[2 * k + 1]); maxY = kotlin.math.max(maxY, pts[2 * k + 1]) }
+        val x0 = (minX - reach).toInt().coerceIn(0, w - 1); val x1 = (maxX + reach).toInt().coerceIn(0, w - 1)
+        val y0 = (minY - reach).toInt().coerceIn(0, h - 1); val y1 = (maxY + reach).toInt().coerceIn(0, h - 1)
+        for (y in y0..y1) for (x in x0..x1) {
+            var best = Float.MAX_VALUE
+            for (k in 0 until max1(n - 1)) {
+                val ax = pts[2 * k]; val ay = pts[2 * k + 1]
+                val bx = if (n > 1) pts[2 * k + 2] else ax; val by = if (n > 1) pts[2 * k + 3] else ay
+                val dx = bx - ax; val dy = by - ay
+                val len = dx * dx + dy * dy
+                val t = if (len == 0f) 0f else (((x - ax) * dx + (y - ay) * dy) / len).coerceIn(0f, 1f)
+                val ex = x - (ax + t * dx); val ey = y - (ay + t * dy)
+                best = min(best, ex * ex + ey * ey)
+            }
+            val d = sqrt(best)
+            if (d >= reach) continue
+            val i = y * w + x
+            val k = if (d <= r) 1f else 1f - (d - r) / feather
+            a[i] = a[i] * (1 - k) + value * k
+        }
+    }
+
+    private fun max1(v: Int) = if (v < 1) 1 else v
 }
