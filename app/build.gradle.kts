@@ -15,8 +15,8 @@ android {
         applicationId = "com.yoruc.mangacracker"
         minSdk = 29
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3.0"
+        versionCode = 5
+        versionName = "1.4.0"
     }
 
     // A personal key kept next to the project (keystore/, git-ignored), so updates install over the old app.
@@ -54,7 +54,7 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true
-        unitTests.all { it.systemProperty("robolectric.graphicsMode", "NATIVE"); it.systemProperty("roborazzi.test.record", "true"); it.maxHeapSize = "3g" }
+        unitTests.all { it.systemProperty("robolectric.graphicsMode", "NATIVE"); it.systemProperty("roborazzi.test.record", "true"); it.maxHeapSize = "3g"; it.systemProperty("sources", (project.findProperty("sources") ?: "").toString()) }
     }
 }
 

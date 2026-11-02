@@ -7,7 +7,7 @@ package com.yoruc.mangacracker.core
 object Safety {
     /** Always hidden, on every source (after lower-casing, '_' and '-' read as spaces, namespace dropped). */
     private val HARD = setOf(
-        "loli", "lolicon", "shota", "shotacon", "toddlercon", "oppai loli", "petite loli", "low loli", "low shotacon",
+        "loli", "lolicon", "shota", "shotacon", "shoutacon", "toddlercon", "oppai loli", "petite loli", "low loli", "low shotacon",
         "low lolicon", "ijime loli", "underage", "underage uke", "underage seme", "kodomo doushi", "legal loli", "legal shota",
         "loli protagonist", "loli female lead", "lolicon protagonist", "shota protagonist", "shota uke", "shota seme",
         "shota character/s", "loli/grooming/child porn", "child rape", "child sexual abuse", "child pornography", "child prostitute",
@@ -25,7 +25,7 @@ object Safety {
     )
 
     /** Mainstream manga sources, where SOFT words only count on 18+ titles. */
-    private val MAINSTREAM = setOf("atsu", "comix")
+    private val MAINSTREAM = setOf("atsu", "comix", "jestful")
     private val ADULT_MARKS = setOf("adult", "hentai", "smut", "pornographic", "erotica", "rating:e", "rating:q", "rating:explicit", "rating:questionable")
 
     @Volatile var userHidden: Set<String> = emptySet()

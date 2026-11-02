@@ -1,0 +1,253 @@
+package com.yoruc.mangacracker.sources
+
+import com.yoruc.mangacracker.core.Chapter
+import com.yoruc.mangacracker.core.Http
+import com.yoruc.mangacracker.core.MangaDetails
+import com.yoruc.mangacracker.core.MangaRef
+import com.yoruc.mangacracker.core.Page
+import com.yoruc.mangacracker.core.PageResult
+import com.yoruc.mangacracker.core.Safety
+import com.yoruc.mangacracker.core.SearchQuery
+import com.yoruc.mangacracker.core.SelectDef
+import com.yoruc.mangacracker.core.Source
+import com.yoruc.mangacracker.core.SourceException
+import com.yoruc.mangacracker.core.Tag
+import com.yoruc.mangacracker.core.TagGroup
+import com.yoruc.mangacracker.core.str
+import com.yoruc.mangacracker.core.urlEncode
+import kotlinx.serialization.json.JsonObject
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * HentaiFox through its HTML pages. Every title is one gallery. List thumbs carry numeric tag ids (data-tags), so
+ * minors galleries are dropped from every list; the search also carries -slug exclusions. Spec: _dev_tools/specs/hentaifox.md
+ */
+object HentaiFoxSource : Source {
+    override val id = "hentaifox"
+    override val name = "HentaiFox"
+    override val baseUrl = "https://hentaifox.com"
+    override val blurb = "hentaifox.com · doujinshi, manga"
+    override val color = 0xFF4F46E5
+    override val nsfw = true
+    override val hasChapters = false
+
+    /** lolicon 8, shotacon 11, oppai loli 45, low lolicon 111, low shotacon 268, toddlercon 715, kodomo doushi 3321, kodomo only 3322, shota 1463, loli 1472 */
+    private val HIDDEN_IDS = setOf("8", "11", "45", "111", "268", "715", "3321", "3322", "1463", "1472")
+    private val HIDDEN_SLUGS = setOf("lolicon", "shotacon", "oppai-loli", "low-lolicon", "low-shotacon", "toddlercon",
+        "kodomo-doushi", "kodomo-only", "shota", "loli")
+    private val GUARD = HIDDEN_SLUGS.joinToString(" ") { "-$it" }
+
+    init {
+        Http.referers["hentaifox.com"] = "https://hentaifox.com/"
+        // pages only: the image hosts (i., i2., i3.hentaifox.com) stay unthrottled
+        listOf("gallery", "search", "pag", "page").forEach { Http.rateLimits["hentaifox.com/$it"] = 600L }
+    }
+
+    override val selects = listOf(
+        SelectDef("sort", "Sort", listOf("" to "Newest", "popular" to "Popular")),
+        SelectDef("lang", "Language", listOf("" to "Any", "english" to "English", "japanese" to "Japanese", "chinese" to "Chinese")),
+    )
+
+    // ---------- lists ----------
+
+    private val GALLERY = Regex("""/gallery/(\d+)""")
+
+    private fun item(t: Element): MangaRef? {
+        val a = t.selectFirst("h2.g_title a") ?: return null // home-page parody / character cards have no g_title
+        val gid = GALLERY.find(a.attr("href"))?.groupValues?.get(1) ?: return null
+        val ids = t.attr("data-tags").split(' ').filter { it.isNotEmpty() }
+        if (ids.any { it in HIDDEN_IDS }) return null
+        val img = t.selectFirst(".inner_thumb img")
+        val cover = img?.attr("abs:data-src")?.ifEmpty { null } ?: img?.attr("abs:src").orEmpty()
+        return MangaRef(
+            source = id, id = gid, title = a.text(),
+            cover = if (cover.startsWith("http")) cover else "",
+            tags = ids.map { "hf:$it" },
+            subtitle = t.selectFirst(".g_cat")?.text().orEmpty(),
+        )
+    }
+
+    private suspend fun list(path: String): PageResult {
+        val (code, html) = Http.getRaw(baseUrl + path)
+        if (code == 404) return PageResult(emptyList(), false)
+        if (code !in 200..299) throw SourceException("HentaiFox answered $code")
+        val doc = Jsoup.parse(html, baseUrl + path)
+        val items = doc.select("div.thumb").mapNotNull { item(it) }
+        // the last pagination item is "Next", greyed out (class disabled) on the last page
+        val last = doc.select("ul.pagination li").lastOrNull()
+        val next = last != null && last.text().trim().equals("Next", true) && !last.hasClass("disabled")
+        return PageResult(items, next)
+    }
+
+    /** "words" + the minors guard; the site needs at least one positive word, so "english" stands in when there is none. */
+    private fun searchPath(words: List<String>, page: Int, sort: String): String {
+        val positive = words.ifEmpty { listOf("english") }
+        val q = (positive + GUARD).joinToString(" ").urlEncode()
+        return "/search/?q=$q" + (if (sort.isNotEmpty()) "&sort=$sort" else "") + (if (page > 1) "&page=$page" else "")
+    }
+
+    // the home page pages oddly: /, /page/2/, then /pag/3/, /pag/4/ ... (/pag/2/ goes back to /)
+    override suspend fun latest(page: Int) = list(when (page) { 1 -> "/"; 2 -> "/page/2/"; else -> "/pag/$page/" })
+
+    override suspend fun popular(page: Int) = list(searchPath(listOf("english"), page, "popular"))
+
+    override suspend fun search(query: SearchQuery, page: Int): PageResult {
+        val words = mutableListOf<String>()
+        if (query.text.isNotBlank()) words += query.text.trim()
+        // a tag is a quoted phrase; an exclusion must be the hyphenated slug ("-big breasts" would exclude only "big")
+        query.include.forEach { words += "\"" + phrase(it) + "\"" }
+        if (query.artist.isNotBlank()) words += "\"" + query.artist.trim() + "\""
+        query.selects["lang"]?.takeIf { it.isNotEmpty() }?.let { words += it }
+        val excludes = query.exclude.map { "-" + slug(it.id.ifEmpty { it.label }) }.filter { it.length > 1 }
+        val all = if (words.isEmpty()) listOf("english") + excludes else words + excludes
+        return list(searchPath(all, page, query.selects["sort"].orEmpty()))
+    }
+
+    private fun slug(s: String) = s.substringAfter(':').trim().lowercase().replace(Regex("""\s+"""), "-").replace(Regex("""[^a-z0-9\-]"""), "")
+    private fun phrase(t: Tag) = t.id.substringAfter(':').ifEmpty { t.label }.replace('-', ' ').replace("\"", "").trim()
+
+    // ---------- tags ----------
+
+    /** The site's 472 most-used tags (>= 150 galleries) with counts, from /tags/ on 2026-11-02 (minors tags left out). */
+    override suspend fun tags(): List<Tag> = TAGS
+
+    private val TAGS: List<Tag> by lazy {
+        TAG_TABLE.trim().lines().mapNotNull { line ->
+            val p = line.trim().split('|', limit = 3)
+            if (p.size < 3) null else Tag(p[0], p[2], "Tag", p[1].toIntOrNull() ?: 0)
+        }.let { Safety.cleanTags(it) }
+    }
+
+    override suspend fun suggestTags(query: String): List<Tag> {
+        val q = query.trim()
+        if (q.isEmpty()) return emptyList()
+        val local = TAGS.filter { it.label.contains(q, true) || it.id.contains(slug(q)) }
+            .sortedWith(compareBy<Tag> { !it.label.startsWith(q, true) }.thenByDescending { it.count }).take(40)
+        // no tag-search on the site: the typed words also work as a phrase (artist, parody, character, group ...)
+        val typed = Tag(slug(q), "$q (any name)", "typed")
+        return Safety.cleanTags(local + typed).distinctBy { it.id }
+    }
+
+    override fun tagQuery(name: String) = SearchQuery(include = listOf(Tag(slug(name), name)))
+
+    // ---------- gallery ----------
+
+    private data class Cached(val at: Long, val doc: Document)
+    private val galleries = ConcurrentHashMap<String, Cached>()
+
+    private suspend fun gallery(gid: String): Document {
+        galleries[gid]?.takeIf { System.currentTimeMillis() - it.at < 30 * 60_000L }?.let { return it.doc }
+        val (code, html) = Http.getRaw("$baseUrl/gallery/$gid/")
+        if (code == 404) throw SourceException("Gallery not found")
+        if (code !in 200..299) throw SourceException("HentaiFox answered $code")
+        val doc = Jsoup.parse(html, "$baseUrl/gallery/$gid/")
+        if (doc.selectFirst("div.gallery_right div.info") == null) throw SourceException("Gallery not found")
+        galleries[gid] = Cached(System.currentTimeMillis(), doc)
+        return doc
+    }
+
+    /** (name, slug) of one tag list in the info box: tags, artists, groups, parodies, characters, languages, categories. */
+    private fun group(doc: Document, cls: String): List<Pair<String, String>> =
+        doc.select("div.gallery_right div.info ul.$cls a.tag_btn").map { a ->
+            a.ownText().trim() to a.attr("href").trimEnd('/').substringAfterLast('/')
+        }
+
+    private fun hidden(doc: Document) = group(doc, "tags").any { it.second in HIDDEN_SLUGS }
+
+    private fun info(doc: Document, label: String): String =
+        doc.select("div.gallery_right div.info span.i_text.pages").map { it.text() }
+            .firstOrNull { it.startsWith("$label:", true) }?.substringAfter(':')?.trim().orEmpty()
+
+    override suspend fun details(ref: MangaRef): MangaDetails {
+        val doc = gallery(ref.id)
+        if (hidden(doc)) throw SourceException("This title is hidden")
+        val title = doc.selectFirst("div.gallery_right div.info h1")?.text().orEmpty().ifEmpty { ref.title }
+        val tags = group(doc, "tags").map { it.first }
+        val names = listOf("parodies" to "Parody", "characters" to "Character", "languages" to "Language", "categories" to "Category")
+        val pages = info(doc, "Pages").toIntOrNull() ?: 0
+        val likes = doc.selectFirst("#thumbs_up")?.text()?.trim().orEmpty()
+        val d = MangaDetails(
+            ref = ref.copy(
+                title = title,
+                cover = doc.selectFirst("div.gallery_left div.cover img")?.attr("abs:src")?.ifEmpty { null } ?: ref.cover,
+                tags = tags + listOf("parodies", "characters", "artists", "groups", "languages", "categories").flatMap { c -> group(doc, c).map { it.first } },
+                subtitle = if (pages > 0) "$pages pages" else ref.subtitle,
+            ),
+            altTitles = title.split(" | ").map { it.trim() }.filter { it.isNotEmpty() }.takeIf { it.size > 1 }.orEmpty(),
+            authors = group(doc, "groups").map { it.first },
+            artists = group(doc, "artists").map { it.first },
+            genres = tags,
+            tagGroups = names.mapNotNull { (cls, label) -> group(doc, cls).map { it.first }.takeIf { it.isNotEmpty() }?.let { TagGroup(label, it) } },
+            status = "Complete",
+            type = group(doc, "categories").firstOrNull()?.first?.replaceFirstChar { it.uppercase() }.orEmpty(),
+            pageCount = pages,
+            url = webUrl(ref),
+            extra = listOfNotNull(
+                info(doc, "Posted").ifEmpty { null }?.let { "Posted" to it },
+                likes.ifEmpty { null }?.let { "Likes" to it },
+            ),
+        )
+        if (Safety.blocked(d)) throw SourceException("This title is hidden")
+        return d
+    }
+
+    override suspend fun chapters(ref: MangaRef): List<Chapter> {
+        val doc = gallery(ref.id)
+        val n = info(doc, "Pages").toIntOrNull() ?: doc.selectFirst("#load_pages")?.attr("value")?.toIntOrNull() ?: 0
+        return listOf(Chapter("g", "Gallery · $n pages", 1f, posted(info(doc, "Posted")), group(doc, "groups").firstOrNull()?.first.orEmpty(), n))
+    }
+
+    private val G_TH = Regex("""g_th\s*=\s*\$\.parseJSON\('(.*?)'\)""", RegexOption.DOT_MATCHES_ALL)
+    private val EXT = mapOf("j" to "jpg", "p" to "png", "b" to "bmp", "g" to "gif", "w" to "webp")
+
+    /** Built like the site's reader.min.js: //<host>/<load_dir>/<load_id>/<n>.<ext>, ext and size from g_th. */
+    override suspend fun pages(ref: MangaRef, chapter: Chapter): List<Page> {
+        val doc = gallery(ref.id)
+        if (hidden(doc)) throw SourceException("This title is hidden")
+        val loadId = doc.selectFirst("#load_id")?.attr("value").orEmpty()
+        val dir = doc.selectFirst("#load_dir")?.attr("value").orEmpty()
+        if (loadId.isEmpty() || dir.isEmpty()) throw SourceException("No pages found")
+        // galleries above 140236 live on i3; older ones on i or i2 (both serve them, i3 does not)
+        val host = if ((ref.id.toLongOrNull() ?: 0L) > 140236L) "i3.hentaifox.com" else listOf("i.hentaifox.com", "i2.hentaifox.com").random()
+        val th = doc.select("script").firstNotNullOfOrNull { s -> G_TH.find(s.data())?.groupValues?.get(1) }
+            ?.let { runCatching { Http.json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
+        if (th == null || th.isEmpty()) {
+            // GUESS fallback: page count + jpg
+            val n = doc.selectFirst("#load_pages")?.attr("value")?.toIntOrNull() ?: 0
+            if (n == 0) throw SourceException("No pages found")
+            return (1..n).map { Page(it - 1, "https://$host/$dir/$loadId/$it.jpg") }
+        }
+        return th.keys.mapNotNull { it.toIntOrNull() }.sorted().mapIndexed { i, n ->
+            val parts = th.str(n.toString()).split(',')
+            val ext = EXT[parts.getOrNull(0)] ?: "jpg"
+            Page(i, "https://$host/$dir/$loadId/$n.$ext", parts.getOrNull(1)?.toIntOrNull() ?: 0, parts.getOrNull(2)?.toIntOrNull() ?: 0)
+        }
+    }
+
+    override suspend fun related(ref: MangaRef, details: MangaDetails): List<MangaRef> =
+        gallery(ref.id).select("div.related_galleries div.thumb").mapNotNull { item(it) }.filter { it.id != ref.id }
+
+    override fun webUrl(ref: MangaRef) = "$baseUrl/gallery/${ref.id}/"
+
+    // ---------- "Posted: 3 years ago (Updated 6 years ago)" / "just now" ----------
+
+    private val RELATIVE = Regex("""(\d+|an?|one)\s+(second|minute|hour|day|week|month|year)s?\s+ago""", RegexOption.IGNORE_CASE)
+
+    private fun posted(s: String): Long {
+        val m = RELATIVE.find(s) ?: return if (s.contains("just now", true)) System.currentTimeMillis() else 0L
+        val n = m.groupValues[1].toLongOrNull() ?: 1L
+        val unit = when (m.groupValues[2].lowercase()) {
+            "second" -> 1_000L; "minute" -> 60_000L; "hour" -> 3_600_000L; "day" -> 86_400_000L
+            "week" -> 7 * 86_400_000L; "month" -> 30 * 86_400_000L; else -> 365 * 86_400_000L
+        }
+        return System.currentTimeMillis() - n * unit
+    }
+
+    // slug|count|name, generated by _dev_tools/probe_hentaifox/make_tags.py
+    private const val TAG_TABLE = """
+@@TAGS@@
+"""
+}

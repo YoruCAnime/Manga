@@ -5,7 +5,9 @@ import os, re, subprocess, sys
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 env = dict(os.environ, JAVA_HOME=r"C:\Program Files\Eclipse Adoptium\jdk-21.0.10.7-hotspot")
 args = [os.path.join(root, "gradlew.bat"), ":app:testDebugUnitTest", "--console=plain", "-i"]
-for p in sys.argv[1:]:
+for p in [a for a in sys.argv[1:] if a.startswith("-P")]:
+    args.append(p)
+for p in [a for a in sys.argv[1:] if not a.startswith("-P")]:
     args += ["--tests", f"*{p}*"]
 log = os.path.join(root, "_dev_tools", "out", "test.log")
 os.makedirs(os.path.dirname(log), exist_ok=True)

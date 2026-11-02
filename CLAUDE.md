@@ -58,6 +58,21 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
   episodes) -> `ui/VideoSeriesScreen.kt` (route vseries/{key}). Video favourites `VideoRepo.favs`
   (data/video_favs.json); Library shelves Manga / Fav videos / Watched in `LibraryScreen.kt`.
 
+- 1.4.0 (2026-11-02): manga sources `HitomiSource` (data host ltn.gold-usergeneratedcontent.net: .nozomi id lists
+  read by Range, galleries/<id>.js, page URLs from gg.js fetched at run time; images need Referer hitomi.la; the
+  website is 404 in the UK), `Hentai2ReadSource` (Laravel + Inertia JSON, `X-Inertia` headers, 409 = new version),
+  `HentaiFoxSource` (GENERATED from `_dev_tools\probe_hentaifox\HentaiFoxSource.kt.in` + its tag table by
+  fill_kotlin.py), `JestfulSource` (raw manga, nsfw=false, in `Safety.MAINSTREAM`), `Hentai20Source` (WP
+  MangaReader theme), `Manhwa18NetSource` (Inertia JSON), `Manhwa18CcSource`, `Manga18ClubSource` (pages = base64
+  `slides_p_path`). Videos `HentaiMamaSource` (admin-ajax mirrors, r2 MP4 on gdvid.info; minors genre spelled
+  "shoutacon", now in both filters), `NsfwR34Source` (StreamTube WP, Bunny HLS), `PorcoreSource` (ajax lists, HLS),
+  `SfmCompileSource` (WP REST, MP4), `Rule34VideoSource` (KVS flashvars + license_code unscramble; in the UK the site
+  puts an ageverif.com check in front: the source stops with "turn your VPN on" and never reads past it, so it is
+  only testable on a VPN). manhwaread.com: Cloudflare Turnstile box that needs a human tick, not built yet.
+  Specs for all in `_dev_tools\specs\`. Live check of every source incl. every first-page cover through Coil:
+  `python _dev_tools\run_tests.py NewSourcesTest -Psources=id1,id2` (no -P = all); screens: `NewScreensTest`
+  (never `performScrollToNode` there: it waits for idle and the app animates forever; swipe instead).
+
 ## Rules / facts learnt
 - Chapters are newest first. `chaptersFlow` lets slow sources (comix, 2.5-4.8 s between chapter pages) fill in;
   `latestChapters` = what the update check fetches.

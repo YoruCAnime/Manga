@@ -74,16 +74,16 @@ interface VideoSource {
 }
 
 object VideoSources {
-    val all: List<VideoSource> = listOf(HentaigasmSource, OppaiStreamSource, MuchoHentaiSource)
+    val all: List<VideoSource> = listOf(HentaigasmSource, OppaiStreamSource, MuchoHentaiSource, HentaiMamaSource, NsfwR34Source, PorcoreSource, SfmCompileSource, Rule34VideoSource)
     fun byId(id: String) = all.firstOrNull { it.id == id }
 }
 
 /** Minors filter for videos: tag slugs, title words, and each source's own block lists on top. */
 object VideoSafety {
-    private val TAGS = setOf("loli", "lolicon", "shota", "shotacon", "pettanko", "toddlercon", "toddler")
+    private val TAGS = setOf("loli", "lolicon", "shota", "shotacon", "shoutacon", "pettanko", "toddlercon", "toddler")
     // romaji age words too; not bare "shoujo" ("bishoujo" = pretty girl)
     private val WORDS = Regex(
-        "\\b(loli|lolicon|lolis|shota|shotacon|shotas|toddler|toddlercon|child|children|kids?|elementary|shougaku\\w*|shogaku\\w*|youjo|yojo|chuugaku\\w*|chugaku\\w*|pettanko)\\b",
+        "\\b(loli|lolicon|lolis|shota|shotacon|shoutacon|shotas|toddler|toddlercon|child|children|kids?|elementary|shougaku\\w*|shogaku\\w*|youjo|yojo|chuugaku\\w*|chugaku\\w*|pettanko)\\b",
         RegexOption.IGNORE_CASE,
     )
 

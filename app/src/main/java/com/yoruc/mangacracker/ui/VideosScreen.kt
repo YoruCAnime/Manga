@@ -1,5 +1,6 @@
 package com.yoruc.mangacracker.ui
 
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -227,8 +228,13 @@ fun VideosScreen(nav: Nav) {
             text = rest
             vm.search(vm.query.copy(text = rest, include = (vm.query.include + t).distinctBy { it.id }))
         }
-        // sources
-        LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // sources (the row keeps the picked one in view: there are more sites than fit)
+        val pills = rememberLazyListState()
+        LaunchedEffect(vm.source.id) {
+            val i = VideoSources.all.indexOfFirst { it.id == vm.source.id }
+            if (i >= 0) pills.animateScrollToItem((i - 1).coerceAtLeast(0))
+        }
+        LazyRow(state = pills, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(VideoSources.all, key = { it.id }) { s ->
                 val on = s.id == vm.source.id
                 Row(

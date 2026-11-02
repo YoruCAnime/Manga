@@ -14,3 +14,4 @@ _dev_tools/**/bundle/
 _dev_tools/**/ref/
 _dev_tools/emu.*
 _dev_tools/probe_atsu/keiyoushi/
+.kotlin/

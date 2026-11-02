@@ -31,7 +31,7 @@ Later); Later keeps it under Settings → App updates.
   The grid button shows every page: tap one to jump there, hold to pick several and save them at once (galleries
   have the same Gallery button on their title page). Animated GIFs play (Danbooru / Gelbooru animated posts load the
   original moving file).
-- **Videos** (own tab): Hentaigasm, Oppai.stream and MuchoHentai. Latest / Popular, search with genre autocomplete,
+- **Videos** (own tab): Hentaigasm, Oppai.stream, MuchoHentai, HentaiMama, NSFW R34, Porcore, SFM Compile and Rule34Video. Latest / Popular, search with genre autocomplete,
   a genre sheet (include / exclude), Continue watching (resumes where you stopped). Tap a **series name ›** (on a
   card, the player's title or in Watched) for the series page: every episode in every language (Raw / English /
   Español / previews) with language filters. Long-press a video to add it to your favourites. covers that fall back to other
@@ -57,10 +57,22 @@ Later); Later keeps it under Settings → App updates.
 | E-Hentai / ExHentai | lists and search are blocked in the UK (Online Safety Act) and work on a VPN; galleries open by link (paste a gallery link into the search box) and from the library. ExHentai: sign in under Settings, then switch it on |
 | Danbooru | pictures and comic pools; 2 tags per search without a login (add your key in Settings for more) |
 | Gelbooru | pictures through its web pages (no key needed) |
-
+| hitomi.la | its data server (the website itself answers "not found" in the UK; its gallery files and pictures do not); lists, popular today / week / month / year, word and tag search (include / exclude), tag suggestions with counts |
+| Hentai2Read | its search (tags include / exclude, type, status, sort); chapters |
+| HentaiFox | galleries; search with tags (include / exclude) and language |
+| Jestful (JF) | Japanese raw manga; genres include / exclude, status, sort; chapters |
+| Hentai20 | adult webtoons; genres include / exclude, sort; chapters |
+| Manhwa18.net | adult manhwa; genres include / exclude, status, sort, tags, artists |
+| Manhwa18.cc | adult manhwa; one genre at a time, sort, Raw / Completed lists |
+| Manga18.club | adult manga / manhwa; one genre at a time, sort |
 | Hentaigasm (videos) | its WordPress feed; one MP4 per episode (720p) |
 | Oppai.stream (videos) | its pages + search form; one WebM per episode (1440p, heavy on mobile data), English subtitles |
 | MuchoHentai (videos) | its pages; HLS up to 1080p (the stream key is unlocked the way the site's own player does), Raw / English / Spanish subtitles |
+| HentaiMama (videos) | its pages; MP4 1080p (subtitles in the picture), series pages with every episode |
+| NSFW R34 (videos) | 3D / 2D rule 34; HLS up to 1080p; tags include / exclude; more from the same animator |
+| Porcore (videos) | 3D / cartoon; HLS up to 1080p; related videos |
+| SFM Compile (videos) | SFM clips (MP4); games / characters / tags; more of the same character |
+| Rule34Video (videos) | 3D / animated MP4 up to 1080p. In the UK the site asks for an age check: the app then says so and works with a VPN on |
 
 Titles tagged as sexual content involving minors are always hidden on every source (not a setting). Your own
 hidden tags (Settings) are added on top.
@@ -74,6 +86,8 @@ uses the debug key. Checks:
 - `gradlew.bat :app:testDebugUnitTest --tests "*LiveSourcesTest*"`: every source against the real sites.
 - `gradlew.bat :app:testDebugUnitTest --tests "*ScreensTest*"`: renders the app on the PC (Robolectric) and saves
   screenshots to `_dev_tools\out\screens`.
+- `NewSourcesTest` (every source: lists, page 2, search, tags, sorts, every first-page cover decoded, chapters,
+  pages, video streams; `-Psources=id1,id2` with run_tests.py picks some), `NewScreensTest` (screens of the newer sources).
 - `AppUpdateTest` (GitHub release check, download, installer hand-off, pop-up shots), `GifAndTagsTest` (animated
   posts give real GIFs, autocomplete on every source). `python _dev_tools\run_tests.py <Test> ...` runs tests and
   prints only results.
