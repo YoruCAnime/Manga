@@ -103,3 +103,42 @@ fun SeekBar(
         }
     }
 }
+
+/**
+ * The player's own volume, in the seek bar's style (white instead of blue): touch anywhere = set it there and keep
+ * dragging. [onChange] fires while dragging, [onDone] once on release (that is when it is saved).
+ */
+@Composable
+fun VolumeBar(value: Float, modifier: Modifier = Modifier, onChange: (Float) -> Unit, onDone: () -> Unit) {
+    var drag by remember { mutableStateOf(false) }
+    val change by rememberUpdatedState(onChange)
+    val done by rememberUpdatedState(onDone)
+    val thumb by animateDpAsState(if (drag) 18.dp else 12.dp, label = "vthumb")
+    Canvas(
+        modifier.height(48.dp).semantics { contentDescription = "Volume" }.pointerInput(Unit) {
+            awaitEachGesture {
+                val down = awaitFirstDown()
+                val inset = INSET.toPx()
+                fun at(x: Float) = ((x - inset) / (size.width - 2 * inset)).coerceIn(0f, 1f)
+                down.consume()
+                drag = true; change(at(down.position.x))
+                while (true) {
+                    val ev = awaitPointerEvent()
+                    val c = ev.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!c.pressed) { c.consume(); break }
+                    change(at(c.position.x))
+                    c.consume()
+                }
+                drag = false; done()
+            }
+        },
+    ) {
+        val th = 4.dp.toPx(); val r = thumb.toPx() / 2
+        val left = INSET.toPx(); val w = size.width - 2 * left
+        val y = size.height / 2 - th / 2
+        val cr = CornerRadius(th / 2)
+        drawRoundRect(Color(0x40FFFFFF), Offset(left, y), Size(w, th), cr)
+        drawRoundRect(Color.White, Offset(left, y), Size(w * value.coerceIn(0f, 1f), th), cr)
+        drawCircle(Color.White, r, Offset(left + w * value.coerceIn(0f, 1f), size.height / 2))
+    }
+}

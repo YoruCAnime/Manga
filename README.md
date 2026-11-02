@@ -51,13 +51,14 @@ Later); Later keeps it under Settings → App updates.
   Español / previews) with language filters. Long-press a video to add it to your favourites. covers that fall back to other
   sizes / the same series when a site refuses a picture. The player opens in landscape (forced: works with
   auto-rotate locked; Rotate switches to portrait and back), controls hide after 3 s, tap to show them. All the
-  controls sit along the bottom, nothing over the middle of the picture: play / pause right next to the seek bar,
-  and above it previous / next episode, −1s / +1s, Snapshot, Record, GIF, speed and Rotate (they stay clear of the
+  big play / pause sits in the middle of the picture between −1s / +1s and previous / next episode; the seek bar
+  runs along the bottom with the app's own **volume** above it on the left (separate from the phone's volume, it is
+  remembered; tap the speaker to mute) and Snapshot, Record, GIF, speed and Rotate on the right (all clear of the
   camera notch). The seek bar is easy to hit: touch anywhere on it to jump there and keep sliding; while you slide
   the dot grows, a time bubble rides above your finger and the picture follows (it plays on from there when you
   let go). Double-tap the left / right side to step 1 s (taps stack), double-tap the middle to pause, hold
   anywhere for 2×, speeds 0.25× to 3×, previous / next episode of the same series (and "Up next" at the end),
-  subtitles on / off, quality (MuchoHentai), **Snapshot** (the current frame to Pictures/MangaCracker/Snapshots) and
+  subtitles on / off, quality for streams with several sizes (**Best** by default, or Auto / 1080p / 720p / 480p; your pick is remembered), **Snapshot** (the current frame to Pictures/MangaCracker/Snapshots) and
   **Record** (tap to start, tap to stop: that part is saved as an MP4 clip to Movies/MangaCracker).
 - **GIF maker** (the GIF button in the player): tap GIF to start capturing (red dot + timer, up to 30 s), tap again
   to stop. A panel opens at the bottom of the player (no pop-up): drag the two handles to pick the part you want

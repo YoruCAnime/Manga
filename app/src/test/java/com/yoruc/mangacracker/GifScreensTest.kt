@@ -21,7 +21,10 @@ import com.yoruc.mangacracker.video.VideoRef
 import com.yoruc.mangacracker.video.VideoRepo
 import com.yoruc.mangacracker.video.VideoStream
 import kotlinx.coroutines.delay
+import com.yoruc.mangacracker.core.Repo
 import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -74,12 +77,12 @@ class GifScreensTest {
         return GifDone(f, r.bytes.size.toLong(), r.width, r.height, r.durationMs, r.fps)
     }
 
-    private fun openPlayer() {
+    private fun openPlayer(kind: String = "mp4") {
         rule.mainClock.autoAdvance = false
         PlayerTestHooks.clock = { longArrayOf(fakePos, 24 * 60_000L + 13_000, fakePos + 95_000) }
         val ref = VideoRef("hentaigasm", "gif-screen-test", "Test clip", series = "GIF test series", episode = "2")
         VideoRepo.remember(ref)
-        VideoRepo.details[ref.key] = VideoDetails(ref, VideoStream("http://127.0.0.1:9/none.mp4", "mp4"), episodes = listOf(ref))
+        VideoRepo.details[ref.key] = VideoDetails(ref, VideoStream("http://127.0.0.1:9/none.$kind", kind), episodes = listOf(ref))
         VideoRepo.save(ref, 60_000, 24 * 60_000L)
         pump(2500)
         desc("Library").performClick(); pump(1200)
@@ -133,5 +136,29 @@ class GifScreensTest {
     @Test fun portraitControls() {
         openPlayer()
         shot("58_player_portrait")
+    }
+
+    /** Middle play / skip buttons, the app's own volume (mute + slider, saved) and the quality menu (Best by default). */
+    @Test fun volumeAndQuality() {
+        Repo.updateSettings { it.copy(videoQuality = -1, videoVolume = 1f, videoMuted = false) }
+        openPlayer("hls")
+        if (text("Pause").fetchSemanticsNodes().isEmpty() && text("Play").fetchSemanticsNodes().isEmpty()) {
+            rule.onRoot().performClick(); pump(600)
+        }
+        assertEquals(-1, Repo.settings.value.videoQuality)
+        desc("Volume").performTouchInput { down(Offset(width * 0.05f, height / 2f)); moveTo(Offset(width * 0.4f, height / 2f)); up() }
+        pump(600)
+        val v = Repo.settings.value.videoVolume
+        assertTrue("volume saved after the drag: $v", v in 0.25f..0.55f)
+        shot("59_player_volume")
+        desc("Mute").performClick(); pump(400)
+        assertTrue(Repo.settings.value.videoMuted)
+        shot("59b_player_muted")
+        desc("Unmute").performClick(); pump(400)
+        desc("Quality").performClick(); pump(600)
+        shot("59c_player_quality")
+        text("720p", sub = false)[0].performClick(); pump(400)
+        assertEquals(720, Repo.settings.value.videoQuality)
+        Repo.updateSettings { it.copy(videoQuality = -1, videoVolume = 1f, videoMuted = false) }
     }
 }

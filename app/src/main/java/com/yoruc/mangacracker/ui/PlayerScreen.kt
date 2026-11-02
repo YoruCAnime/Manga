@@ -59,6 +59,9 @@ import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.VideoLibrary
+import androidx.compose.material.icons.automirrored.rounded.VolumeDown
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -93,6 +96,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -103,6 +107,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.C
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -215,6 +220,8 @@ fun PlayerScreen(nav: Nav, key: String) {
             .setUsePlatformDiagnostics(android.os.Build.FINGERPRINT != "robolectric")
             .build().apply {
                 setAudioAttributes(androidx.media3.common.AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
+                // the app's own volume (the phone's media volume is not touched)
+                Repo.settings.value.let { volume = if (it.videoMuted) 0f else it.videoVolume }
             }
     }
 
@@ -237,7 +244,9 @@ fun PlayerScreen(nav: Nav, key: String) {
     var showSpeeds by remember { mutableStateOf(false) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showQuality by remember { mutableStateOf(false) }
-    var qualityCap by remember { mutableIntStateOf(0) }
+    var qualityCap by remember { mutableIntStateOf(Repo.settings.value.videoQuality) }
+    var volume by remember { mutableFloatStateOf(Repo.settings.value.videoVolume) }
+    var muted by remember { mutableStateOf(Repo.settings.value.videoMuted) }
     var landscape by remember { mutableStateOf(true) }
     var seekBadge by remember { mutableStateOf<Pair<Int, Int>?>(null) } // side, seconds
     var seekTick by remember { mutableIntStateOf(0) }
@@ -317,7 +326,7 @@ fun PlayerScreen(nav: Nav, key: String) {
         }
         // the stream's own reader: the site (player client), or the file / HLS cache of a download
         player.setMediaSource(DefaultMediaSourceFactory(ctx).setDataSourceFactory(VideoDownloads.dataSourceFactory(ctx, src, d.stream)).createMediaSource(item))
-        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+        player.trackSelectionParameters = qualityParams(player.trackSelectionParameters.buildUpon(), qualityCap)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !settings.videoSubtitles)
             .setPreferredTextLanguage(d.stream.subs.firstOrNull()?.lang).build()
         player.prepare()
@@ -367,6 +376,15 @@ fun PlayerScreen(nav: Nav, key: String) {
         player.stop(); recStart = null; gifStart = null; vm.open(r)
     }
     fun setSpeed(s: Float) { speed = s; player.setPlaybackSpeed(s); showSpeeds = false; show() }
+    /** The app's own volume; saved when the finger lifts (not on every drag step). */
+    fun setVolume(v: Float, save: Boolean) {
+        volume = v.coerceIn(0f, 1f); muted = false; player.volume = volume; show()
+        if (save) Repo.updateSettings { it.copy(videoVolume = volume, videoMuted = false) }
+    }
+    fun toggleMute() {
+        muted = !muted; player.volume = if (muted) 0f else volume; show()
+        Repo.updateSettings { it.copy(videoMuted = muted) }
+    }
 
     // ---- seek bar: key frames while dragging (throttled, paused), an exact seek on release ----
     fun scrubDrag(on: Boolean) {
@@ -589,7 +607,20 @@ fun PlayerScreen(nav: Nav, key: String) {
                     }
                     if ((d?.episodes?.size ?: 0) > 1) CtlIcon(Icons.Rounded.VideoLibrary, "Episodes") { showEpisodes = true }
                 }
-                // bottom: the buttons, then play / pause right next to the seek bar (nothing big over the picture)
+                // middle: previous, -1 s, play / pause (a ring while loading), +1 s, next
+                Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                    RoundBtn(Icons.Rounded.SkipPrevious, "Previous episode", 48.dp, enabled = prev != null) { prev?.let { openEpisode(it) } }
+                    TextBtn("−1s", 52.dp) { seekBy(-1000); show() }
+                    Box(contentAlignment = Alignment.Center) {
+                        if (buffering && vm.error == null && playError == null) CircularProgressIndicator(Modifier.size(80.dp), color = Mc.Blue, strokeWidth = 3.dp)
+                        Box(Modifier.size(68.dp).clip(CircleShape).background(Mc.Blue).clickable { togglePlay() }, contentAlignment = Alignment.Center) {
+                            Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Play", tint = Mc.Bg, modifier = Modifier.size(44.dp))
+                        }
+                    }
+                    TextBtn("+1s", 52.dp) { seekBy(1000); show() }
+                    RoundBtn(Icons.Rounded.SkipNext, "Next episode", 48.dp, enabled = next != null) { next?.let { openEpisode(it) } }
+                }
+                // bottom: volume and the buttons, then the seek bar
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().safePad(top = false).padding(start = 10.dp, end = 10.dp, bottom = 2.dp)) {
                     if (showSpeeds) {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
@@ -598,11 +629,12 @@ fun PlayerScreen(nav: Nav, key: String) {
                     }
                     if (showQuality) {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
-                            items(listOf(0, 1080, 720, 480)) { h ->
-                                Pill(if (h == 0) "Auto" else "${h}p", Modifier.clickable {
+                            items(listOf(-1, 0, 1080, 720, 480)) { h ->
+                                Pill(qualityLabel(h), Modifier.clickable {
                                     qualityCap = h; showQuality = false; show()
-                                    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                                        .setMaxVideoSize(Int.MAX_VALUE, if (h == 0) Int.MAX_VALUE else h + 10).build()
+                                    player.trackSelectionParameters = qualityParams(player.trackSelectionParameters.buildUpon(), h).build()
+                                    // the choice stays for the next videos
+                                    Repo.updateSettings { it.copy(videoQuality = h) }
                                 }, if (h == qualityCap) Mc.Blue else Color(0xCC1C2838))
                             }
                         }
@@ -610,10 +642,15 @@ fun PlayerScreen(nav: Nav, key: String) {
                     BoxWithConstraints(Modifier.fillMaxWidth()) {
                         val labels = maxWidth >= 560.dp
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            RoundBtn(Icons.Rounded.SkipPrevious, "Previous episode", 40.dp, enabled = prev != null) { prev?.let { openEpisode(it) } }
-                            TextBtn("−1s") { seekBy(-1000); show() }
-                            TextBtn("+1s") { seekBy(1000); show() }
-                            RoundBtn(Icons.Rounded.SkipNext, "Next episode", 40.dp, enabled = next != null) { next?.let { openEpisode(it) } }
+                            // the app's own volume: tap the speaker to mute, drag to set
+                            val shown = if (muted) 0f else volume
+                            IconButton(onClick = { toggleMute() }) {
+                                Icon(when { shown == 0f -> Icons.AutoMirrored.Rounded.VolumeOff; shown < 0.5f -> Icons.AutoMirrored.Rounded.VolumeDown; else -> Icons.AutoMirrored.Rounded.VolumeUp },
+                                    if (muted) "Unmute" else "Mute", tint = Color.White)
+                            }
+                            // portrait has no room for the % (the bar is shorter there)
+                            VolumeBar(shown, Modifier.width(if (labels) 160.dp else 84.dp), onChange = { setVolume(it, false) }, onDone = { setVolume(volume, true) })
+                            if (labels) Text("${(shown * 100).roundToInt()}%", color = Color(0xCCFFFFFF), fontSize = 12.sp, modifier = Modifier.padding(start = 2.dp).width(36.dp))
                             Spacer(Modifier.weight(1f))
                             BarBtn(Icons.Rounded.PhotoCamera, "Snapshot", labels = labels) {
                                 val bmp = texture?.bitmap ?: return@BarBtn
@@ -649,15 +686,9 @@ fun PlayerScreen(nav: Nav, key: String) {
                             BarBtn(Icons.Rounded.ScreenRotation, "Rotate", labels = labels) { landscape = !landscape; show() }
                         }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(contentAlignment = Alignment.Center) {
-                            if (buffering && vm.error == null && playError == null) CircularProgressIndicator(Modifier.size(50.dp), color = Mc.Blue, strokeWidth = 2.5.dp)
-                            Box(Modifier.size(42.dp).clip(CircleShape).background(Mc.Blue).clickable { togglePlay() }, contentAlignment = Alignment.Center) {
-                                Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Play", tint = Mc.Bg, modifier = Modifier.size(28.dp))
-                            }
-                        }
+                    Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(clock((if (scrubbing) scrubPos else pos) / 1000), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(start = 10.dp))
+                            modifier = Modifier.padding(start = 6.dp))
                         SeekBar(pos, dur, buffered, Modifier.weight(1f).padding(horizontal = 6.dp),
                             onDrag = { scrubDrag(it) }, onScrub = { scrubTo(it) }, onSeek = { seekExact(it) })
                         Text(clock(dur / 1000), color = Color(0xCCFFFFFF), fontSize = 13.sp)
@@ -736,6 +767,12 @@ fun PlayerScreen(nav: Nav, key: String) {
     }
 }
 
+private fun qualityLabel(h: Int) = when (h) { -1 -> "Best"; 0 -> "Auto"; else -> "${h}p" }
+
+/** HLS quality: Best = always the highest stream the phone can play, Auto = by connection speed, else at most [h]p. */
+private fun qualityParams(b: TrackSelectionParameters.Builder, h: Int): TrackSelectionParameters.Builder =
+    b.setForceHighestSupportedBitrate(h == -1).setMaxVideoSize(Int.MAX_VALUE, if (h <= 0) Int.MAX_VALUE else h + 10)
+
 private fun speedLabel(s: Float) = (if (s % 1f == 0f) s.toInt().toString() else s.toString().trimEnd('0')) + "×"
 
 @Composable
@@ -757,9 +794,9 @@ private fun RoundBtn(icon: ImageVector, desc: String, size: androidx.compose.ui.
 }
 
 @Composable
-private fun TextBtn(label: String, onClick: () -> Unit) {
-    Box(Modifier.padding(horizontal = 2.dp).size(40.dp).clip(CircleShape).background(Color(0x44000000)).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-        Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+private fun TextBtn(label: String, size: androidx.compose.ui.unit.Dp = 40.dp, onClick: () -> Unit) {
+    Box(Modifier.padding(horizontal = 2.dp).size(size).clip(CircleShape).background(Color(0x44000000)).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = if (size > 44.dp) 16.sp else 14.sp)
     }
 }
 

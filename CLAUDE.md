@@ -86,6 +86,13 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
   only some tags; untestable here: lists are 451 in the UK). Recommender: AI tags never become taste, "more like this"
   skips AI titles read, `cached()` filters again. `RecommendAiTest` (4 AI favourites on nhentai -> 41 recs, 0 AI).
 
+- 1.6.1 (2026-11-02, Exos: "make play and seek be in middle for video player and default highest quality also have
+  separate volume slider for this app only"): big play / pause with -1s / +1s and prev / next in the MIDDLE of the
+  screen (this replaces the "nothing in the middle" layout below); the seek bar stays full width at the bottom. App
+  volume = `player.volume` (`ui/SeekBar.kt` VolumeBar, white, saved on release in `Settings.videoVolume` /
+  `videoMuted`; the phone's media volume is never touched; portrait hides the %). Quality: `Settings.videoQuality`
+  -1 = Best (`setForceHighestSupportedBitrate`), 0 = Auto, else a max height; picked in the HQ menu and remembered.
+  Test: `GifScreensTest.volumeAndQuality` (shots 59 / 59b / 59c).
 - Player controls + GIF maker (2026-11-02, not released yet). Controls: nothing in the middle of the picture any more;
   bottom = a button row (prev / -1s / +1s / next ... Snapshot, Record, GIF, speed, Rotate; labels hidden under 560 dp)
   and play / pause beside the seek bar. `ui/SeekBar.kt`: 48 dp touch strip, slim track, touch anywhere = jump + drag,
