@@ -29,6 +29,14 @@ Later); Later keeps it under Settings → App updates.
   The grid button shows every page: tap one to jump there, hold to pick several and save them at once (galleries
   have the same Gallery button on their title page). Animated GIFs play (Danbooru / Gelbooru animated posts load the
   original moving file).
+- **Videos** (own tab): Hentaigasm, Oppai.stream and MuchoHentai. Latest / Popular, search with genre autocomplete,
+  a genre sheet (include / exclude), Continue watching (resumes where you stopped), covers that fall back to other
+  sizes / the same series when a site refuses a picture. The player opens in landscape (forced: works with
+  auto-rotate locked; Rotate switches to portrait and back), controls hide after 3 s, tap to show them:
+  −1s / +1s buttons, double-tap the left / right side to step 1 s (taps stack), double-tap the middle to pause, hold
+  anywhere for 2×, speeds 0.25× to 3×, previous / next episode of the same series (and "Up next" at the end),
+  subtitles on / off, quality (MuchoHentai), **Snapshot** (the current frame to Pictures/MangaCracker/Snapshots) and
+  **Record** (tap to start, tap to stop: that part is saved as an MP4 clip to Movies/MangaCracker).
 - **Updates**: new chapters grouped by day; checked in the background (every 6 h by default, Settings) with a
   notification.
 - **Settings**: app updates (check now, install, what's new, automatic check on / off), update interval, covers per
@@ -45,6 +53,10 @@ Later); Later keeps it under Settings → App updates.
 | E-Hentai / ExHentai | lists and search are blocked in the UK (Online Safety Act) and work on a VPN; galleries open by link (paste a gallery link into the search box) and from the library. ExHentai: sign in under Settings, then switch it on |
 | Danbooru | pictures and comic pools; 2 tags per search without a login (add your key in Settings for more) |
 | Gelbooru | pictures through its web pages (no key needed) |
+
+| Hentaigasm (videos) | its WordPress feed; one MP4 per episode (720p) |
+| Oppai.stream (videos) | its pages + search form; one WebM per episode (1440p, heavy on mobile data), English subtitles |
+| MuchoHentai (videos) | its pages; HLS up to 1080p (the stream key is unlocked the way the site's own player does), Raw / English / Spanish subtitles |
 
 Titles tagged as sexual content involving minors are always hidden on every source (not a setting). Your own
 hidden tags (Settings) are added on top.

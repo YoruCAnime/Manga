@@ -38,6 +38,21 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
 - Tests: `python _dev_tools\run_tests.py AppUpdateTest GifAndTagsTest ScreensTest LiveSourcesTest`. FileProvider can't
   match Windows paths under Robolectric (AppUpdateTest skips just that step on Windows).
 
+- Videos (1.2.0): package `video/` = `VideoSource` (+ `VideoRef` / `VideoDetails` / `VideoStream`), sources
+  `HentaigasmSource` (WP REST; the post HTML has the player only for a MOBILE browser agent, pinned in
+  `Http.userAgents`; poster CDN answers 429 to a burst: `Http.rateLimits["hgasm1.com/thumbnail"]` + the image
+  client's 429 retry), `OppaiStreamSource` (POST search.php HTML; text search ignores the blacklist, so `denied`
+  folder ids from tags=Shota/Loli), `MuchoHentaiSource` (HTML; AES HLS key needs POST keyserver /authorize cookies,
+  same User-Agent as the key request; playerClient re-authorizes on a key 403). `VideoSafety` (tags + title words)
+  on every list, `details()` checks again before playing. `VideoRepo` = watch positions (data/videos.json).
+  UI: `ui/VideosScreen.kt` (tab), `ui/PlayerScreen.kt` (Media3 ExoPlayer on a TextureView so Snapshot can read the
+  frame; SubtitleView; Compose controls; SENSOR_LANDSCAPE = forced even with auto-rotate locked), `ui/VideoCover.kt`
+  (cover -> altCovers -> `SeriesCovers` -> placeholder), `video/ClipSaver.kt` (snapshot PNG; Record = Media3
+  Transformer clip -> H.264/AAC MP4 in Movies/MangaCracker). Specs: `_dev_tools\specs\{hentaigasm,oppaistream,muchohentai}.md`.
+  Tests: VideoSourcesTest (live lists, details, stream heads, key unlock), CoverSpeedTest (whole grids + fallbacks),
+  ImagePipelineTest (every cover through Coil), VideoScreensTest (screens; no video decode on the PC; ExoPlayer
+  diagnostics and the TextureView are skipped under Robolectric).
+
 ## Rules / facts learnt
 - Chapters are newest first. `chaptersFlow` lets slow sources (comix, 2.5-4.8 s between chapter pages) fill in;
   `latestChapters` = what the update check fetches.

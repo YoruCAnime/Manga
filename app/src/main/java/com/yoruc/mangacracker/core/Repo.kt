@@ -89,6 +89,9 @@ data class Settings(
     val dismissedAppVersion: String = "",
     /** Background check: one notification per version. */
     val notifiedAppVersion: String = "",
+    /** Videos tab: the source picked last; player subtitles on / off. */
+    val lastVideoSource: String = "",
+    val videoSubtitles: Boolean = true,
 )
 
 object Repo {

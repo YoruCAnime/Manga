@@ -15,6 +15,7 @@ import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.NewReleases
+import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -52,6 +53,7 @@ private val tabs = listOf(
     Tab("home", "Home", Icons.Rounded.Home),
     Tab("library", "Library", Icons.Rounded.CollectionsBookmark),
     Tab("sources", "Browse", Icons.Rounded.Explore),
+    Tab("videos", "Videos", Icons.Rounded.SmartDisplay),
     Tab("updates", "Updates", Icons.Rounded.NewReleases),
     Tab("more", "More", Icons.Rounded.MoreHoriz),
 )
@@ -73,6 +75,10 @@ class Nav(val c: NavHostController) {
     }
     fun globalSearch(text: String = "") = c.navigate("search?q=${Uri.encode(text)}")
     fun web(url: String) = c.navigate("web?url=${Uri.encode(url)}")
+    fun player(v: com.yoruc.mangacracker.video.VideoRef) {
+        com.yoruc.mangacracker.video.VideoRepo.remember(v)
+        c.navigate("player/${Uri.encode(v.key)}") { launchSingleTop = true }
+    }
     fun history() = c.navigate("history")
     fun settings() = c.navigate("settings")
     fun tab(route: String) = c.navigate(route) {
@@ -150,6 +156,8 @@ fun AppRoot(open: String?) {
                 composable("home") { HomeScreen(nav) }
                 composable("library") { LibraryScreen(nav) }
                 composable("sources") { SourcesScreen(nav) }
+                composable("videos") { VideosScreen(nav) }
+                composable("player/{key}") { b -> PlayerScreen(nav, b.arguments?.getString("key") ?: "") }
                 composable("updates") { UpdatesScreen(nav) }
                 composable("more") { MoreScreen(nav) }
                 composable("history") { HistoryScreen(nav) }

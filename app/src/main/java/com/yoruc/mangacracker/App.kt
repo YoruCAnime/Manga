@@ -20,6 +20,7 @@ class App : Application(), ImageLoaderFactory {
         Http.init(this)
         Repo.init(this)
         AppUpdate.init(this)
+        com.yoruc.mangacracker.video.VideoRepo.init(this)
         com.yoruc.mangacracker.sources.ComixBridge.init(this)
         getSystemService(NotificationManager::class.java).createNotificationChannels(listOf(
             NotificationChannel(UpdateWorker.CHANNEL, "New chapters", NotificationManager.IMPORTANCE_DEFAULT),

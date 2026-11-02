@@ -120,7 +120,23 @@ object Http {
             .cache(Cache(cacheDir, 30L * 1024 * 1024))
             .addInterceptor(CloudflareInterceptor)
             .build()
-        imageClient = client.newBuilder().cache(null).build()
+        imageClient = client.newBuilder().cache(null).addInterceptor(RetryBusyInterceptor).build()
+    }
+
+    /** Pictures: a server that says 429 "too many requests" gets up to 3 calm retries instead of an empty cover. */
+    private object RetryBusyInterceptor : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            var res = chain.proceed(chain.request())
+            var n = 0
+            while (res.code == 429 && n < 3) {
+                val wait = res.header("Retry-After")?.toLongOrNull()?.times(1000)?.coerceAtMost(4000) ?: (400L + n * 600)
+                res.close()
+                Thread.sleep(wait)
+                n++
+                res = chain.proceed(chain.request())
+            }
+            return res
+        }
     }
 
     private object HeaderInterceptor : Interceptor {

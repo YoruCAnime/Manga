@@ -5,6 +5,7 @@ import coil.imageLoader
 import coil.request.ErrorResult
 import coil.request.ImageRequest
 import coil.request.SuccessResult
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,10 +29,22 @@ class ImagePipelineTest {
     }
 
     private suspend fun load(ctx: App) {
+        // every cover of each video source's first page, decoded like the grid does (all at once)
+        for (s in com.yoruc.mangacracker.video.VideoSources.all) {
+            val covers = runCatching { s.latest(1).items.map { it.cover } }.getOrDefault(emptyList())
+            val t0 = System.currentTimeMillis()
+            val res = kotlinx.coroutines.coroutineScope {
+                covers.map { u -> async { ctx.imageLoader.execute(ImageRequest.Builder(ctx).data(u).size(540, 304).build()) } }.map { it.await() }
+            }
+            val bad = res.filterIsInstance<ErrorResult>()
+            println("[img] ${s.id}: ${res.size - bad.size}/${covers.size} covers decoded in ${System.currentTimeMillis() - t0} ms" +
+                (bad.firstOrNull()?.let { " first error: ${it.throwable.javaClass.simpleName} ${it.throwable.message?.take(60)}" } ?: ""))
+        }
+        val videos = emptyList<String>()
         for (u in listOf(
             "https://cdn.atsu.moe/static/posters/3i6P1lYIogbwab92-large.webp",
             "https://cdn.atsu.moe/static/posters/3i6P1lYIogbwab92.jpg",
-        )) {
+        ) + videos) {
             val r = ctx.imageLoader.execute(ImageRequest.Builder(ctx).data(u).size(300, 450).build())
             when (r) {
                 is SuccessResult -> println("[img] OK ${r.drawable.intrinsicWidth}x${r.drawable.intrinsicHeight} $u")
