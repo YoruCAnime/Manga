@@ -2,6 +2,8 @@ package com.yoruc.mangacracker.core
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import androidx.core.content.FileProvider
 import com.yoruc.mangacracker.BuildConfig
 import kotlinx.coroutines.CoroutineScope
@@ -14,6 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import java.io.File
+import java.security.MessageDigest
 
 /** A MangaCracker release on GitHub. */
 @Serializable
@@ -75,7 +78,14 @@ object AppUpdate {
             val f = apkFile(context, known)
             _state.value = if (f.exists() && f.length() == known.size) AppUpdateState.Ready(known, f) else AppUpdateState.Available(known)
         }
-        runCatching { dir(context).listFiles()?.filter { !isNewer(it.name.removePrefix("MangaCracker-").removeSuffix(".apk"), current) }?.forEach { it.delete() } }
+        runCatching {
+            dir(context).listFiles()?.filter { f ->
+                // .part is a download that never finished (or was interrupted);
+                // it is never installable, so do not keep it around.
+                f.name.endsWith(".part") ||
+                    !isNewer(f.name.removePrefix("MangaCracker-").removeSuffix(".apk"), current)
+            }?.forEach { it.delete() }
+        }
     }
 
     /** "v1.10.0" > "1.9.2"; missing parts count as 0. */
@@ -110,6 +120,8 @@ object AppUpdate {
 
     /** Looks for a newer release. Automatic checks ([force] false) are skipped when one ran in the last 3 hours. */
     suspend fun check(force: Boolean = false): AppRelease? {
+        // the Dev app (CI test builds) has another package id: a release would never install over it
+        if (BuildConfig.DEV) return null
         val s = Repo.settings.value
         if (!force && System.currentTimeMillis() - s.lastAppCheck < AUTO_GAP) return pending
         if (_state.value is AppUpdateState.Downloading) return pending
@@ -192,12 +204,38 @@ object AppUpdate {
         if (!part.renameTo(file)) throw SourceException("Couldn't save the update")
     }
 
-    /** The file must be a MangaCracker APK (Android would refuse anything else anyway, with a less clear message). */
+    /**
+     * The file must be a MangaCracker APK signed by the same key as this install. Android enforces the signature
+     * when the installer runs, but by then the only message is a generic "App not installed"; checking here lets a
+     * wrong-key download fail with something a user can act on. The old package-name-only check accepted a
+     * repackaged APK and left the failure to the installer.
+     */
     private fun verify(ctx: Context, file: File) {
-        val info = runCatching { ctx.packageManager.getPackageArchiveInfo(file.path, 0) }.getOrNull()
+        val pm = ctx.packageManager
+        val info = runCatching {
+            pm.getPackageArchiveInfo(file.path, PackageManager.GET_SIGNING_CERTIFICATES)
+        }.getOrNull()
         // Robolectric (the PC test harness) can't read APKs; a real phone always can
-        if (info == null && android.os.Build.FINGERPRINT == "robolectric") return
-        if (info?.packageName != ctx.packageName) throw SourceException("The download isn't a MangaCracker update")
+        if (info == null) {
+            if (android.os.Build.FINGERPRINT == "robolectric") return
+            throw SourceException("The download isn't a MangaCracker update")
+        }
+        if (info.packageName != ctx.packageName) throw SourceException("The download isn't a MangaCracker update")
+
+        val expected = runCatching {
+            signerDigests(pm.getPackageInfo(ctx.packageName, PackageManager.GET_SIGNING_CERTIFICATES))
+        }.getOrDefault(emptySet())
+        val actual = signerDigests(info)
+        if (expected.isNotEmpty() && actual.isNotEmpty() && expected != actual) {
+            throw SourceException("This update is signed with a different key. Uninstall MangaCracker once, then install it.")
+        }
+    }
+
+    private fun signerDigests(info: PackageInfo): Set<String> {
+        val signers = info.signingInfo?.apkContentsSigners ?: return emptySet()
+        return signers.mapTo(mutableSetOf()) { cert ->
+            MessageDigest.getInstance("SHA-256").digest(cert.toByteArray()).joinToString("") { "%02x".format(it) }
+        }
     }
 
     /** Opens Android's installer for [file]. The first time, Android asks to allow installs from MangaCracker. */
