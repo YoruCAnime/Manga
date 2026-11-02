@@ -19,10 +19,11 @@ object Recommender {
     private var cache: List<MangaRef> = emptyList()
     private var cachedAt = 0L
 
-    fun cached(): List<MangaRef> = cache
+    /** Filtered again on the way out: a filter switched on (hidden tags, AI) applies to a list made before it. */
+    fun cached(): List<MangaRef> = cache.filterNot { Safety.blocked(it) }
 
     suspend fun load(force: Boolean = false): List<MangaRef> = withContext(Dispatchers.IO) {
-        if (!force && cache.isNotEmpty() && System.currentTimeMillis() - cachedAt < 3 * 3600_000L) return@withContext cache
+        if (!force && cache.isNotEmpty() && System.currentTimeMillis() - cachedAt < 3 * 3600_000L) return@withContext cached()
         val lib = Repo.library.value.values
         val hist = Repo.history.value.values.sortedByDescending { it.time }
         val owned = (lib.map { it.ref.key } + hist.map { it.ref.key }).toHashSet()
@@ -31,7 +32,8 @@ object Recommender {
         val taste = HashMap<String, HashMap<String, Int>>()
         fun add(src: String, tags: Collection<String>, w: Int) {
             val m = taste.getOrPut(src) { HashMap() }
-            tags.forEach { t -> if (!Safety.isMinorTag(t)) m[t.lowercase()] = (m[t.lowercase()] ?: 0) + w }
+            // never steer towards minor tags, nor AI tags while those are hidden
+            tags.forEach { t -> if (!Safety.isMinorTag(t) && !(Safety.hideAi && Safety.isAiTag(t))) m[t.lowercase()] = (m[t.lowercase()] ?: 0) + w }
         }
         lib.forEach { add(it.ref.source, it.genres.ifEmpty { it.ref.tags }, 2) }
         hist.take(30).forEach { h -> add(h.ref.source, Repo.detailsCache[h.ref.key]?.genres ?: h.ref.tags, 1) }
@@ -58,7 +60,10 @@ object Recommender {
                 if (picks.isEmpty()) jobs += async { withTimeoutOrNull(20_000) { runCatching { src.popular(1).items }.getOrNull() }.orEmpty() }
             }
             // more like the last three things read
-            hist.filter { it.ref.source !in IMAGE_BOARDS }.take(3).forEach { h ->
+            // (an AI title read earlier would bring "more like it": skipped while AI is hidden)
+            hist.filter { h ->
+                h.ref.source !in IMAGE_BOARDS && !Safety.blocked(h.ref) && Repo.detailsCache[h.ref.key]?.let { Safety.isAi(it) } != true
+            }.take(3).forEach { h ->
                 val src = Sources.byId(h.ref.source) ?: return@forEach
                 val d = Repo.detailsCache[h.ref.key]
                 jobs += async {

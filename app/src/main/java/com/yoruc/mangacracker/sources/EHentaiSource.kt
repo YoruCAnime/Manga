@@ -37,6 +37,8 @@ object EHentaiSource : Source {
     override val baseUrl: String get() = if (Repo.settings.value.useExHentai) "https://exhentai.org" else "https://e-hentai.org"
 
     private const val GUARD = "-lolicon -shotacon -toddlercon"
+    /** [GUARD], plus the "ai generated" tag while Settings hides AI (the site drops them, so pages stay full). */
+    private val guard get() = if (Safety.hideAi) "$GUARD -other:\"ai generated$\"" else GUARD
     private const val UK_BLOCK = "E-Hentai blocks its lists and search in the UK (Online Safety Act). They work on a VPN. " +
         "Galleries from your library or a pasted gallery link still open."
 
@@ -103,7 +105,7 @@ object EHentaiSource : Source {
     override suspend fun popular(page: Int): PageResult =
         if (page > 1) PageResult(emptyList(), false) else PageResult(parseRows(fetch("$baseUrl/popular")), false)
 
-    override suspend fun latest(page: Int) = listPage("$baseUrl/?f_search=${GUARD.urlEncode()}", page)
+    override suspend fun latest(page: Int) = listPage("$baseUrl/?f_search=${guard.urlEncode()}", page)
 
     override suspend fun search(query: SearchQuery, page: Int): PageResult {
         // a pasted gallery link opens that gallery
@@ -119,7 +121,7 @@ object EHentaiSource : Source {
         query.include.forEach { terms += term(it.id) }
         query.exclude.forEach { terms += "-" + term(it.id) }
         query.selects["lang"]?.takeIf { it.isNotEmpty() }?.let { terms += "language:$it$" }
-        terms += GUARD
+        terms += guard
         var url = "$baseUrl/?f_search=${terms.joinToString(" ").urlEncode()}"
         query.selects["cat"]?.toIntOrNull()?.let { url += "&f_cats=${1023 - it}" }
         query.selects["rating"]?.toIntOrNull()?.let { url += "&f_sr=on&f_srdd=$it" }

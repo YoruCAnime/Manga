@@ -82,6 +82,9 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
   list holds 1 gallery (titles do the work there). AI tags leave the tag pickers while on (`cleanTags`). Live check:
   `run_tests.py AiFilterTest` (searching each site's AI tag with the switch on shows 0 cards on all of them);
   `AiSettingShotTest` = the switch (shots 42 / 43). Id probe: `_dev_tools\probe_ai\ai_ids.py`.
+- 1.5.1: E-Hentai / ExHentai add `-other:"ai generated$"` to the search guard while the switch is on (Compact rows show
+  only some tags; untestable here: lists are 451 in the UK). Recommender: AI tags never become taste, "more like this"
+  skips AI titles read, `cached()` filters again. `RecommendAiTest` (4 AI favourites on nhentai -> 41 recs, 0 AI).
 
 ## Rules / facts learnt
 - Chapters are newest first. `chaptersFlow` lets slow sources (comix, 2.5-4.8 s between chapter pages) fill in;
