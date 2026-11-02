@@ -120,6 +120,8 @@ object AppUpdate {
 
     /** Looks for a newer release. Automatic checks ([force] false) are skipped when one ran in the last 3 hours. */
     suspend fun check(force: Boolean = false): AppRelease? {
+        // the Dev app (CI test builds) has another package id: a release would never install over it
+        if (BuildConfig.DEV) return null
         val s = Repo.settings.value
         if (!force && System.currentTimeMillis() - s.lastAppCheck < AUTO_GAP) return pending
         if (_state.value is AppUpdateState.Downloading) return pending

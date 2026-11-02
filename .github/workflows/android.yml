@@ -1,67 +1,45 @@
-name: Android CI & Release
+name: Android CI
 
 # What this workflow is for:
-#   * pull requests: compile the release variant, sign it with a throwaway key,
-#     verify it and keep the APK as a downloadable artifact;
-#   * pushes to main: the same, then publish a GitHub release. The in-app
-#     updater reads `releases/latest`, so the APK asset and the release notes
-#     are the update channel;
-#   * tags `v*`: publish that exact version (the tag, BuildConfig.VERSION_NAME
-#     and the asset name must agree).
+#   * pull requests and pushes to main: lint, the offline unit tests, and a
+#     release-variant build of the "MangaCracker Dev" app (its own package id,
+#     signed with a throwaway key) kept as a downloadable artifact, so a change
+#     can be tried on a phone next to the real app without replacing it.
 #
-# The app does NOT read an update.json or any other manifest. AppUpdate.kt calls
-# the GitHub API for the latest release and downloads its .apk asset. Adding a
-# manifest here would be a second source of truth that nothing reads.
+# It never publishes anything. Releases are built and signed on the owner's PC
+# and published by hand; the signing key never goes to GitHub, so nobody with
+# access to the repository (or to a leaked token) can sign an update that
+# installs over the real app. The in-app updater reads `releases/latest` and
+# checks the download is signed with the installed app's key.
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
-    # A README-only push does not need an APK. Tag pushes ignore path filters.
+    # A README-only push does not need an APK.
     paths-ignore:
       - "**.md"
       - ".gitignore"
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version (X.Y.Z). Blank = next patch after the latest release."
-        required: false
-        type: string
-      prerelease:
-        description: "Publish as a pre-release (the in-app updater ignores pre-releases)"
-        required: false
-        type: boolean
-        default: false
 
 permissions:
-  # Creating the tag, release and asset needs write access. Fork pull requests
-  # are given a read-only token by GitHub, and every publishing step is skipped
-  # for them anyway.
-  contents: write
+  contents: read
 
 # A newer push on the same ref wins. Pull requests are cancelled instead of
-# queued: their APK is never published, and three pushes should not leave three
-# R8 builds running behind the one that matters.
+# queued: three pushes should not leave three R8 builds running behind the one
+# that matters.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  APP_ID: com.yoruc.mangacracker
-  # SHA-256 of the certificate that signs every published MangaCracker APK.
-  # Checked against v1.4.0, v1.5.0 and v1.5.1 before this workflow was added.
-  # Android refuses to install an APK signed by a different key over an existing
-  # copy (INSTALL_FAILED_UPDATE_INCOMPATIBLE), so publishing one would strand
-  # every user on the old version. Keep this in step if the key is ever rotated.
-  EXPECTED_SIGNER_SHA256: 1366e380e394e85beebe6e1dadbea98d78cb509f93a8784cea9f0df983c7d308
+  APP_ID: com.yoruc.mangacracker.dev
 
 jobs:
-  # Advisory and separate from the release job. Lint is not a gate: a lint
-  # finding must not hold back a release, and the release job must not cancel
-  # the annotations. No signing key is needed because this job never packages an
-  # APK.
+  # Advisory and separate from the build. Lint is not a gate: a lint finding
+  # must not paint a good change red. No signing key is needed because this job
+  # never packages an APK.
   lint:
     name: Android Lint (advisory)
     runs-on: ubuntu-latest
@@ -149,20 +127,15 @@ jobs:
             --console=plain --stacktrace
 
   build:
-    name: Build signed APK
+    name: Build the Dev APK
     needs: test
     runs-on: ubuntu-latest
     env:
-      # Decoded from the KEYSTORE_BASE64 secret, or generated for a PR. Never
-      # written into the repository (keystore/ is git-ignored).
-      MANGA_KEYSTORE: ${{ github.workspace }}/release-key.jks
+      # Generated for every run; never the release key.
+      MANGA_KEYSTORE: ${{ github.workspace }}/throwaway-key.jks
     steps:
       - name: Check out
         uses: actions/checkout@v7
-        with:
-          # Need the tags for the "what changed since the last release" notes and
-          # for deciding whether a version is newer than the newest tag.
-          fetch-depth: 0
 
       - name: Set up JDK 21
         uses: actions/setup-java@v6
@@ -178,69 +151,26 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Resolve version
-        id: version
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_VERSION: ${{ github.event.inputs.version }}
-          INPUT_PRERELEASE: ${{ github.event.inputs.prerelease }}
-        run: bash .github/scripts/resolve-version.sh
-
-      - name: Prepare the signing key
-        env:
-          RELEASE: ${{ steps.version.outputs.release }}
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      - name: Make a throwaway signing key
         run: |
           set -euo pipefail
-
-          if [ "${RELEASE}" = "true" ]; then
-            # A release without the real key would be signed by the debug key,
-            # and Android would then refuse it over every installed copy. Fail
-            # before the build instead of producing an unusable APK.
-            for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
-              if [ -z "${!name:-}" ]; then
-                echo "::error title=Missing signing secret::$name is not set. A release cannot be signed without it."
-                exit 1
-              fi
-            done
-
-            printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$MANGA_KEYSTORE"
-            keytool -list -keystore "$MANGA_KEYSTORE" -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null
-            echo "Decoded the release keystore and found alias $KEY_ALIAS."
-          else
-            # Pull requests must never need the release key. GitHub withholds
-            # secrets from fork PRs, and a review build has no reason to hold the
-            # key that can update everyone's install.
-            password="ci-throwaway"
-            keytool -genkeypair -v -keystore "$MANGA_KEYSTORE" \
-              -storepass "$password" -keypass "$password" -alias mangacracker \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=CI Throwaway Not The MangaCracker Release Key, O=MangaCracker CI, C=US"
-            STORE_PASSWORD="$password"
-            KEY_ALIAS="mangacracker"
-            KEY_PASSWORD="$password"
-            echo "Generated a throwaway signing key for this pull request."
-          fi
-
+          password="ci-throwaway"
+          keytool -genkeypair -v -keystore "$MANGA_KEYSTORE" \
+            -storepass "$password" -keypass "$password" -alias mangacracker \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=CI Throwaway Not The MangaCracker Release Key, O=MangaCracker CI, C=US"
           {
-            echo "MANGA_STORE_PASSWORD=$STORE_PASSWORD"
-            echo "MANGA_KEY_ALIAS=$KEY_ALIAS"
-            echo "MANGA_KEY_PASSWORD=$KEY_PASSWORD"
+            echo "MANGA_STORE_PASSWORD=$password"
+            echo "MANGA_KEY_ALIAS=mangacracker"
+            echo "MANGA_KEY_PASSWORD=$password"
           } >> "$GITHUB_ENV"
 
-      - name: Build release APK
+      - name: Build the release variant as MangaCracker Dev
         run: |
-          ./gradlew :app:assembleRelease \
-            -Pmangacracker.versionName="$VERSION" \
-            -Pmangacracker.versionCode="$VERSION_CODE" \
+          ./gradlew :app:assembleRelease -Pmangacracker.dev=true \
             --console=plain --stacktrace
 
-      - name: Verify the APK before it is published
-        env:
-          RELEASE: ${{ steps.version.outputs.release }}
+      - name: Verify the APK
         run: |
           set -euo pipefail
 
@@ -267,23 +197,6 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs --min-sdk-version 29 "$APK"
           echo "::endgroup::"
 
-          # apksigner rejects an unsigned, tampered or wrongly-signed APK. The
-          # digest is the certificate users already have installed.
-          CERT=$("$APKSIGNER" verify --print-certs "$APK" \
-            | sed -n 's/.*certificate SHA-256 digest: *//p' \
-            | tr '[:upper:]' '[:lower:]' | head -1)
-          if [ -z "$CERT" ]; then
-            echo "::error::Could not read a certificate SHA-256 digest from $APK."
-            exit 1
-          fi
-          echo "APK certificate: $CERT"
-          echo "Expected:       $EXPECTED_SIGNER_SHA256"
-
-          if [ "${RELEASE}" = "true" ] && [ "$CERT" != "$EXPECTED_SIGNER_SHA256" ]; then
-            echo "::error title=Wrong signing key::The APK is signed with $CERT, but every published MangaCracker is signed with $EXPECTED_SIGNER_SHA256. Publishing this would make an update no existing install can accept. Check KEYSTORE_BASE64, STORE_PASSWORD and KEY_ALIAS."
-            exit 1
-          fi
-
           BADGING=$("$AAPT" dump badging "$APK")
           PACKAGE=$(printf '%s\n' "$BADGING" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
           NAME=$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p")
@@ -294,21 +207,13 @@ jobs:
             echo "::error::APK package is '$PACKAGE', expected '$APP_ID'."
             exit 1
           fi
-          if [ "$NAME" != "$VERSION" ]; then
-            echo "::error::APK versionName is '$NAME', expected '$VERSION'."
-            exit 1
-          fi
-          if [ "$CODE" != "$VERSION_CODE" ]; then
-            echo "::error::APK versionCode is '$CODE', expected '$VERSION_CODE'."
-            exit 1
-          fi
           if printf '%s\n' "$BADGING" | grep -q '^application-debuggable'; then
             echo "::error::The release APK is debuggable."
             exit 1
           fi
 
-          mkdir -p release-artifacts
-          cp "$APK" "release-artifacts/MangaCracker-${VERSION}.apk"
+          mkdir -p ci-artifacts
+          cp "$APK" "ci-artifacts/MangaCracker-Dev-${NAME}-${GITHUB_SHA:0:8}.apk"
 
           # Regression guard for the biggest bytes in the APK. With minSdk 29,
           # AGP stores classes.dex uncompressed unless package.dex is set to the
@@ -330,98 +235,20 @@ jobs:
                   print(f"{info.filename}: {info.compress_size} / {info.file_size} bytes compressed")
           PY
 
-          SIZE_BYTES=$(stat -c%s "release-artifacts/MangaCracker-${VERSION}.apk")
+          SIZE_BYTES=$(stat -c%s "$APK")
           SIZE_MIB=$(awk -v b="$SIZE_BYTES" 'BEGIN { printf "%.2f", b / 1048576 }')
           echo "APK size: ${SIZE_MIB} MiB (${SIZE_BYTES} bytes)"
           {
             echo "### APK size"
             echo ""
-            echo "MangaCracker ${VERSION}: **${SIZE_MIB} MiB** (${SIZE_BYTES} bytes)"
+            echo "MangaCracker Dev ${NAME}: **${SIZE_MIB} MiB** (${SIZE_BYTES} bytes)"
+            echo ""
+            echo "Download it under **Artifacts** below. It installs next to the real app as \"MangaCracker Dev\"."
           } >> "$GITHUB_STEP_SUMMARY"
 
-          ls -lh release-artifacts
-
-      - name: Upload the APK artifact
+      - name: Upload the Dev APK
         uses: actions/upload-artifact@v7
         with:
-          name: mangacracker-apk
-          path: release-artifacts/*.apk
+          name: mangacracker-dev-apk
+          path: ci-artifacts/*.apk
           if-no-files-found: error
-
-      - name: Build release notes
-        id: notes
-        if: steps.version.outputs.release == 'true'
-        run: |
-          set -euo pipefail
-
-          if [ -n "${PREVIOUS_TAG}" ]; then
-            RANGE="${PREVIOUS_TAG}..HEAD"
-          else
-            RANGE="HEAD"
-          fi
-
-          # Commit subjects are the changelog this repository already writes.
-          # The release body is what the in-app "What's new" card renders, so it
-          # stays short and readable instead of becoming GitHub's generated list.
-          CHANGES=$(git log --no-merges --pretty=format:'- %s' "$RANGE" | head -40 || true)
-          if [ -z "${CHANGES//[[:space:]]/}" ]; then
-            CHANGES="- Build ${GITHUB_RUN_NUMBER} from ${GITHUB_SHA:0:8}."
-          fi
-
-          {
-            echo "body<<RELEASE_NOTES_EOF"
-            printf '## What'\''s new in %s\n\n' "$VERSION"
-            printf '%s\n' "$CHANGES"
-            printf '\n---\n\n'
-            printf '**Install:** download `MangaCracker-%s.apk` below. It is signed with the same key as every previous release, so Android installs it over the old version and keeps your library and reading spots.\n' "$VERSION"
-            echo "RELEASE_NOTES_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-          echo "Notes for $TAG:"
-          printf '%s\n' "$CHANGES"
-
-      - name: Publish the GitHub release
-        if: steps.version.outputs.release == 'true'
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: MangaCracker ${{ steps.version.outputs.version }}
-          body: ${{ steps.notes.outputs.body }}
-          files: release-artifacts/*.apk
-          fail_on_unmatched_files: true
-          overwrite_files: true
-          generate_release_notes: false
-          draft: false
-          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
-          make_latest: ${{ steps.version.outputs.prerelease != 'true' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # Keep the committed baseline in step with what was just published, so a
-      # local build (and the version shown in Settings > About) does not keep
-      # reporting the previous release. On a protected main this push is
-      # rejected; the release asset is already published, so warn rather than
-      # turn a good release red.
-      - name: Update the version baseline
-        if: steps.version.outputs.release == 'true' && github.ref_type == 'branch'
-        run: |
-          set -euo pipefail
-
-          sed -i -E "s/^mangacracker\.versionName=.*/mangacracker.versionName=${VERSION}/" gradle.properties
-          sed -i -E "s/^mangacracker\.versionCode=.*/mangacracker.versionCode=${VERSION_CODE}/" gradle.properties
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add gradle.properties
-
-          if git diff --cached --quiet; then
-            echo "The version baseline is already current."
-            exit 0
-          fi
-
-          git commit -m "Release ${TAG}: bump version baseline"
-          if git push origin "HEAD:${GITHUB_REF_NAME}"; then
-            echo "Updated the version baseline on ${GITHUB_REF_NAME}."
-          else
-            echo "::warning title=Baseline not committed::The release is published, but the push to ${GITHUB_REF_NAME} was rejected (branch protection). Update gradle.properties to ${VERSION} / ${VERSION_CODE} by hand when convenient."
-          fi

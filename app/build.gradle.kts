@@ -8,8 +8,8 @@ plugins {
 }
 
 // Version numbers live in gradle.properties so a local build and CI report the
-// same thing. CI passes -Pmangacracker.versionName / -Pmangacracker.versionCode
-// so the tag, the APK's BuildConfig and the release cannot disagree.
+// same thing. They are bumped by hand for each release (releases are built and
+// signed on the owner's PC; CI only builds and tests).
 fun stringProperty(name: String, fallback: String): String =
     providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() } ?: fallback
 
@@ -21,6 +21,10 @@ fun intProperty(name: String, fallback: Int): Int {
 val appVersionName = stringProperty("mangacracker.versionName", "1.5.1")
 val appVersionCode = intProperty("mangacracker.versionCode", 7)
 
+// -Pmangacracker.dev=true (CI builds): a separate "MangaCracker Dev" app that installs next to the real one,
+// so a test build never has to replace the real app (and its library). It never checks for app updates.
+val devBuild = providers.gradleProperty("mangacracker.dev").orNull == "true"
+
 android {
     namespace = "com.yoruc.mangacracker"
     compileSdk = 35
@@ -31,6 +35,9 @@ android {
         targetSdk = 35
         versionCode = appVersionCode
         versionName = appVersionName
+        if (devBuild) applicationIdSuffix = ".dev"
+        manifestPlaceholders["appLabel"] = if (devBuild) "MangaCracker Dev" else "MangaCracker"
+        buildConfigField("boolean", "DEV", devBuild.toString())
 
         // Every string in the app is English (the UI text is written in Compose),
         // so the translations that AndroidX, Media3 and the other libraries ship
@@ -40,8 +47,8 @@ android {
     }
 
     // A personal key kept next to the project (keystore/, git-ignored), so updates install over the old app.
-    // keystore/keystore.properties holds storePassword / keyAlias / keyPassword. CI supplies the same values
-    // through MANGA_* environment variables, so key material never has to be written into the repository.
+    // keystore/keystore.properties holds storePassword / keyAlias / keyPassword. The real key never goes to
+    // GitHub: CI signs its builds with a throwaway key passed in through the MANGA_* environment variables.
     val keyProps = Properties()
     rootProject.file("keystore/keystore.properties").takeIf { it.exists() }?.inputStream()?.use { keyProps.load(it) }
 
