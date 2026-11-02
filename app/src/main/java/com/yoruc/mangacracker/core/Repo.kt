@@ -107,6 +107,9 @@ data class Settings(
     val notifiedAppVersion: String = "",
     /** Hide manga / pictures marked AI-generated (title words or AI tags); videos are not filtered. */
     val hideAi: Boolean = true,
+    /** Hide futanari / furry manga, pictures and videos (tags and title words). */
+    val hideFuta: Boolean = true,
+    val hideFurry: Boolean = true,
     /** Videos tab: the source picked last; player subtitles on / off. */
     val lastVideoSource: String = "",
     val videoSubtitles: Boolean = true,
@@ -158,6 +161,8 @@ object Repo {
         _settings.value = load("settings.json", Settings.serializer()) ?: Settings()
         Safety.userHidden = _settings.value.hiddenTags.map { Safety.norm(it) }.toSet()
         Safety.hideAi = _settings.value.hideAi
+        Safety.hideFuta = _settings.value.hideFuta
+        Safety.hideFurry = _settings.value.hideFurry
         (_library.value.values.map { it.ref } + _history.value.values.map { it.ref }).forEach { refs[it.key] = it }
     }
 
@@ -383,6 +388,8 @@ object Repo {
         _settings.update(f)
         Safety.userHidden = _settings.value.hiddenTags.map { Safety.norm(it) }.toSet()
         Safety.hideAi = _settings.value.hideAi
+        Safety.hideFuta = _settings.value.hideFuta
+        Safety.hideFurry = _settings.value.hideFurry
         saveSettings()
     }
 

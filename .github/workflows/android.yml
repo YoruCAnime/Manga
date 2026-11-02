@@ -124,6 +124,7 @@ jobs:
           ./gradlew :app:testDebugUnitTest \
             --tests '*AppUpdateTest.versionOrder' \
             --tests '*AiFilterTest.rules' \
+            --tests '*TagFilterTest.rules' \
             --tests '*BackupTest' \
             --tests '*ReaderLogicTest' \
             --tests '*SourceMoveTest' \

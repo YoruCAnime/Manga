@@ -332,7 +332,8 @@ fun DetailsScreen(nav: Nav, key: String) {
                 }
                 if (blocked) {
                     Spacer(Modifier.height(12.dp))
-                    HintCard(if (d != null && Safety.isAi(d)) "This title is AI-generated, which you've hidden (Settings › Hide AI-generated)."
+                    val why = d?.let { Safety.switchReason(it) }
+                    HintCard(if (why != null) "This title is $why, which you've hidden (Settings › Hide $why)."
                         else "This title has a tag you've hidden (or one MangaCracker always hides), so it can't be opened.")
                 }
                 d?.description?.takeIf { it.isNotBlank() }?.let { desc ->

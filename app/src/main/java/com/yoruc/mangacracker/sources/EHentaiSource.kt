@@ -37,8 +37,10 @@ object EHentaiSource : Source {
     override val baseUrl: String get() = if (Repo.settings.value.useExHentai) "https://exhentai.org" else "https://e-hentai.org"
 
     private const val GUARD = "-lolicon -shotacon -toddlercon"
-    /** [GUARD], plus the "ai generated" tag while Settings hides AI (the site drops them, so pages stay full). */
-    private val guard get() = if (Safety.hideAi) "$GUARD -other:\"ai generated$\"" else GUARD
+    /** [GUARD], plus the AI / futanari / furry tags while Settings hides them (the site drops them, so pages stay full). */
+    private val guard get() = GUARD + (if (Safety.hideAi) " -other:\"ai generated$\"" else "") +
+        (if (Safety.hideFuta) " -female:futanari$ -male:\"dickgirl on male$\"" else "") +
+        (if (Safety.hideFurry) " -female:furry$ -male:furry$" else "")
     private const val UK_BLOCK = "E-Hentai blocks its lists and search in the UK (Online Safety Act). They work on a VPN. " +
         "Galleries from your library or a pasted gallery link still open."
 

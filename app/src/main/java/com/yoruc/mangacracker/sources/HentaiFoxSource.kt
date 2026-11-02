@@ -38,6 +38,8 @@ object HentaiFoxSource : Source {
     private val HIDDEN_IDS = setOf("8", "11", "45", "111", "268", "715", "3321", "3322", "1463", "1472")
     private val HIDDEN_SLUGS = setOf("lolicon", "shotacon", "oppai-loli", "low-lolicon", "low-shotacon", "toddlercon",
         "kodomo-doushi", "kodomo-only", "shota", "loli")
+    /** Tag ids the switches care about: AI, futanari, dickgirl on male, furry. */
+    private val NAMED = mapOf("3298" to "ai generated", "43" to "futanari", "59" to "dickgirl on male", "414" to "furry")
     private val GUARD = HIDDEN_SLUGS.joinToString(" ") { "-$it" }
 
     init {
@@ -65,8 +67,8 @@ object HentaiFoxSource : Source {
         return MangaRef(
             source = id, id = gid, title = a.text(),
             cover = if (cover.startsWith("http")) cover else "",
-            // 3298 = "ai generated" (lists only carry tag ids; the name lets Safety's AI switch see it)
-            tags = ids.map { "hf:$it" } + (if ("3298" in ids) listOf("ai generated") else emptyList()),
+            // lists only carry tag ids; the names let Safety's switches see them
+            tags = ids.map { "hf:$it" } + ids.mapNotNull { NAMED[it] },
             subtitle = t.selectFirst(".g_cat")?.text().orEmpty(),
         )
     }

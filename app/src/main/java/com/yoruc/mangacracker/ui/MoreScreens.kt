@@ -342,6 +342,12 @@ fun SettingsScreen(nav: Nav) {
                 SwitchRow("Hide AI-generated", s.hideAi, sub = "Manga and pictures (not videos) whose title says \"AI generated\" (or [AI]) or that have an AI tag") { v ->
                     Repo.updateSettings { it.copy(hideAi = v) }
                 }
+                SwitchRow("Hide futanari", s.hideFuta, sub = "Manga, pictures and videos with a futanari / dickgirl tag or \"futanari\" in the title") { v ->
+                    Repo.updateSettings { it.copy(hideFuta = v) }
+                }
+                SwitchRow("Hide furry", s.hideFurry, sub = "Manga, pictures and videos with a furry / anthro tag or \"furry\" in the title (not animal ears)") { v ->
+                    Repo.updateSettings { it.copy(hideFurry = v) }
+                }
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TextField(
