@@ -18,8 +18,8 @@ fun intProperty(name: String, fallback: Int): Int {
     return raw.toIntOrNull() ?: throw GradleException("$name must be an integer (got '$raw')")
 }
 
-val appVersionName = stringProperty("mangacracker.versionName", "1.6.2")
-val appVersionCode = intProperty("mangacracker.versionCode", 10)
+val appVersionName = stringProperty("mangacracker.versionName", "1.7.0")
+val appVersionCode = intProperty("mangacracker.versionCode", 11)
 
 // -Pmangacracker.dev=true (CI builds): a separate "MangaCracker Dev" app that installs next to the real one,
 // so a test build never has to replace the real app (and its library). It never checks for app updates.
@@ -44,6 +44,10 @@ android {
         // are dead weight in resources.arsc. Keeping only English removes them
         // without changing anything the app can display.
         resConfigs("en")
+
+        // The character cutout runs ONNX models on the phone; only the 64-bit ARM library is packed (every phone the
+        // app targets), which keeps the other three CPU types' ~40 MB of native code out of the APK.
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     // A personal key kept next to the project (keystore/, git-ignored), so updates install over the old app.
@@ -111,11 +115,14 @@ android {
         // download is the cost a user actually notices, so use the legacy
         // (compressed) packaging mode. Deflate brings the dex to ~2.4 MB.
         dex { useLegacyPackaging = true }
+        // Same for the cutout's ONNX Runtime library (28 MB raw): compressed in the APK (about 9 MB) and unpacked
+        // once at install, so every app update stays a small download.
+        jniLibs { useLegacyPackaging = true }
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true
-        unitTests.all { it.systemProperty("robolectric.graphicsMode", "NATIVE"); it.systemProperty("roborazzi.test.record", "true"); it.maxHeapSize = "3g"; it.systemProperty("sources", (project.findProperty("sources") ?: "").toString()) }
+        unitTests.all { it.systemProperty("robolectric.graphicsMode", "NATIVE"); it.systemProperty("roborazzi.test.record", "true"); it.maxHeapSize = "3g"; it.systemProperty("sources", (project.findProperty("sources") ?: "").toString()); it.systemProperty("cutoutData", (project.findProperty("cutoutData") ?: "").toString()) }
     }
 }
 
@@ -140,6 +147,8 @@ dependencies {
     implementation("org.jsoup:jsoup:1.18.3")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // character cutout: anime-seg + MobileSAM run on the phone (models downloaded on first use)
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.28.0")
     // video player (MP4 / WebM / HLS with AES keys), subtitles, clip export for "Record"
     val media3 = "1.5.1"
     implementation("androidx.media3:media3-exoplayer:$media3")
@@ -150,6 +159,8 @@ dependencies {
     implementation("androidx.media3:media3-effect:$media3")
     implementation("androidx.media3:media3-common:$media3")
     testImplementation("junit:junit:4.13.2")
+    // the cutout test runs the real models on the PC (desktop build of the same ONNX Runtime)
+    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.28.0")
     testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("io.github.takahirom.roborazzi:roborazzi:1.32.2")
     testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.32.2")

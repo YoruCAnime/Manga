@@ -125,6 +125,7 @@ jobs:
             --tests '*AppUpdateTest.versionOrder' \
             --tests '*AiFilterTest.rules' \
             --tests '*TagFilterTest.rules' \
+            --tests '*CutoutTest.rules' \
             --tests '*BackupTest' \
             --tests '*ReaderLogicTest' \
             --tests '*SourceMoveTest' \

@@ -229,6 +229,34 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
   Regression after it: ScreensTest, NewScreensTest, FeatureScreensTest, GifScreensTest, VideoScreensTest, BackupTest,
   ReaderLogicTest, GifAndTagsTest, AiFilterTest (nhentai) all pass; assembleRelease (R8) OK.
 
+- 1.7.0 (2026-11-02):
+  - **Character cutout** (`cutout/`): reader long-press → "Save a cutout of this character" → `ui/CutoutScreen.kt`
+    (Dialog). Pipeline `Cutter`: `Panels.find` (XY cut along flat white / black gutter rows and columns, keeps the
+    piece under the tap; strips without gutters → a 2x-width window), anime-seg isnetis (1024 letterbox) = clean
+    figure outlines, the part under the tap (or nearest within 8 % of the diagonal; a missed tap = that part as it is),
+    MobileSAM (encoder once, decoder per tap) picks WHICH figure: its last ("whole") mask if >= 70 % on the figure,
+    else its confident masks (score >= best - 0.05) on the figure, biggest; IoU >= 0.85 → the anime-seg part alone,
+    else part x (SAM mask grown by 1.5 % of the diagonal). `Bubbles.clean`: paper-white (grey >= 225, chroma < 14)
+    round-ish blobs (>= 80 % of hull) with >= 8 letter marks inside are erased with their outline, pieces < 4 % of
+    the biggest dropped. Add tap = SAM point + the anime-seg part under it (+ SAM's own pixels for props); Remove tap
+    on a light round-ish blob erases it whole, else a SAM negative point. Models (`CutoutModels`, 220 MB, pinned HF
+    revisions + SHA-256, resumable) in filesDir/cutout. ONNX Runtime 1.28.0, arm64-v8a only, native libs compressed
+    (`jniLibs.useLegacyPackaging`): APK 13.5 MB. Study: ~20 pages (B&W doujin, full colour, manhwa) with SAM 2.1
+    tiny / small, MobileSAM and anime-seg compared side by side; SAM alone fails on B&W line art, anime-seg alone
+    can't split touching figures, the mix wins. Busy full-bleed B&W pages (tone backgrounds, no gutters) and
+    silhouettes stay hard: the Add / Remove taps cover them.
+  - Tests: `CutoutTest.rules` (offline, CI) and, with `-PcutoutData=<folder>` (parity/ cases from the study +
+    app_models/), `CutoutTest.models` (the app's pipeline with the real models on the PC via the desktop ONNX Runtime
+    jar: IoU >= 0.98 with the study on 5 pages, ~11 s one thread) and `CutoutScreenTest` (shots 60-63).
+  - **ExHentai sign-in** (`core/ExLogin.kt`, `ui/ExLoginScreen.kt`, route `exlogin`): exhentai.org without login
+    cookies bounces through forums.e-hentai.org/remoteapi.php (Cloudflare-checked), which the old flow hit; now the
+    forum login is copied onto .exhentai.org (a year) before every ExHentai request, the sign-in page opens
+    exhentai.org in the same WebView after the forum login and reads the answer (list = OK and the switch turns on;
+    empty / igneous=mystery = no access; 451 = VPN). Or paste ipb_member_id / ipb_pass_hash / igneous. A login in
+    the phone's browser never reaches the app (separate cookie stores); the Settings card says so.
+  - Reader long-press undoes the strip zoom before finding the page (zoomed in, it used to pick the wrong page) and
+    records where on the page the finger was (two-page spreads included).
+
 ## Rules / facts learnt
 - Chapters are newest first. `chaptersFlow` lets slow sources (comix, 2.5-4.8 s between chapter pages) fill in;
   `latestChapters` = what the update check fetches.

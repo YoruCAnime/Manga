@@ -14,3 +14,6 @@
 # the comix bridge is called from JavaScript by name
 -keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }
 -keep class com.yoruc.mangacracker.sources.ComixBridge$Back { *; }
+
+# ONNX Runtime is reached from its native library by name
+-keep class ai.onnxruntime.** { *; }

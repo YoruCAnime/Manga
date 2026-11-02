@@ -52,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +72,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.yoruc.mangacracker.core.AppUpdate
 import com.yoruc.mangacracker.core.DlState
 import com.yoruc.mangacracker.core.Downloads
+import com.yoruc.mangacracker.core.ExLogin
 import com.yoruc.mangacracker.core.Http
 import com.yoruc.mangacracker.core.LoginKind
 import com.yoruc.mangacracker.core.Repo
@@ -309,24 +311,19 @@ fun SettingsScreen(nav: Nav) {
         item { SectionHeader("Logins & keys") }
         item {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                LoginCard(
-                    "ExHentai",
-                    if (WebCookieJar.get("https://exhentai.org", "ipb_member_id") != null || WebCookieJar.get("https://e-hentai.org", "ipb_member_id") != null)
-                        "Signed in" else "Sign in on the E-Hentai forums to use ExHentai",
-                ) {
+                var ex by remember { mutableStateOf(if (ExLogin.signedIn()) "Signed in to E-Hentai" else "Not signed in. A login in your phone's browser doesn't reach the app: sign in here.") }
+                LaunchedEffect(Unit) { if (ExLogin.signedIn()) ex = ExLogin.check().text }
+                LoginCard("ExHentai", ex) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { nav.web("https://forums.e-hentai.org/index.php?act=Login&CODE=00") }, colors = ButtonDefaults.buttonColors(containerColor = Mc.Blue, contentColor = Mc.Bg)) { Text("Sign in") }
-                        Button(onClick = {
-                            CookieManager.getInstance().apply {
-                                listOf("https://e-hentai.org", "https://exhentai.org", "https://forums.e-hentai.org").forEach { u ->
-                                    getCookie(u)?.split(";")?.forEach { c -> setCookie(u, c.substringBefore("=").trim() + "=; Max-Age=0; Path=/") }
-                                }
-                                flush()
-                            }
-                            Repo.updateSettings { it.copy(useExHentai = false) }
-                        }, colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text)) { Text("Sign out") }
+                        Button(onClick = { nav.exLogin() }, colors = ButtonDefaults.buttonColors(containerColor = Mc.Blue, contentColor = Mc.Bg)) {
+                            Text(if (ExLogin.signedIn()) "Sign-in & check" else "Sign in")
+                        }
+                        if (ExLogin.signedIn()) Button(onClick = { ExLogin.signOut(); ex = "Signed out" },
+                            colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text)) { Text("Sign out") }
                     }
-                    SwitchRow("Use ExHentai instead of E-Hentai", s.useExHentai) { v -> Repo.updateSettings { it.copy(useExHentai = v) } }
+                    SwitchRow("Use ExHentai instead of E-Hentai", s.useExHentai) { v ->
+                        if (v && !ExLogin.signedIn()) nav.exLogin() else Repo.updateSettings { it.copy(useExHentai = v) }
+                    }
                 }
                 LoginCard("Danbooru (optional)", "Your login name and API key lift the 2-tag search limit") {
                     KeyField("Login", s.danbooruUser) { v -> Repo.updateSettings { it.copy(danbooruUser = v.trim()) } }
@@ -431,7 +428,7 @@ fun WebScreen(nav: Nav, url: String) {
                             loading = false; title = view.title ?: u
                             WebCookieJar.flush()
                             // after signing in on the forums, carry the login over to ExHentai
-                            if (u.contains("e-hentai.org")) copyEhLogin()
+                            if (u.contains("e-hentai.org")) ExLogin.carryOver()
                         }
                         override fun onPageStarted(view: WebView, u: String, favicon: android.graphics.Bitmap?) { loading = true }
                     }
@@ -441,14 +438,4 @@ fun WebScreen(nav: Nav, url: String) {
             },
         )
     }
-}
-
-private fun copyEhLogin() {
-    val id = WebCookieJar.get("https://e-hentai.org", "ipb_member_id") ?: WebCookieJar.get("https://forums.e-hentai.org", "ipb_member_id") ?: return
-    val hash = WebCookieJar.get("https://e-hentai.org", "ipb_pass_hash") ?: WebCookieJar.get("https://forums.e-hentai.org", "ipb_pass_hash") ?: return
-    WebCookieJar.set("https://exhentai.org", "ipb_member_id", id, ".exhentai.org")
-    WebCookieJar.set("https://exhentai.org", "ipb_pass_hash", hash, ".exhentai.org")
-    WebCookieJar.set("https://e-hentai.org", "ipb_member_id", id, ".e-hentai.org")
-    WebCookieJar.set("https://e-hentai.org", "ipb_pass_hash", hash, ".e-hentai.org")
-    WebCookieJar.flush()
 }

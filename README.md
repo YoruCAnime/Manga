@@ -27,7 +27,8 @@ Later); Later keeps it under Settings → App updates.
 - **Reader**: one smooth vertical strip (no page turns). It remembers the exact page when you leave and opens
   there again, flows straight into the next chapter, preloads the next pages, pinch or double-tap to zoom, tap for
   the bar (page n of N · %, a page slider, previous / next chapter, save the whole chapter, reader settings:
-  background, page gap, side margin). Long-press a page to save or share it (Pictures/MangaCracker/<title>).
+  background, page gap, side margin). Long-press a page to save or share it (Pictures/MangaCracker/<title>),
+  or to **save a cutout of the character** you pressed on (see below).
   The grid button shows every page: tap one to jump there, hold to pick several and save them at once (galleries
   have the same Gallery button on their title page). Animated GIFs play (Danbooru / Gelbooru animated posts load the
   original moving file).
@@ -45,6 +46,16 @@ Later); Later keeps it under Settings → App updates.
   "Ch. 12/40" with a thin bar, "Reading", or a green "✓ Read" once every chapter is read (a gallery: read to the
   end). **Hide titles I've finished** (Settings → Library, off by default) takes finished titles out of Browse, Home
   and search; Library and History keep them.
+- **Character cutout** (long-press a page → *Save a cutout of this character*): the character under your finger is
+  cut out of its panel and saved as a transparent PNG next to the title's saved pages. It runs on the phone with two
+  picture models, downloaded once the first time (220 MB, best on Wi-Fi):
+  [anime-seg](https://huggingface.co/skytnt/anime-seg) (SkyTNT, Apache-2.0) draws the outline of every character in
+  the panel, and [MobileSAM](https://huggingface.co/Acly/MobileSAM) (Apache-2.0) picks the one you pressed when two
+  touch. Speech bubbles full of text and stray bits are left out by themselves. The window shows the panel with
+  everything that is not kept dimmed: **Add** + a tap brings back a missing part, **Remove** + a tap drops one (a
+  speech bubble goes whole), ↶ undoes, 👁 previews only what Save keeps. Manhwa strips are cut at their panel gaps,
+  so a 20 000 px strip is never handled whole. Works best on clean art; very busy black-and-white pages full of tone
+  may need a few taps.
 - **Videos** (own tab): Hentaigasm, Oppai.stream, MuchoHentai, HentaiMama, NSFW R34, Porcore, SFM Compile and Rule34Video. Latest / Popular, search with genre autocomplete,
   a genre sheet (include / exclude), Continue watching (resumes where you stopped). Tap a **series name ›** (on a
   card, the player's title or in Watched) for the series page: every episode in every language (Raw / English /
@@ -123,7 +134,7 @@ Later); Later keeps it under Settings → App updates.
 | atsu.moe (Atsumaru) | JSON API + its search engine; all filters, author pages, recommendations |
 | comix.to | details / home rows over plain HTTP; search, chapter lists and pages run the site's own scripts in a hidden web view (comix encrypts them). Chapter lists load in steps a few seconds apart (the site blocks fast paging) |
 | nhentai | v2 JSON API (the website is blocked in the UK, the API is not). Low limits: searches are spaced ~6 s apart |
-| E-Hentai / ExHentai | lists and search are blocked in the UK (Online Safety Act) and work on a VPN; galleries open by link (paste a gallery link into the search box) and from the library. ExHentai: sign in under Settings, then switch it on |
+| E-Hentai / ExHentai | lists and search are blocked in the UK (Online Safety Act) and work on a VPN; galleries open by link (paste a gallery link into the search box) and from the library. ExHentai: Settings → Logins → ExHentai → **Sign in** (inside the app: a login in your phone's browser never reaches the app). After the E-Hentai login the app opens ExHentai once and checks it really works, then switches it on; or paste the `ipb_member_id` / `ipb_pass_hash` / `igneous` cookies from a browser where ExHentai opens. A blank ExHentai page means the account has no ExHentai access yet; a block in the UK needs a VPN |
 | Danbooru | pictures and comic pools; 2 tags per search without a login (add your key in Settings for more) |
 | Gelbooru | pictures through its web pages (no key needed) |
 | hitomi.la | its data server (the website itself answers "not found" in the UK; its gallery files and pictures do not); lists, popular today / week / month / year, word and tag search (include / exclude), tag suggestions with counts |

@@ -43,6 +43,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ContentCut
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Pause
@@ -289,6 +290,9 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
     var overlay by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var pageMenu by remember { mutableStateOf<ReaderItem.PageItem?>(null) }
+    /** where on that page the long-press was (0..1 of its width / height), for the character cutout */
+    var pageTap by remember { mutableStateOf(Offset(0.5f, 0.5f)) }
+    var cutout by remember { mutableStateOf<CutoutRequest?>(null) }
     var savingAll by remember { mutableStateOf<String?>(null) }
     var showGrid by rememberSaveable { mutableStateOf(openGrid) }
 
@@ -407,7 +411,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
             val now = withFrameNanos { it }
             val dt = if (last == 0L) 0f else ((now - last) / 1e9f).coerceIn(0f, 0.1f)
             last = now
-            if (touching || list.isScrollInProgress || System.currentTimeMillis() - releasedAt < 1200 || showGrid || showSettings || pageMenu != null) continue
+            if (touching || list.isScrollInProgress || System.currentTimeMillis() - releasedAt < 1200 || showGrid || showSettings || pageMenu != null || cutout != null) continue
             if (!list.canScrollForward) {
                 // the next chapter is on its way: wait for it; the real end: stop
                 val end = vm.items.lastOrNull() as? ReaderItem.Footer
@@ -457,12 +461,31 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                         else { pivot = TransformOrigin(o.x / boxSize.width, o.y / boxSize.height); scale = 2f }
                     },
                     onLongPress = { o ->
-                        val y = o.y
+                        // undo the zoom: the strip is drawn scaled around the pivot and shifted sideways
+                        val pvx = pivot.pivotFractionX * boxSize.width; val pvy = pivot.pivotFractionY * boxSize.height
+                        val x = pvx + (o.x - pvx - panX) / scale
+                        val y = pvy + (o.y - pvy) / scale
                         val hit = list.layoutInfo.visibleItemsInfo.firstOrNull { y >= it.offset && y < it.offset + it.size }
                         val line = hit?.let { rows.getOrNull(it.index) }.orEmpty().filterIsInstance<ReaderItem.PageItem>()
-                        // two pages side by side: the one under the finger
-                        val onScreen = if (twoPageNow) screenOrder(line, settings.readerRtl) else line
-                        (if (onScreen.size == 2) onScreen[if (o.x < boxSize.width / 2f) 0 else 1] else onScreen.firstOrNull())?.let { pageMenu = it }
+                        if (hit != null && line.isNotEmpty()) {
+                            val pad = with(density) { settings.readerSidePaddingDp.dp.toPx() }
+                            val inner = boxSize.width - 2 * pad
+                            val fy = ((y - hit.offset) / hit.size.toFloat()).coerceIn(0f, 1f)
+                            if (!twoPageNow) {
+                                pageMenu = line.first(); pageTap = Offset(((x - pad) / inner).coerceIn(0f, 1f), fy)
+                            } else {
+                                // two pages side by side (or one, centred): each as wide as the row height x its shape
+                                val shown = screenOrder(line, settings.readerRtl)
+                                val widths = shown.map { hit.size * (vm.ratioOf(it.page)?.takeIf { r -> r > 0f } ?: 0.7f) }
+                                val k = (inner / widths.sum()).coerceAtMost(1f)
+                                var left = pad + (inner - widths.sum() * k) / 2f
+                                val i = widths.indices.firstOrNull { j -> x < left + widths.take(j + 1).sum() * k } ?: shown.lastIndex
+                                left += widths.take(i).sum() * k
+                                pageMenu = shown[i]
+                                val top = hit.offset + (hit.size - hit.size * k) / 2f
+                                pageTap = Offset(((x - left) / (widths[i] * k)).coerceIn(0f, 1f), ((y - top) / (hit.size * k)).coerceIn(0f, 1f))
+                            }
+                        }
                     },
                 )
             }
@@ -658,6 +681,15 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                             .onFailure { Toast.makeText(ctx, "Couldn't save: ${it.message}", Toast.LENGTH_SHORT).show() }
                     }
                 }
+                SheetAction(Icons.Rounded.ContentCut, "Save a cutout of this character") {
+                    pageMenu = null
+                    val tap = pageTap
+                    scope.launch {
+                        runCatching { vm.urlOf(p.page) }
+                            .onSuccess { cutout = CutoutRequest(it, tap.x, tap.y, ref.title, "${p.chapter.name} - %03d cutout".format(p.page.index + 1)) }
+                            .onFailure { Toast.makeText(ctx, "Couldn't load the page", Toast.LENGTH_SHORT).show() }
+                    }
+                }
                 SheetAction(Icons.Rounded.Share, "Share image") {
                     pageMenu = null
                     scope.launch { runCatching { ImageSaver.share(ctx, vm.urlOf(p.page)) }.onFailure { Toast.makeText(ctx, "Couldn't share", Toast.LENGTH_SHORT).show() } }
@@ -666,6 +698,8 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
             }
         }
     }
+
+    cutout?.let { r -> CutoutScreen(r) { cutout = null } }
 
     if (showSettings) {
         ModalBottomSheet(onDismissRequest = { showSettings = false }, containerColor = Mc.Card) {

@@ -89,6 +89,7 @@ class Nav(val c: NavHostController) {
     fun history() = c.navigate("history")
     fun settings() = c.navigate("settings")
     fun sourceTest() = c.navigate("sourcetest")
+    fun exLogin() = c.navigate("exlogin") { launchSingleTop = true }
     fun tab(route: String) = c.navigate(route) {
         popUpTo(c.graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
@@ -175,6 +176,7 @@ fun AppRoot(open: String?) {
                 composable("history") { HistoryScreen(nav) }
                 composable("settings") { SettingsScreen(nav) }
                 composable("sourcetest") { SourceTestScreen(nav) }
+                composable("exlogin") { ExLoginScreen(nav) }
                 composable("browse/{source}?search={search}") { b ->
                     BrowseScreen(nav, b.arguments?.getString("source") ?: "", b.arguments?.getString("search") == "1")
                 }
