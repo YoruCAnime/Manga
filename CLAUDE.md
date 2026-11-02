@@ -86,6 +86,41 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
   only some tags; untestable here: lists are 451 in the UK). Recommender: AI tags never become taste, "more like this"
   skips AI titles read, `cached()` filters again. `RecommendAiTest` (4 AI favourites on nhentai -> 41 recs, 0 AI).
 
+- Player controls + GIF maker (2026-11-02, not released yet). Controls: nothing in the middle of the picture any more;
+  bottom = a button row (prev / -1s / +1s / next ... Snapshot, Record, GIF, speed, Rotate; labels hidden under 560 dp)
+  and play / pause beside the seek bar. `ui/SeekBar.kt`: 48 dp touch strip, slim track, touch anywhere = jump + drag,
+  thumb grows, time bubble; while dragging the player is paused and seeks CLOSEST_SYNC every 120 ms, release = EXACT
+  seek (+ play again if it was playing). Controls / panel use `safePad` (safeDrawing: cutout + bars). In-window notes
+  (`toast()` in PlayerScreen) for the GIF flow, no system toasts there.
+  GIF: `ui/GifPanel.kt` (GifEdit state, range bar, thumbs from `TextureView.getBitmap`, speed / ping-pong / size chips,
+  progress, result with Coil + Save / Share / Change); capture = `gifStart` (30 s cap), range max 10 s.
+  `video/GifClip.kt`: `ClipSaver.cut(forGif = true)` (Transformer, video only, <= 720p via Presentation, 16 Mb/s,
+  key frame every 0.5 s, same playerClient + beforePlay) -> MediaMetadataRetriever.getFramesAtIndex in chunks of 8
+  (60 fps halved) -> Lanczos to 640 long side -> `gif/FileFrames` (cache file, 3 B/px) -> `GifMaker` -> cache/gif;
+  `ClipSaver.saveGif` (Pictures/MangaCracker/GIFs), `shareGif` (FileProvider share/). Temp files go on close.
+  Pure Kotlin in `gif/` (JVM-testable): `GifWriter` (GIF89a, LZW, loop), `Palette` (5-bit histogram, variance split +
+  k-means, 7-bit lazy LUT; plain RGB beat OKLab by 1-5 dB here), `GifMaker` (timeline: fast = even frame picks,
+  slow = in-betweens between KEY frames (anime holds deduped, so "on twos" slows smoothly); ping-pong without repeated
+  ends; delays by cumulative rounding (30 fps = 3,4,3 cs); pattern dither only between two CLOSE palette colours
+  (flat areas and edges untouched, no shimmer); `FrameWriter`: changed-rect crop, unchanged (within threshold 6, then
+  10) = transparent, no-change frames merged; auto-fit: threshold 10 -> 160 colours -> long side to 3/4 -> fps to 15 ->
+  smaller -> 10 fps; a threshold-only retry reuses the quantized frames), `Motion` (hierarchical block matching
+  4 px cells / 8 px blocks on a 3-level pyramid of a ~240 px luma plane, smoothness bias, median filter, sub-pixel;
+  both directions; per pixel the better of the 2 vectors, Catmull-Rom warp, blend ONLY where the moved frames agree,
+  else the nearer frame's moved pixel; > 30 % mismatch or a cut (block error / luma histogram) = nearest real frame),
+  `Resample` (Lanczos-3), `Par` (row bands on <= 4 low-priority threads).
+  Tests: `GifEngineTest` (writer vs ffmpeg decode, timing, in-betweens vs real frames, dither / threshold sweep,
+  vs ffmpeg palettegen recipes, speed, make every size), frames from `GifSampleTest -Psources=gifsample` +
+  `_dev_tools\gif_frames.py`; `GifScreensTest` (landscape shots 50-58, PlayerTestHooks = fake clock / GIF job).
+  Measured (PC, 480 px): our GIF vs ffmpeg's best (palettegen diff + paletteuse dither=none): anime talk 2.59 MB /
+  40.2 dB vs 2.91 MB / 38.6 dB, anime action 6.12 / 39.4 vs 7.16 / 39.0, 3D 3.22 / 40.7 vs 5.83 / 42.8 (gradient
+  dither adds ~20 % and removes visible banding). In-betweens vs the dropped real frame: pan 33.4 dB (blend 25.1),
+  3D 41.3 (blend 33.7), testsrc 25.7 (24.9); anime with random speed lines 21.0 (blend 22.0, but sharp, no ghosts).
+  Speed (PC JVM, 1 thread, 480 x 270): resize 7 ms, quantize 2, LZW 2, flow both ways 11, warp 15 per in-between;
+  whole make (2 threads): 1x Small 0.5-3 s, 0.5x Small 5-16 s, 0.25x Small 15-29 s (guess a phone at 2-4x that).
+  Not checked without a phone: Transformer cut + MMR decoding of real streams, MediaStore save, share, real speed,
+  the Coil preview of the finished GIF (black under Robolectric).
+
 ## Rules / facts learnt
 - Chapters are newest first. `chaptersFlow` lets slow sources (comix, 2.5-4.8 s between chapter pages) fill in;
   `latestChapters` = what the update check fetches.

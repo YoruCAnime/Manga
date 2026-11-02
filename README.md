@@ -36,11 +36,25 @@ Later); Later keeps it under Settings → App updates.
   card, the player's title or in Watched) for the series page: every episode in every language (Raw / English /
   Español / previews) with language filters. Long-press a video to add it to your favourites. covers that fall back to other
   sizes / the same series when a site refuses a picture. The player opens in landscape (forced: works with
-  auto-rotate locked; Rotate switches to portrait and back), controls hide after 3 s, tap to show them:
-  −1s / +1s buttons, double-tap the left / right side to step 1 s (taps stack), double-tap the middle to pause, hold
+  auto-rotate locked; Rotate switches to portrait and back), controls hide after 3 s, tap to show them. All the
+  controls sit along the bottom, nothing over the middle of the picture: play / pause right next to the seek bar,
+  and above it previous / next episode, −1s / +1s, Snapshot, Record, GIF, speed and Rotate (they stay clear of the
+  camera notch). The seek bar is easy to hit: touch anywhere on it to jump there and keep sliding; while you slide
+  the dot grows, a time bubble rides above your finger and the picture follows (it plays on from there when you
+  let go). Double-tap the left / right side to step 1 s (taps stack), double-tap the middle to pause, hold
   anywhere for 2×, speeds 0.25× to 3×, previous / next episode of the same series (and "Up next" at the end),
   subtitles on / off, quality (MuchoHentai), **Snapshot** (the current frame to Pictures/MangaCracker/Snapshots) and
   **Record** (tap to start, tap to stop: that part is saved as an MP4 clip to Movies/MangaCracker).
+- **GIF maker** (the GIF button in the player): tap GIF to start capturing (red dot + timer, up to 30 s), tap again
+  to stop. A panel opens at the bottom of the player (no pop-up): drag the two handles to pick the part you want
+  (up to 10 s; the video behind shows the frame under the handle, small pictures show the start and the end), pick
+  a speed (0.25× to 2×: slow motion makes real in-between frames from the motion, so it stays smooth and sharp, no
+  blurry cross-fades; fast skips frames), **Ping-pong** (plays forward then back, looping) and a size (**Tiny** up
+  to 2 MB, **Small** up to 5 MB, the default, **Big** up to 10 MB), then **Make GIF**. It shows its progress, then
+  the GIF playing with its size in MB, picture size and length: **Save** (Pictures/MangaCracker/GIFs), **Share** or
+  **Change** to try other settings. The GIF always fits the size you picked: if it would be bigger the app makes it
+  a bit smaller or lowers the frame rate, keeping it as sharp as it can. Long slow-motion GIFs come out smaller /
+  choppier, so pick a short part for 0.25×.
 - **Updates**: new chapters grouped by day; checked in the background (every 6 h by default, Settings) with a
   notification.
 - **Settings**: app updates (check now, install, what's new, automatic check on / off), update interval, covers per
@@ -99,6 +113,10 @@ uses the debug key. Checks:
 - `AppUpdateTest` (GitHub release check, download, installer hand-off, pop-up shots), `GifAndTagsTest` (animated
   posts give real GIFs, autocomplete on every source). `python _dev_tools\run_tests.py <Test> ...` runs tests and
   prints only results.
+- `GifEngineTest` (the GIF maker on the PC: writer checked against ffmpeg's decoder, slow-motion in-betweens
+  against the real frames, sizes / quality against ffmpeg's GIF recipes; the measuring parts need frames made with
+  ffmpeg in `_dev_tools\out\gif\frames`), `GifScreensTest` (the player's bottom controls, the seek bar and the GIF
+  panel in landscape).
 
 Releasing: bump `versionCode` / `versionName` in `app/build.gradle.kts`, build, then
 `gh release create v<version> MangaCracker-<version>.apk --repo YoruCAnime/Manga --title "MangaCracker <version>" --notes-file NOTES.md`.
