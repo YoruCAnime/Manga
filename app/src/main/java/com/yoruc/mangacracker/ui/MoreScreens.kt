@@ -303,6 +303,9 @@ fun SettingsScreen(nav: Nav) {
         item {
             Column(Modifier.padding(horizontal = 16.dp)) {
                 Text("Titles with these tags never show up. Titles involving minors are always hidden.", color = Mc.Text3, fontSize = 12.5.sp)
+                SwitchRow("Hide AI-generated", s.hideAi, sub = "Manga and pictures (not videos) whose title says \"AI generated\" (or [AI]) or that have an AI tag") { v ->
+                    Repo.updateSettings { it.copy(hideAi = v) }
+                }
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TextField(

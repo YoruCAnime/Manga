@@ -65,7 +65,8 @@ object HentaiFoxSource : Source {
         return MangaRef(
             source = id, id = gid, title = a.text(),
             cover = if (cover.startsWith("http")) cover else "",
-            tags = ids.map { "hf:$it" },
+            // 3298 = "ai generated" (lists only carry tag ids; the name lets Safety's AI switch see it)
+            tags = ids.map { "hf:$it" } + (if ("3298" in ids) listOf("ai generated") else emptyList()),
             subtitle = t.selectFirst(".g_cat")?.text().orEmpty(),
         )
     }

@@ -6,6 +6,7 @@ import com.yoruc.mangacracker.core.MangaDetails
 import com.yoruc.mangacracker.core.MangaRef
 import com.yoruc.mangacracker.core.Page
 import com.yoruc.mangacracker.core.PageResult
+import com.yoruc.mangacracker.core.Safety
 import com.yoruc.mangacracker.core.SearchQuery
 import com.yoruc.mangacracker.core.SelectDef
 import com.yoruc.mangacracker.core.Source
@@ -37,6 +38,9 @@ object AtsuSource : Source {
     /** Minor-related tag ids, excluded from every query. */
     private val HIDDEN = listOf("28", "35", "1769", "1770", "3255", "6205", "6711", "3992", "4006", "5178", "6121", "5516",
         "6779", "2190", "4731", "4075", "4455", "3636", "6608")
+
+    /** Excluded from every list / search: [HIDDEN], plus "AI Generated" (1061) while Settings hides AI. */
+    private val excluded get() = if (Safety.hideAi) HIDDEN + "1061" else HIDDEN
 
     init { Http.rateLimits["atsu.moe"] = 450L }
 
@@ -82,7 +86,7 @@ object AtsuSource : Source {
     private suspend fun home(rowName: String, page: Int, extra: String = ""): PageResult {
         val limit = 40
         val url = "$baseUrl/api/home2/$rowName?offset=${(page - 1) * limit}&limit=$limit&types=Manga,Manwha,Manhua,OEL&mediums=Comic" +
-            "&excludedTags=${HIDDEN.joinToString(",")}$extra"
+            "&excludedTags=${excluded.joinToString(",")}$extra"
         val items = Http.getJson(url)["items"].arr
         return PageResult(items.mapNotNull { row(it) }, items.size >= limit)
     }
@@ -105,7 +109,7 @@ object AtsuSource : Source {
             f += "${if (kind == "g") "genreIds" else "tagIds"}:=`$v`"
         }
         val exG = query.exclude.map { split(it.id) }.filter { it.first == "g" }.map { it.second }
-        val exT = query.exclude.map { split(it.id) }.filter { it.first != "g" }.map { it.second } + HIDDEN
+        val exT = query.exclude.map { split(it.id) }.filter { it.first != "g" }.map { it.second } + excluded
         if (exG.isNotEmpty()) f += "genreIds:!=[${exG.joinToString(",") { "`$it`" }}]"
         f += "tagIds:!=[${exT.joinToString(",") { "`$it`" }}]"
         query.selects["type"]?.takeIf { it.isNotEmpty() }?.let { f += "type:=[`$it`]" }

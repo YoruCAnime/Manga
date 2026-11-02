@@ -94,7 +94,8 @@ object NhentaiSource : Source {
             source = id, id = j.str("id"),
             title = j.str("english_title").ifEmpty { j.str("japanese_title") },
             cover = thumb(j.str("thumbnail")),
-            tags = tagIds.map { "nh:$it" },
+            // 145703 = "ai generated" (lists only carry tag ids; the name lets Safety's AI switch see it)
+            tags = tagIds.map { "nh:$it" } + (if ("145703" in tagIds) listOf("ai generated") else emptyList()),
             subtitle = "${j.int("num_pages")} pages",
         )
     }

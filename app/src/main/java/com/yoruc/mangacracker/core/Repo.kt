@@ -89,6 +89,8 @@ data class Settings(
     val dismissedAppVersion: String = "",
     /** Background check: one notification per version. */
     val notifiedAppVersion: String = "",
+    /** Hide manga / pictures marked AI-generated (title words or AI tags); videos are not filtered. */
+    val hideAi: Boolean = true,
     /** Videos tab: the source picked last; player subtitles on / off. */
     val lastVideoSource: String = "",
     val videoSubtitles: Boolean = true,
@@ -130,6 +132,7 @@ object Repo {
         _updates.value = load("updates.json", updSer) ?: emptyList()
         _settings.value = load("settings.json", Settings.serializer()) ?: Settings()
         Safety.userHidden = _settings.value.hiddenTags.map { Safety.norm(it) }.toSet()
+        Safety.hideAi = _settings.value.hideAi
         (_library.value.values.map { it.ref } + _history.value.values.map { it.ref }).forEach { refs[it.key] = it }
     }
 
@@ -279,6 +282,7 @@ object Repo {
     fun updateSettings(f: (Settings) -> Settings) {
         _settings.update(f)
         Safety.userHidden = _settings.value.hiddenTags.map { Safety.norm(it) }.toSet()
+        Safety.hideAi = _settings.value.hideAi
         saveSettings()
     }
 }
