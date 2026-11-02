@@ -7,6 +7,20 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// Version numbers live in gradle.properties so a local build and CI report the
+// same thing. CI passes -Pmangacracker.versionName / -Pmangacracker.versionCode
+// so the tag, the APK's BuildConfig and the release cannot disagree.
+fun stringProperty(name: String, fallback: String): String =
+    providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() } ?: fallback
+
+fun intProperty(name: String, fallback: Int): Int {
+    val raw = providers.gradleProperty(name).orNull ?: return fallback
+    return raw.toIntOrNull() ?: throw GradleException("$name must be an integer (got '$raw')")
+}
+
+val appVersionName = stringProperty("mangacracker.versionName", "1.5.1")
+val appVersionCode = intProperty("mangacracker.versionCode", 7)
+
 android {
     namespace = "com.yoruc.mangacracker"
     compileSdk = 35
@@ -15,21 +29,33 @@ android {
         applicationId = "com.yoruc.mangacracker"
         minSdk = 29
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.5.1"
+        versionCode = appVersionCode
+        versionName = appVersionName
     }
 
     // A personal key kept next to the project (keystore/, git-ignored), so updates install over the old app.
-    // keystore/keystore.properties holds storePassword / keyAlias / keyPassword. Without it, builds use the debug key.
+    // keystore/keystore.properties holds storePassword / keyAlias / keyPassword. CI supplies the same values
+    // through MANGA_* environment variables, so key material never has to be written into the repository.
     val keyProps = Properties()
     rootProject.file("keystore/keystore.properties").takeIf { it.exists() }?.inputStream()?.use { keyProps.load(it) }
-    val hasKey = keyProps.isNotEmpty() && rootProject.file("keystore/mangacracker.jks").exists()
+
+    fun secret(env: String, key: String): String? =
+        (System.getenv(env) ?: keyProps.getProperty(key))?.takeIf { it.isNotBlank() }
+
+    val keyStoreFile = System.getenv("MANGA_KEYSTORE")?.let { rootProject.file(it) }
+        ?: rootProject.file("keystore/mangacracker.jks")
+    val storePasswordValue = secret("MANGA_STORE_PASSWORD", "storePassword")
+    val keyAliasValue = secret("MANGA_KEY_ALIAS", "keyAlias")
+    val keyPasswordValue = secret("MANGA_KEY_PASSWORD", "keyPassword")
+    val hasKey = keyStoreFile.exists() &&
+        storePasswordValue != null && keyAliasValue != null && keyPasswordValue != null
+
     signingConfigs {
         if (hasKey) create("personal") {
-            storeFile = rootProject.file("keystore/mangacracker.jks")
-            storePassword = keyProps.getProperty("storePassword")
-            keyAlias = keyProps.getProperty("keyAlias")
-            keyPassword = keyProps.getProperty("keyPassword")
+            storeFile = keyStoreFile
+            storePassword = storePasswordValue
+            keyAlias = keyAliasValue
+            keyPassword = keyPasswordValue
         }
     }
 
