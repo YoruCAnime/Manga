@@ -36,8 +36,17 @@ data class VideoRef(
 
 data class VideoSub(val url: String, val lang: String, val label: String)
 
-/** What the player needs. [kind]: "mp4", "webm" or "hls". */
-data class VideoStream(val url: String, val kind: String, val subs: List<VideoSub> = emptyList())
+/**
+ * What the player needs. [kind]: "mp4", "webm" or "hls". [local] = the video key when this is a download on the phone
+ * (see VideoDownloads); [streamKeys] = (group, index) of the HLS variant / audio that was downloaded.
+ */
+data class VideoStream(
+    val url: String,
+    val kind: String,
+    val subs: List<VideoSub> = emptyList(),
+    val local: String = "",
+    val streamKeys: List<Pair<Int, Int>> = emptyList(),
+)
 
 data class VideoDetails(
     val ref: VideoRef,

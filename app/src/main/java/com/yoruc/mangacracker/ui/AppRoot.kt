@@ -8,6 +8,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CollectionsBookmark
@@ -83,6 +84,8 @@ class Nav(val c: NavHostController) {
         com.yoruc.mangacracker.video.VideoRepo.remember(v)
         c.navigate("vseries/${Uri.encode(v.key)}") { launchSingleTop = true }
     }
+    fun otherSites(key: String) = c.navigate("othersites/${Uri.encode(key)}") { launchSingleTop = true }
+    fun downloads() = c.navigate("downloads") { launchSingleTop = true }
     fun history() = c.navigate("history")
     fun settings() = c.navigate("settings")
     fun sourceTest() = c.navigate("sourcetest")
@@ -108,7 +111,10 @@ fun AppRoot(open: String?) {
     val settings by Repo.settings.collectAsState()
     var updateAsked by remember { mutableStateOf(open == "appupdate") }
 
-    LaunchedEffect(open) { if (open == "updates") nav.tab("updates") }
+    LaunchedEffect(open) {
+        if (open == "updates") nav.tab("updates")
+        if (open == "downloads") { nav.tab("more"); nav.downloads() }
+    }
     LaunchedEffect(Unit) { if (settings.autoAppUpdates) AppUpdate.check() }
 
     // the update pop-up: on the main tabs only (never over the reader), once per version unless opened from the notification
@@ -178,7 +184,11 @@ fun AppRoot(open: String?) {
                     ReaderScreen(nav, b.arguments?.getString("key") ?: "", b.arguments?.getString("chapter") ?: "", b.arguments?.getString("grid") == "1")
                 }
                 composable("web?url={url}") { b -> WebScreen(nav, b.arguments?.getString("url") ?: "") }
+                composable("othersites/{key}") { b -> OtherSitesScreen(nav, b.arguments?.getString("key") ?: "") }
+                composable("downloads") { DownloadsScreen(nav) }
             }
+            // in-window notes (Undo etc.), above the bottom bar
+            NoteHost(Modifier.align(androidx.compose.ui.Alignment.BottomCenter).then(if (showBar) Modifier else Modifier.navigationBarsPadding()))
         }
     }
 }

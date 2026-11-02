@@ -124,6 +124,10 @@ jobs:
           ./gradlew :app:testDebugUnitTest \
             --tests '*AppUpdateTest.versionOrder' \
             --tests '*AiFilterTest.rules' \
+            --tests '*BackupTest' \
+            --tests '*ReaderLogicTest' \
+            --tests '*SourceMoveTest' \
+            --tests '*DownloadLogicTest' \
             --console=plain --stacktrace
 
   build:

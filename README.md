@@ -16,7 +16,7 @@ Later); Later keeps it under Settings → App updates.
   and a Popular row for every source. Pull down to check for new chapters.
 - **Library** has three shelves: **Manga**, **Fav videos** (♥ in the player, or long-press any video) and
   **Watched** (every video you started, newest first, with % and time left; tap to resume, ✕ to remove, the bin
-  clears the list). **Manga**: your favourites (tap ♥ on a title). Search by title / author / genre, sort, filter by source,
+  clears the list after a Clear / Keep row at the top). **Manga**: your favourites (tap ♥ on a title). Search by title / author / genre, sort, filter by source,
   "N new" badges, a reading bar on each cover. Long-press a cover to jump straight back into it.
 - **Browse**: every source, Popular / Latest, search, and a filter sheet: sort, type, status, author / artist, and
   genres / tags (tap once to include ✓, twice to exclude ✕, as many as you like). "Search every source" at the top.
@@ -72,7 +72,7 @@ Later); Later keeps it under Settings → App updates.
 - **Updates**: new chapters grouped by day; checked in the background (every 6 h by default, Settings) with a
   notification.
 - **Settings**: app updates (check now, install, what's new, automatic check on / off), update interval, covers per
-  row, Hide titles I've finished, reader options, switch sources on / off, ExHentai sign-in, Danbooru key, hidden
+  row, Hide titles I've finished, reader options, downloads (Wi-Fi only, delete after reading, video size), switch sources on / off, ExHentai sign-in, Danbooru key, hidden
   tags, Hide AI-generated, backup & restore, clear the picture cache.
 - **Backup & restore** (Settings): **Back up now** writes one file, `MangaCracker-backup-<date>.json`, to
   Download/MangaCracker; **Save to…** lets you pick the place (Drive, a folder...). It holds your library, history,
@@ -88,6 +88,32 @@ Later); Later keeps it under Settings → App updates.
   check (Cloudflare: open the site once from Browse) or Broken, with a short reason and the time it took. Cancel
   stops it.
 - **Recommended** uses the manga / doujin sources only (no image boards).
+- **Other sites** (button on a title page): the title (and its other names) is looked up on every other switched-on
+  manga site. Each site gets a box: the matches with cover, chapter count, latest chapter and how close the title is
+  ("100% match"), or why there is nothing ("Not found", **Needs VPN**, "Browser check", "Not working"). Tap a match to
+  open it there. **Move here** (for titles in your library or history) moves your library entry, history and read
+  chapters to that site: chapters are matched by number (chapter 12 read here = chapter 12 read there, 10.5 stays
+  10.5, "Extra" chapters only by the same name), the chapter you were in carries over at the same place, and the
+  library keeps the date you added it. A note at the bottom says how many chapters were marked read (and how many
+  that site doesn't have), with **Undo** for a few seconds. When a library title's site is switched off, not working
+  or gone from the app, its page shows **Find on other sites** at the top.
+- **Downloads** (read and watch with no connection):
+  - Manga: on a title page **Download** → *Next 5 chapters* (from where you are), *All unread* or *All chapters*;
+    a gallery has one Download button; long-press a chapter → *Download* for just that one. Chapters with a green ↓
+    are on the phone, a chapter in the queue shows its pages ("↓ 12/40"), covers in grids get a small ↓ badge. The
+    reader opens downloaded chapters from the phone (no data used, works offline) and the rest from the site as
+    before; with no connection the title page shows the saved chapters.
+  - Videos: the ↓ button at the top of the player. MP4 videos are saved as the file; HLS streams (MuchoHentai,
+    Porcore...) are saved in the size picked in Settings → Downloads (720p by default). Downloaded videos play from
+    the phone in the same player (Snapshot, Record and GIF still work).
+  - **More → Downloads**: space used and free, the queue (pause / resume / cancel each one, pause or resume all;
+    failed ones say why and retry with one tap), downloaded titles with size (tap to see the chapters, ✕ deletes a
+    chapter, the bin deletes the whole title: tap it twice), downloaded videos (tap to play, bin to delete).
+    **Wi-Fi only** (on by default: the queue waits for Wi-Fi) and **Delete chapters after reading** (off) are there and
+    in Settings → Downloads. A notification shows the progress while it downloads.
+  - Downloads stay inside the app (not in your gallery). Nothing starts when the phone is nearly full (it says how
+    much space is left) and a running queue pauses itself. Titles and videos hidden by the safety filter are never
+    downloaded. A failed page or file is tried again a few times, waiting longer each time.
 
 ## Sources
 
@@ -148,6 +174,11 @@ uses the debug key. Checks:
 - `BackupTest` (backup round trip, merge, bad / old / newer files, weekly files), `ReaderLogicTest` (two-page pairing,
   read badges, hide finished), `FeatureScreensTest` (badges, backup panel, auto-scroll, night filter, and "Test
   sources" run live against every site), `TwoPageShotTest` (the two-page view in landscape).
+- `SourceMoveTest` (title matching, chapter-number mapping, move + undo) and `DownloadLogicTest` (download queue
+  rules, files on disk, offline lookup, sizes) run with no network; `DownloadLiveTest` (real downloads from a few
+  sites read back with the network blocked, the "Other sites" table, an MP4 and an HLS video checked offline;
+  `-Psources=` picks the sites) and `DownloadScreensTest` (Other sites, move + Undo, downloads, the offline reader,
+  shots 80-89) use the real sites.
 
 Releasing: bump `versionCode` / `versionName` in `app/build.gradle.kts`, build, then
 `gh release create v<version> MangaCracker-<version>.apk --repo YoruCAnime/Manga --title "MangaCracker <version>" --notes-file NOTES.md`.

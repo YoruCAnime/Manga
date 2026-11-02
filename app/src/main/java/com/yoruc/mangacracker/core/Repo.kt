@@ -110,6 +110,10 @@ data class Settings(
     /** Videos tab: the source picked last; player subtitles on / off. */
     val lastVideoSource: String = "",
     val videoSubtitles: Boolean = true,
+    /** Offline downloads: only on Wi-Fi (unmetered); delete a downloaded chapter once it is read; HLS video height. */
+    val downloadWifiOnly: Boolean = true,
+    val deleteAfterReading: Boolean = false,
+    val videoDownloadHeight: Int = 720,
 )
 
 object Repo {
@@ -252,6 +256,80 @@ object Repo {
     }
 
     fun clearUpdates() { _updates.value = emptyList(); saveUpdates() }
+
+    // ---------- moving a title to another site ----------
+
+    /** Everything a move touched, as it was before (for Undo). */
+    data class MoveUndo(
+        val oldKey: String,
+        val newKey: String,
+        val library: Map<String, LibraryEntry?>,
+        val history: Map<String, HistoryEntry?>,
+        val progress: Map<String, ReadState>,
+        val updates: List<UpdateItem>,
+    )
+
+    /**
+     * Moves the library entry, history and read marks of [oldKey] to [newRef] (the same title on another site).
+     * Read marks are carried by chapter number ([SourceMatch.carry]); the library entry keeps its added date.
+     */
+    fun moveTitle(oldKey: String, newRef: MangaRef, details: MangaDetails?, newChapters: List<Chapter>, carry: SourceMatch.Carry): MoveUndo {
+        val newKey = newRef.key
+        val undo = MoveUndo(
+            oldKey, newKey,
+            library = mapOf(oldKey to _library.value[oldKey], newKey to _library.value[newKey]),
+            history = mapOf(oldKey to _history.value[oldKey], newKey to _history.value[newKey]),
+            progress = _progress.value.filterKeys { it.startsWith("$oldKey#") || it.startsWith("$newKey#") },
+            updates = _updates.value.filter { it.ref.key == oldKey || it.ref.key == newKey },
+        )
+        val now = System.currentTimeMillis()
+        val old = _library.value[oldKey]
+        if (old != null) {
+            val existing = _library.value[newKey]
+            _library.update {
+                it - oldKey + (newKey to LibraryEntry(
+                    ref = newRef.copy(cover = details?.ref?.cover?.ifEmpty { null } ?: newRef.cover.ifEmpty { old.ref.cover }),
+                    added = minOf(old.added, existing?.added ?: Long.MAX_VALUE),
+                    genres = details?.genres?.ifEmpty { null } ?: old.genres,
+                    authors = details?.let { d -> (d.authors + d.artists).distinct() }?.ifEmpty { null } ?: old.authors,
+                    knownChapters = newChapters.map { c -> c.id },
+                    chapterCount = newChapters.size,
+                    latestChapter = newChapters.maxByOrNull { c -> c.number }?.name.orEmpty(),
+                    lastChecked = now,
+                    lastUpdate = old.lastUpdate,
+                ))
+            }
+        }
+        _progress.update { m ->
+            val n = m.filterKeys { !it.startsWith("$oldKey#") }.toMutableMap()
+            carry.progress.forEach { (id, st) ->
+                val k = pkey(newKey, id)
+                // a mark the new title already had wins when it is further on
+                val mine = n[k]
+                if (mine == null || (!mine.read && (st.read || st.page > mine.page))) n[k] = st
+            }
+            n
+        }
+        _history.update { h ->
+            val moved = carry.history
+            val mine = h[newKey]
+            val keep = if (moved != null && (mine == null || moved.time >= mine.time)) moved else mine
+            (h - oldKey - newKey).let { if (keep != null) it + (newKey to keep) else it }
+        }
+        _updates.update { list -> list.filterNot { it.ref.key == oldKey } }
+        remember(newRef)
+        saveLibrary(); saveHistory(); saveProgress(); saveUpdates()
+        return undo
+    }
+
+    /** Puts back what [moveTitle] changed. */
+    fun undoMove(u: MoveUndo) {
+        _library.update { m -> u.library.entries.fold(m) { acc, (k, v) -> if (v == null) acc - k else acc + (k to v) } }
+        _history.update { m -> u.history.entries.fold(m) { acc, (k, v) -> if (v == null) acc - k else acc + (k to v) } }
+        _progress.update { m -> m.filterKeys { !it.startsWith("${u.oldKey}#") && !it.startsWith("${u.newKey}#") } + u.progress }
+        _updates.update { list -> (list.filterNot { it.ref.key == u.oldKey || it.ref.key == u.newKey } + u.updates).sortedByDescending { it.found } }
+        saveLibrary(); saveHistory(); saveProgress(); saveUpdates()
+    }
 
     // ---------- reading progress ----------
 

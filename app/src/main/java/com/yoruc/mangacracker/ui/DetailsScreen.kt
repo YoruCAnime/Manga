@@ -32,6 +32,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.DownloadDone
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -70,6 +73,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yoruc.mangacracker.core.Chapter
+import com.yoruc.mangacracker.core.DlState
+import com.yoruc.mangacracker.core.Downloads
 import com.yoruc.mangacracker.core.MangaDetails
 import com.yoruc.mangacracker.core.MangaRef
 import com.yoruc.mangacracker.core.Repo
@@ -88,11 +93,13 @@ class DetailsVM(val src: Source, val ref: MangaRef) : ViewModel() {
     var error by mutableStateOf<Throwable?>(null); private set
     var loading by mutableStateOf(false); private set
     var related by mutableStateOf<List<MangaRef>>(emptyList()); private set
+    /** Set when the site failed but downloaded chapters (or chapters seen earlier) are shown. */
+    var offline by mutableStateOf<Throwable?>(null); private set
 
     init { load() }
 
     fun load() {
-        loading = true; error = null
+        loading = true; error = null; offline = null
         viewModelScope.launch {
             try {
                 val d = withContext(Dispatchers.IO) { src.details(ref) }
@@ -110,25 +117,51 @@ class DetailsVM(val src: Source, val ref: MangaRef) : ViewModel() {
                 Repo.refreshEntry(ref, d, last)
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                if (chapters.isNullOrEmpty()) error = e
+                // no network / site down: what was saved with the downloads
+                val saved = Downloads.savedChapters(ref.key)
+                if (chapters.isNullOrEmpty() && saved != null) {
+                    chapters = saved
+                    if (details == null) details = Downloads.savedDetails(ref.key)
+                    offline = e
+                } else if (chapters.isNullOrEmpty()) error = e
+                else offline = e
             } finally { loading = false }
         }
+    }
+}
+
+/** Next 5 unread from the reading spot, every unread one, or all (oldest first; downloaded ones left out). */
+fun chaptersToDownload(mode: Int, chapters: List<Chapter>, key: String, resume: Chapter?): List<Chapter> {
+    val oldestFirst = chapters.asReversed()
+    val p = Repo.progress.value
+    val unread = oldestFirst.filter { p["$key#${it.id}"]?.read != true && !Downloads.isDownloaded(key, it.id) }
+    return when (mode) {
+        0 -> {
+            val start = resume?.let { r -> oldestFirst.indexOfFirst { it.id == r.id } }?.takeIf { it >= 0 } ?: 0
+            unread.filter { oldestFirst.indexOf(it) >= start }.take(5)
+        }
+        1 -> unread
+        else -> oldestFirst.filter { !Downloads.isDownloaded(key, it.id) }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun DetailsScreen(nav: Nav, key: String) {
-    val ref = Repo.refs[key] ?: Repo.library.value[key]?.ref ?: return
-    val src = Sources.byId(ref.source) ?: return
+    val ref = Repo.refs[key] ?: Repo.library.value[key]?.ref ?: Repo.history.value[key]?.ref ?: Downloads.titles.value[key]?.ref ?: return
+    val src = Sources.byId(ref.source) ?: return GoneSourcePage(nav, ref)
     val vm: DetailsVM = viewModel(key = "details-$key") { DetailsVM(src, ref) }
     val lib by Repo.library.collectAsState()
     val progress by Repo.progress.collectAsState()
     val history by Repo.history.collectAsState()
+    val settings by Repo.settings.collectAsState()
+    val dls by Downloads.titles.collectAsState()
+    val queue by Downloads.queue.tasks.collectAsState()
     val ctx = LocalContext.current
     var newestFirst by rememberSaveable { mutableStateOf(true) }
     var descOpen by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    var dlMenu by remember { mutableStateOf(false) }
     var chapterMenu by remember { mutableStateOf<Chapter?>(null) }
 
     val d = vm.details
@@ -136,6 +169,11 @@ fun DetailsScreen(nav: Nav, key: String) {
     val chapters = vm.chapters.orEmpty()
     val inLib = key in lib
     val blocked = d != null && Safety.blocked(d)
+    val saved = dls[key]?.saved.orEmpty()
+    val queued = remember(queue, key) { queue.filter { it.manga?.key == key }.associateBy { it.chapter?.id } }
+    // the site is switched off or failing: offer the same title elsewhere (for titles you keep or have read)
+    val noNet = (vm.offline ?: vm.error).let { e -> e is java.net.UnknownHostException || e is java.net.ConnectException || e?.cause is java.net.UnknownHostException }
+    val siteDown = (src.id in settings.disabledSources || ((vm.error != null || vm.offline != null) && !noNet)) && (inLib || key in history) && src.id !in NOT_TITLE_SOURCES
 
     // what the big button does: continue the last chapter, the next one if that was finished, or start at the first
     val last = history[key]
@@ -237,6 +275,61 @@ fun DetailsScreen(nav: Nav, key: String) {
                         Icon(if (inLib) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "Library", tint = Color.White)
                     }
                 }
+                if (siteDown) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Mc.Orange.copy(alpha = 0.14f)).padding(start = 14.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            if (src.id in settings.disabledSources) "${src.name} is switched off in Settings." else "${src.name} isn't working right now" +
+                                (if (vm.offline != null) " (showing what's downloaded)." else "."),
+                            color = Mc.Text, fontSize = 13.sp, modifier = Modifier.weight(1f),
+                        )
+                        Text("Find on other sites", color = Mc.Bg, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(50)).background(Mc.Orange).clickable { nav.otherSites(key) }
+                                .padding(horizontal = 12.dp, vertical = 7.dp))
+                    }
+                }
+                if (!blocked) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (src.id !in NOT_TITLE_SOURCES) ActionChip(Icons.Rounded.SwapHoriz, "Other sites") { nav.otherSites(key) }
+                        if (chapters.isNotEmpty()) {
+                            if (!src.hasChapters) {
+                                // a gallery is one chapter: one button
+                                val c = chapters.first()
+                                val q = queued[c.id]
+                                when {
+                                    c.id in saved -> ActionChip(Icons.Rounded.DownloadDone, "Downloaded", tint = Mc.Green) { nav.downloads() }
+                                    q != null -> ActionChip(Icons.Rounded.Download, if (q.total > 0) "Downloading ${q.done}/${q.total}" else "Queued", tint = Mc.Blue) { nav.downloads() }
+                                    else -> ActionChip(Icons.Rounded.Download, "Download") { Notes.show(Downloads.enqueueChapters(ctx, shown, listOf(c), d)) }
+                                }
+                            } else Box {
+                                val busy = queued.values.count { it.state == DlState.QUEUED || it.state == DlState.RUNNING }
+                                ActionChip(Icons.Rounded.Download, when {
+                                    busy > 0 -> "Downloading · $busy left"
+                                    saved.isNotEmpty() -> "Download · ${saved.size} saved"
+                                    else -> "Download"
+                                }, tint = if (busy > 0) Mc.Blue else Mc.Text) { dlMenu = true }
+                                DropdownMenu(dlMenu, { dlMenu = false }, containerColor = Mc.Card2) {
+                                    listOf("Next 5 chapters", "All unread", "All chapters").forEachIndexed { i, label ->
+                                        DropdownMenuItem(text = { Text(label) }, onClick = {
+                                            dlMenu = false
+                                            val pick = chaptersToDownload(i, chapters, key, resume?.first)
+                                            Notes.show(if (pick.isEmpty()) "Nothing left to download there" else Downloads.enqueueChapters(ctx, shown, pick, d))
+                                        })
+                                    }
+                                    if (saved.isNotEmpty() || queued.isNotEmpty()) DropdownMenuItem(text = { Text("Open Downloads") }, onClick = { dlMenu = false; nav.downloads() })
+                                }
+                            }
+                        }
+                    }
+                }
+                if (vm.offline != null && !siteDown) {
+                    Spacer(Modifier.height(10.dp))
+                    HintCard("Offline: showing the chapters saved on the phone.")
+                }
                 if (blocked) {
                     Spacer(Modifier.height(12.dp))
                     HintCard(if (d != null && Safety.isAi(d)) "This title is AI-generated, which you've hidden (Settings › Hide AI-generated)."
@@ -312,12 +405,30 @@ fun DetailsScreen(nav: Nav, key: String) {
                             )
                             if (sub.isNotEmpty()) Text(sub.joinToString(" · "), color = Mc.Text3, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
+                        // downloaded "↓" / in the queue
+                        val q = queued[c.id]
+                        when {
+                            c.id in saved -> Icon(Icons.Rounded.DownloadDone, "Downloaded", tint = Mc.Green, modifier = Modifier.padding(end = 8.dp).size(18.dp))
+                            q != null && q.state == DlState.FAILED -> Text("↓ failed", color = Mc.Pink, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 8.dp))
+                            q != null && q.state == DlState.PAUSED -> Text("↓ paused", color = Mc.Text3, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 8.dp))
+                            q != null -> Text(if (q.state == DlState.RUNNING && q.total > 0) "↓ ${q.done}/${q.total}" else "↓ waiting", color = Mc.Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 8.dp))
+                        }
                         when {
                             st?.read == true -> Icon(Icons.Rounded.CheckCircle, "Read", tint = Mc.Text3, modifier = Modifier.size(18.dp))
                             st != null -> Text("${st.percent}%", color = Mc.Blue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                     DropdownMenu(chapterMenu == c, { chapterMenu = null }, containerColor = Mc.Card2) {
+                        val q = queued[c.id]
+                        when {
+                            c.id in saved -> DropdownMenuItem(text = { Text("Delete download") }, onClick = {
+                                Downloads.deleteChapter(key, c.id); chapterMenu = null
+                            })
+                            q != null -> DropdownMenuItem(text = { Text("Cancel download") }, onClick = { Downloads.cancel(q.id); chapterMenu = null })
+                            else -> DropdownMenuItem(text = { Text("Download") }, onClick = {
+                                Notes.show(Downloads.enqueueChapters(ctx, shown, listOf(c), d)); chapterMenu = null
+                            })
+                        }
                         DropdownMenuItem(text = { Text(if (st?.read == true) "Mark unread" else "Mark read") }, onClick = {
                             Repo.setRead(ref, listOf(c), st?.read != true); chapterMenu = null
                         })
@@ -336,6 +447,41 @@ fun DetailsScreen(nav: Nav, key: String) {
                 }
             }
         }
+    }
+}
+
+/** A small rounded button under the big ones (Other sites, Download). */
+@Composable
+private fun ActionChip(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tint: Color = Mc.Text, onClick: () -> Unit) {
+    Row(
+        Modifier.clip(RoundedCornerShape(50)).background(Mc.Card2).clickable(onClick = onClick).padding(start = 12.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = tint, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = tint, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
+}
+
+/** A title whose site is no longer in the app: its name, cover and the way to the same title elsewhere. */
+@Composable
+private fun GoneSourcePage(nav: Nav, ref: MangaRef) {
+    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).padding(16.dp)) {
+        RoundIcon({ nav.back() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = Color.White) }
+        Spacer(Modifier.height(12.dp))
+        Row {
+            Box(Modifier.width(96.dp).height(140.dp).clip(RoundedCornerShape(6.dp)).background(Mc.Card)) { Cover(ref.cover, Modifier.fillMaxSize()) }
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text(ref.title, color = Mc.Text, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                Text("Its site (${ref.source}) is no longer in MangaCracker.", color = Mc.Text3, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        Button(
+            onClick = { nav.otherSites(ref.key) }, modifier = Modifier.fillMaxWidth().height(46.dp), shape = RoundedCornerShape(8.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Mc.Orange, contentColor = Mc.Bg),
+        ) { Icon(Icons.Rounded.SwapHoriz, null); Spacer(Modifier.width(6.dp)); Text("Find on other sites", fontWeight = FontWeight.Bold) }
     }
 }
 

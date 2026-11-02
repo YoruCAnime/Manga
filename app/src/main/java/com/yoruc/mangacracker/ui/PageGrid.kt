@@ -128,7 +128,7 @@ fun PageGrid(
                         LaunchedEffect(p.key) { if (url.isEmpty()) url = runCatching { vm.urlOf(p.page) }.getOrDefault("") }
                         if (url.isNotEmpty()) {
                             AsyncImage(
-                                model = ImageRequest.Builder(ctx).data(url).size(320, (320 / ratio).toInt()).build(),
+                                model = ImageRequest.Builder(ctx).data(com.yoruc.mangacracker.core.Downloads.model(url)).size(320, (320 / ratio).toInt()).build(),
                                 contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                             )
                         }

@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.yoruc.mangacracker.core.CloudflareException
+import com.yoruc.mangacracker.core.Downloads
 import com.yoruc.mangacracker.core.MangaRef
 import com.yoruc.mangacracker.core.ReadMark
 import com.yoruc.mangacracker.core.ReadMarks
@@ -132,11 +133,18 @@ fun MangaCard(
                     if (mark != null) ReadPill(mark)
                 }
             }
-            if (inLibrary) {
-                Box(
-                    Modifier.align(Alignment.TopEnd).padding(6.dp).size(18.dp).clip(CircleShape).background(Mc.Blue),
-                    contentAlignment = Alignment.Center
-                ) { Text("♥", color = Color.White, fontSize = 10.sp) }
+            val dls by Downloads.titles.collectAsState()
+            val downloaded = dls[ref.key]?.saved?.isNotEmpty() == true
+            if (inLibrary || downloaded) {
+                Column(Modifier.align(Alignment.TopEnd).padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (inLibrary) Box(Modifier.size(18.dp).clip(CircleShape).background(Mc.Blue), contentAlignment = Alignment.Center) {
+                        Text("♥", color = Color.White, fontSize = 10.sp)
+                    }
+                    // chapters saved on the phone
+                    if (downloaded) Box(Modifier.size(18.dp).clip(CircleShape).background(Mc.Green), contentAlignment = Alignment.Center) {
+                        Text("↓", color = Mc.Bg, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
             if (corner != null) {
                 Text(

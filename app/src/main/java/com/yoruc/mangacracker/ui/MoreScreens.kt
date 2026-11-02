@@ -36,6 +36,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.DownloadForOffline
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.NetworkCheck
@@ -68,6 +69,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.yoruc.mangacracker.core.AppUpdate
+import com.yoruc.mangacracker.core.DlState
+import com.yoruc.mangacracker.core.Downloads
 import com.yoruc.mangacracker.core.Http
 import com.yoruc.mangacracker.core.LoginKind
 import com.yoruc.mangacracker.core.Repo
@@ -162,6 +165,14 @@ fun MoreScreen(nav: Nav) {
             }
         }
         item { MoreRow(Icons.Rounded.History, "History", "Everything you've read") { nav.history() } }
+        item {
+            val q by Downloads.queue.tasks.collectAsState()
+            val t by Downloads.titles.collectAsState()
+            val v by com.yoruc.mangacracker.video.VideoDownloads.videos.collectAsState()
+            val active = q.count { it.state == DlState.QUEUED || it.state == DlState.RUNNING }
+            MoreRow(Icons.Rounded.DownloadForOffline, "Downloads",
+                (if (active > 0) "$active downloading · " else "") + "${t.size} title${if (t.size == 1) "" else "s"}, ${v.size} video${if (v.size == 1) "" else "s"} for offline") { nav.downloads() }
+        }
         item { MoreRow(Icons.Rounded.Settings, "Settings", "Reader, updates, sources, hidden tags, logins, backup") { nav.settings() } }
         item { MoreRow(Icons.Rounded.NetworkCheck, "Test sources", "Check that every site still loads") { nav.sourceTest() } }
         item {
@@ -265,6 +276,26 @@ fun SettingsScreen(nav: Nav) {
 
         item { SectionHeader("Reader") }
         item { Box(Modifier.padding(horizontal = 0.dp)) { ReaderSettings() } }
+
+        item { SectionHeader("Downloads", action = "Open", onAction = { nav.downloads() }) }
+        item {
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                SwitchRow("Wi-Fi only", s.downloadWifiOnly, sub = "Downloads wait for Wi-Fi (no mobile data)") { v ->
+                    Repo.updateSettings { it.copy(downloadWifiOnly = v) }
+                    if (Downloads.queue.hasWaiting()) Downloads.kick(ctx, replace = true)
+                }
+                SwitchRow("Delete chapters after reading", s.deleteAfterReading, sub = "A downloaded chapter goes once you've read it and leave the reader") { v ->
+                    Repo.updateSettings { it.copy(deleteAfterReading = v) }
+                }
+                Text("Video downloads (streams with several sizes)", color = Mc.Text, fontSize = 15.sp, modifier = Modifier.padding(top = 6.dp))
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(480 to "480p", 720 to "720p", 1080 to "1080p", 0 to "Best").forEach { (h, l) ->
+                        FilterPill(l, s.videoDownloadHeight == h) { Repo.updateSettings { it.copy(videoDownloadHeight = h) } }
+                    }
+                }
+            }
+        }
 
         item { SectionHeader("Sources", action = "Test all", onAction = { nav.sourceTest() }) }
         items(Sources.all, key = { "src" + it.id }) { src ->

@@ -45,6 +45,8 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.ClosedCaptionDisabled
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.FiberManualRecord
 import androidx.compose.material.icons.rounded.GifBox
@@ -119,6 +121,11 @@ import com.yoruc.mangacracker.core.Repo
 import com.yoruc.mangacracker.ui.theme.Mc
 import com.yoruc.mangacracker.gif.GifOptions
 import com.yoruc.mangacracker.video.ClipSaver
+import com.yoruc.mangacracker.video.VideoDownloads
+import com.yoruc.mangacracker.video.VideoSafety
+import com.yoruc.mangacracker.core.DlTask
+import com.yoruc.mangacracker.core.Downloads
+import com.yoruc.mangacracker.core.SourceException
 import com.yoruc.mangacracker.video.GifClip
 import com.yoruc.mangacracker.video.GifDone
 import com.yoruc.mangacracker.video.GifRequest
@@ -148,6 +155,18 @@ class PlayerVM(startKey: String) : ViewModel() {
         val s = src ?: return
         viewModelScope.launch {
             try {
+                // downloaded: play from the phone (no network needed); the site is asked for the episode list only
+                VideoDownloads.offline(r.key)?.let { o ->
+                    if (VideoSafety.blocked(o.saved.ref)) throw SourceException("This video is hidden")
+                    val online = VideoRepo.details[r.key]
+                    if (ref?.key == r.key) details = VideoDetails(online?.ref ?: o.saved.ref, VideoDownloads.stream(o), online?.episodes ?: listOf(o.saved.ref), online?.tags.orEmpty())
+                    if (online == null) launch {
+                        val d = runCatching { withContext(Dispatchers.IO) { s.details(r) } }.getOrNull() ?: return@launch
+                        VideoRepo.details[r.key] = d
+                        if (ref?.key == r.key) details = details?.copy(episodes = d.episodes, tags = d.tags)
+                    }
+                    return@launch
+                }
                 val d = VideoRepo.details[r.key] ?: withContext(Dispatchers.IO) { s.details(r) }
                 VideoRepo.details[r.key] = d
                 withContext(Dispatchers.IO) { s.beforePlay() }
@@ -290,14 +309,14 @@ fun PlayerScreen(nav: Nav, key: String) {
     LaunchedEffect(vm.details) {
         val d = vm.details ?: return@LaunchedEffect
         ended = false; upNext = -1; playError = null
-        val item = MediaItem.Builder().setUri(d.stream.url)
-            .apply { if (d.stream.kind == "hls") setMimeType(MimeTypes.APPLICATION_M3U8) }
-            .setSubtitleConfigurations(d.stream.subs.map { s ->
+        val item = VideoDownloads.mediaItem(d.stream) {
+            setSubtitleConfigurations(d.stream.subs.map { s ->
                 MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(s.url)).setMimeType(MimeTypes.TEXT_VTT)
                     .setLanguage(s.lang).setLabel(s.label).setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
             })
-            .build()
-        player.setMediaItem(item)
+        }
+        // the stream's own reader: the site (player client), or the file / HLS cache of a download
+        player.setMediaSource(DefaultMediaSourceFactory(ctx).setDataSourceFactory(VideoDownloads.dataSourceFactory(ctx, src, d.stream)).createMediaSource(item))
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !settings.videoSubtitles)
             .setPreferredTextLanguage(d.stream.subs.firstOrNull()?.lang).build()
@@ -554,6 +573,19 @@ fun PlayerScreen(nav: Nav, key: String) {
                             Toast.makeText(ctx, if (on) "Added to favourite videos" else "Removed from favourite videos", Toast.LENGTH_SHORT).show()
                             show()
                         }) { Icon(if (fav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "Favourite", tint = if (fav) Mc.Pink else Color.White) }
+                    }
+                    if (d != null && r != null) {
+                        // download for offline: ↓ / progress / done
+                        val vids by VideoDownloads.videos.collectAsState()
+                        val queue by Downloads.queue.tasks.collectAsState()
+                        val task = queue.firstOrNull { it.id == DlTask.videoId(r.key) }
+                        when {
+                            r.key in vids -> CtlIcon(Icons.Rounded.DownloadDone, "Downloaded") { toast("Saved on the phone · More › Downloads"); show() }
+                            task != null -> Text(if (task.state == com.yoruc.mangacracker.core.DlState.FAILED) "↓ failed" else "↓ ${task.done / 10}%",
+                                color = if (task.state == com.yoruc.mangacracker.core.DlState.FAILED) Mc.Pink else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { nav.downloads() }.padding(horizontal = 8.dp, vertical = 6.dp))
+                            else -> CtlIcon(Icons.Rounded.Download, "Download") { toast(Downloads.enqueueVideo(ctx, r)); show() }
+                        }
                     }
                     if ((d?.episodes?.size ?: 0) > 1) CtlIcon(Icons.Rounded.VideoLibrary, "Episodes") { showEpisodes = true }
                 }

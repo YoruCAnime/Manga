@@ -120,6 +120,7 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import coil.size.Dimension
 import com.yoruc.mangacracker.core.Chapter
+import com.yoruc.mangacracker.core.Downloads
 import com.yoruc.mangacracker.core.ImageSaver
 import com.yoruc.mangacracker.core.MangaRef
 import com.yoruc.mangacracker.core.Page
@@ -166,6 +167,15 @@ class ReaderVM(val src: Source, val ref: MangaRef, startId: String) : ViewModel(
         viewModelScope.launch {
             try {
                 var ch = chapters.firstOrNull { it.id == startChapterId }
+                // a downloaded chapter opens from disk: the chapter list saved with it, the site asked in the background
+                if (ch == null && Downloads.isDownloaded(ref.key, startChapterId)) {
+                    val saved = Downloads.savedChapters(ref.key).orEmpty()
+                    ch = saved.firstOrNull { it.id == startChapterId } ?: Downloads.titles.value[ref.key]?.saved?.get(startChapterId)?.chapter
+                    if (chapters.isEmpty()) chapters = saved
+                    launch {
+                        runCatching { src.chaptersFlow(ref).flowOn(Dispatchers.IO).collect { list -> if (list.isNotEmpty()) { chapters = list; Repo.chaptersCache[ref.key] = list } } }
+                    }
+                }
                 if (ch == null) {
                     // fill the list in the background; go as soon as the chapter we want is in it
                     val found = kotlinx.coroutines.CompletableDeferred<Chapter?>()
@@ -185,7 +195,7 @@ class ReaderVM(val src: Source, val ref: MangaRef, startId: String) : ViewModel(
                         ?: Repo.updates.value.firstOrNull { it.ref.key == ref.key && it.chapter.id == startChapterId }?.chapter
                         ?: throw IllegalStateException("Chapter not found")
                 }
-                val pages = withContext(Dispatchers.IO) { src.pages(ref, ch) }
+                val pages = pagesOf(ch)
                 if (pages.isEmpty()) throw IllegalStateException("This chapter has no pages")
                 items.clear(); loaded.clear()
                 append(ch, pages, first = true)
@@ -222,11 +232,15 @@ class ReaderVM(val src: Source, val ref: MangaRef, startId: String) : ViewModel(
         if (loadingNext || next.id in loaded) return
         loadingNext = true
         viewModelScope.launch {
-            runCatching { withContext(Dispatchers.IO) { src.pages(ref, next) } }
+            runCatching { pagesOf(next) }
                 .onSuccess { if (it.isNotEmpty() && next.id !in loaded) append(next, it, first = false) }
             loadingNext = false
         }
     }
+
+    /** Downloaded pages from disk (no network), else the site's. */
+    suspend fun pagesOf(ch: Chapter): List<Page> =
+        Downloads.localPages(ref.key, ch.id) ?: withContext(Dispatchers.IO) { src.pages(ref, ch) }
 
     /** Width / height of a page once known (from the source or the loaded picture). */
     fun ratioOf(page: Page): Float? =
@@ -318,6 +332,12 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
         onDispose {
             view.keepScreenOn = false
             WindowCompat.getInsetsController((ctx as Activity).window, view).show(WindowInsetsCompat.Type.systemBars())
+            // "Delete chapters after reading": the downloaded chapters finished in this visit go on leaving the reader
+            if (Repo.settings.value.deleteAfterReading) {
+                vm.items.filterIsInstance<ReaderItem.Header>().map { it.chapter.id }
+                    .filter { Repo.state(ref.key, it)?.read == true && Downloads.isDownloaded(ref.key, it) }
+                    .forEach { Downloads.deleteChapter(ref.key, it) }
+            }
         }
     }
 
@@ -370,7 +390,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
             val rs = rows
             for (p in (last + 1..last + 4).flatMap { rs.getOrNull(it).orEmpty() }.filterIsInstance<ReaderItem.PageItem>().take(4)) {
                 val u = runCatching { vm.urlOf(p.page) }.getOrNull() ?: continue
-                loader.enqueue(ImageRequest.Builder(ctx).data(u).size(pageSize(screenW)).precision(coil.size.Precision.INEXACT).build())
+                loader.enqueue(ImageRequest.Builder(ctx).data(Downloads.model(u)).size(pageSize(screenW)).precision(coil.size.Precision.INEXACT).build())
             }
             if (settings.readerAutoNext && last >= rs.size - 4) {
                 (vm.items.lastOrNull() as? ReaderItem.Footer)?.let { vm.loadNext(it.chapter) }
@@ -702,7 +722,7 @@ private fun PageView(item: ReaderItem.PageItem, vm: ReaderVM, screenW: Int, fg: 
         if (url.isNotEmpty() && !failed) {
             var state by remember(item.key, retry) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
             AsyncImage(
-                model = ImageRequest.Builder(ctx).data(url).size(pageSize(screenW)).precision(coil.size.Precision.INEXACT)
+                model = ImageRequest.Builder(ctx).data(Downloads.model(url)).size(pageSize(screenW)).precision(coil.size.Precision.INEXACT)
                     .setParameter("retry", retry).crossfade(120).build(),
                 contentDescription = "Page ${item.page.index + 1}",
                 contentScale = if (fixed != null) ContentScale.Fit else ContentScale.FillWidth,

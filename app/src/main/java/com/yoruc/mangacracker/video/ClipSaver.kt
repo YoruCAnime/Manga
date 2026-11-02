@@ -13,7 +13,6 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.Clock
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSourceBitmapLoader
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.effect.Presentation
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.transformer.Composition
@@ -122,11 +121,11 @@ object ClipSaver {
         onProgress: (Int) -> Unit, onDone: suspend (Throwable?) -> Unit,
     ): () -> Unit {
         val app = ctx.applicationContext
-        val item = MediaItem.Builder().setUri(stream.url)
-            .apply { if (stream.kind == "hls") setMimeType(MimeTypes.APPLICATION_M3U8) }
-            .setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(startMs).setEndPositionMs(endMs).build())
-            .build()
-        val sources = DefaultMediaSourceFactory(app).setDataSourceFactory(OkHttpDataSource.Factory(source.playerClient))
+        val item = VideoDownloads.mediaItem(stream) {
+            setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(startMs).setEndPositionMs(endMs).build())
+        }
+        // the site through the player client, or a download's file / HLS cache
+        val sources = DefaultMediaSourceFactory(app).setDataSourceFactory(VideoDownloads.dataSourceFactory(app, source, stream))
         val main = Handler(Looper.getMainLooper())
         val scope = kotlinx.coroutines.MainScope()
         var finished = false

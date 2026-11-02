@@ -22,10 +22,14 @@ class App : Application(), ImageLoaderFactory {
         AppUpdate.init(this)
         com.yoruc.mangacracker.video.VideoRepo.init(this)
         com.yoruc.mangacracker.sources.ComixBridge.init(this)
+        com.yoruc.mangacracker.core.Downloads.init(this)
         getSystemService(NotificationManager::class.java).createNotificationChannels(listOf(
             NotificationChannel(UpdateWorker.CHANNEL, "New chapters", NotificationManager.IMPORTANCE_DEFAULT),
             NotificationChannel(UpdateWorker.APP_CHANNEL, "App updates", NotificationManager.IMPORTANCE_DEFAULT),
+            NotificationChannel(com.yoruc.mangacracker.core.DownloadRunner.CHANNEL, "Downloads", NotificationManager.IMPORTANCE_LOW),
         ))
+        // downloads left waiting when the app last stopped carry on (the worker stops at once when nothing waits)
+        if (com.yoruc.mangacracker.core.Downloads.queue.hasWaiting()) com.yoruc.mangacracker.core.Downloads.kick(this)
         runCatching { UpdateWorker.schedule(this) }
         com.yoruc.mangacracker.core.Backup.autoIfDue(this)
     }

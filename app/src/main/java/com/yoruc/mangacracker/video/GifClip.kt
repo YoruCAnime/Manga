@@ -48,7 +48,8 @@ object GifClip {
         val dir = dir(ctx)
         val cut = File(dir, "cut.mp4")
         try {
-            withContext(Dispatchers.IO) { src.beforePlay() }
+            // a download plays from the phone: no key unlock needed (and maybe no network)
+            if (stream.local.isEmpty()) withContext(Dispatchers.IO) { src.beforePlay() }
             progress("Getting the clip", 0f)
             cutClip(ctx, src, stream, req.startMs, req.endMs, if (videoHeight > 720) 720 else 0, cut) { progress("Getting the clip", it / 100f) }
             val job = currentCoroutineContext()[Job]

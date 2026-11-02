@@ -160,6 +160,68 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
   shots (TwoPageShotTest re-draws from the memory cache). Not checked without a phone: SAF pickers, MediaStore
   Downloads write / prune, real auto-scroll smoothness and speed, rotation into the two-page view.
 
+- Other sites + offline downloads (2026-11-02, not released yet).
+  Other sites: `core/SourceMatch.kt` (pure): `similarity` = half word Dice + half edit distance on normalised titles
+  (accents, punctuation, noise words), also without [..] / (..) parts; a 2+ word prefix scores >= 0.8 minus 0.05 per
+  extra word (so a sequel ranks under the same title). `number(chapter)` = Chapter.number, else "Ch. / Chapter /
+  Episode / # N(.5)" or a bare number; `numberFromId` for slugs ("chapter-10-5"); no number ("Extra") = same name only.
+  `carry()` = read marks by number (duplicate uploads all marked), galleries one to one, the history chapter by number
+  with page scaled by the page counts; counts `unmatched`. Old chapters come from chaptersCache / the download's
+  title.json / progress keys (when the old site is broken the IDs are all there is). `Repo.moveTitle` (keeps `added`,
+  old cover when the new one is unknown, a mark the new title already had wins when further on) returns `MoveUndo`
+  (old values of both keys) -> `Repo.undoMove`. The app has no categories: library = favourites, so "favourite
+  state" = staying in the library. UI `ui/OtherSitesScreen.kt` (route `othersites/{key}`, `OtherSitesVM`: every
+  enabled manga site except boorus, 4 at a time, title then alt titles (Latin first) while nothing scores >= 0.8,
+  keeps >= 0.5, top 3, chapter lists of the best 2 >= 0.6; per-site state via `SourceCheck.classify`: Needs VPN /
+  Browser check / Not working / Skipped (`SourceCheck.unavailable`)). Details: "Other sites" chip, orange "Find on
+  other sites" card when the site is switched off / failing (not when simply offline), `GoneSourcePage` when the
+  source id no longer exists. In-window notes with an action: `ui/Notes.kt` (`Notes.show(text, "Undo") {}`, drawn by
+  `NoteHost` in AppRoot above the bottom bar); Undo also goes back to the old title's page.
+  Downloads: `core/DownloadQueue.kt` (pure rules: FIFO, one task per site, PAUSED / FAILED stay, failed = retry after
+  15 s / 1 min / 4 min then FAILED, permanent errors at once; `load` turns RUNNING into QUEUED), `core/Downloads.kt`
+  (store + index + actions; files in `noBackupFilesDir/downloads` so Android's cloud backup never tries to copy them:
+  manga/<site>/<title>/title.json (ref, details, whole chapter list) + cover.* + <chapter>/0001.jpg.. + chapter.json
+  written LAST (no chapter.json = not downloaded); folder names = readable part + CRC32 (`safe`); the queue in
+  data/downloads.json), `core/DownloadWorker.kt` (`DownloadWorker` = WorkManager, unique work "downloads",
+  APPEND_OR_REPLACE, UNMETERED when `Settings.downloadWifiOnly` (default on; switching it REPLACEs), foreground
+  dataSync notification, channel "downloads"; `DownloadRunner.run` = 2 tasks at once from different sites, pages 2 at a
+  time through `Http.imageClient` + `Http.request` (the reader's Coil request: same cookies / UA / Referer rules, comix
+  without Referer), page addresses resolved at download time (`src.pages` / `imageUrl`: hitomi's gg.js), a page that
+  isn't a picture (magic bytes) fails the try; pages already on disk are kept on a retry; free space < 300 MB = refuse
+  to queue, < 150 MB = the runner pauses everything (`lowSpace`)). Reader: `ReaderVM.pagesOf` = `Downloads.localPages`
+  ("file:" + path, Coil gets a File via `Downloads.model`; also PageGrid / preload / Http.bytes for save + share) else
+  the site; a downloaded start chapter opens with the saved chapter list and asks the site in the background.
+  Details offline: saved chapters + details, "Offline" hint. "Delete chapters after reading" (off) deletes the read
+  downloaded chapters of the visit when the reader closes. Markers: green ↓ on chapter rows / "↓ 12/40" / "↓ paused",
+  ↓ badge on `MangaCard`. Videos: `video/VideoDownloads.kt`: MP4 / WebM = the stream file via `src.playerClient` with
+  Range resume (first bytes must be ftyp / EBML); HLS = our own master parse (`pickVariant`: tallest <=
+  `Settings.videoDownloadHeight` (720 default; 0 = best) + its default audio rendition) then Media3 `HlsDownloader`
+  into a SimpleCache of the video's own (deprecated no-database constructor; one instance per folder, kept in a map,
+  released on delete) with `OkHttpDataSource(src.playerClient)`; the key files are segments too, so MuchoHentai's
+  AES streams play from the cache. `VideoStream.local` (video key) + `streamKeys`; `dataSourceFactory` (player,
+  ClipSaver.cut -> Record / GIF) = file / read-only cache / network; PlayerVM plays a download first (episode list
+  from the site in the background); GifClip skips `beforePlay` for downloads. UI: `ui/DownloadsScreen.kt` (route
+  `downloads`, More row, notification opens it), player ↓ button. Safety: `Safety.blocked` / `VideoSafety` at enqueue
+  and again in the worker (details checked before any file). Test seams: `Downloads.autoStart` (no WorkManager),
+  `Downloads.freeOverride`, `Http.blockNetwork` (every request fails as offline), `VideoDownloads.testByteCap`.
+  Also: Library "Clear watched" = an in-window Keep / Clear row (no AlertDialog); CI runs BackupTest, ReaderLogicTest,
+  SourceMoveTest, DownloadLogicTest offline.
+  Tests: `SourceMoveTest` (7: similarity, numbers, carry incl. 10.5 / missing / Extra / IDs only / galleries, move +
+  undo, move onto a kept title), `DownloadLogicTest` (6: queue rules + backoff, disk layout + offline lookup + sizes +
+  delete, enqueue rules incl. minors / low space / next 5, runner pause on a full disk, picture sniffing, HLS variant
+  pick). Live `DownloadLiveTest`: nhentai gallery (4 p), atsu chapter 1 (9 p), manhwa18cc chapter (60 p) through the
+  real queue in 4-13 s, then ReaderVM + Coil decode every page with the network blocked; Other sites for a manhwa18cc
+  title: Hentai20 + Manga18.club 100 % (112 ch), others "Not found", E-Hentai "Needs VPN", comix skipped; videos:
+  SFM Compile MP4 3 MB (ftyp, moov, mdat; read offline), Porcore HLS 720p (capped 24 MB, first segment MPEG-TS from
+  the cache offline), MuchoHentai HLS 720p (key from the cache, first segment AES-128 decrypted -> MPEG-TS offline).
+  NSFW R34's Bunny HLS answered 403 to everything on 2026-11-02 (playback too, with or without Referer): source issue.
+  `DownloadScreensTest` shots 80-89 (picks a manhwa18cc title with no school / young words, grown-up stories first).
+  Harness: the offline reader shot reopens the chapter so pages come from Coil's memory cache (cross-fade freeze).
+  Not checked without a phone: WorkManager scheduling, the Wi-Fi constraint, the foreground notification and
+  Android 14 background limits, real offline playback (ExoPlayer from file / cache), Transformer cuts of downloads.
+  Regression after it: ScreensTest, NewScreensTest, FeatureScreensTest, GifScreensTest, VideoScreensTest, BackupTest,
+  ReaderLogicTest, GifAndTagsTest, AiFilterTest (nhentai) all pass; assembleRelease (R8) OK.
+
 ## Rules / facts learnt
 - Chapters are newest first. `chaptersFlow` lets slow sources (comix, 2.5-4.8 s between chapter pages) fill in;
   `latestChapters` = what the update check fetches.
