@@ -42,8 +42,8 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
   recordings folder (Settings › Videos: recordings and snapshots folders, default Videos\MangaCracker and
   Pictures\MangaCracker\Snapshots).
 - **GIF**: opens the GIF editor in place of the video: a 36 s filmstrip around where you were with start / end
-  handles (GIFs up to 30 s; click Start or End to see that frame, then click the strip to move that end there; or
-  drag, or ← → one frame, Shift 10, Tab other end, [ ] at the preview spot), video times along the strip and the
+  handles (GIFs up to 30 s; click Start or End to see that frame, then click or drag on the strip: only that end
+  moves, a drag stops at the other end; or ← → one frame, Shift 10, Tab other end, [ ] at the preview spot), video times along the strip and the
   time under the mouse, the preview spot's time in the whole video, a looping
   preview of exactly the GIF, size (Tiny 2 MB / Small 5 MB / Big 10 MB), speed (0.25× to 2×), ping-pong, FPS (Auto /
   24 / 30 / 50: 50 makes smooth in-between frames), then the phone's GIF engine. The finished GIF then plays in a
