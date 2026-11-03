@@ -18,8 +18,8 @@ fun intProperty(name: String, fallback: Int): Int {
     return raw.toIntOrNull() ?: throw GradleException("$name must be an integer (got '$raw')")
 }
 
-val appVersionName = stringProperty("mangacracker.versionName", "1.7.1")
-val appVersionCode = intProperty("mangacracker.versionCode", 12)
+val appVersionName = stringProperty("mangacracker.versionName", "1.8.0")
+val appVersionCode = intProperty("mangacracker.versionCode", 13)
 
 // -Pmangacracker.dev=true (CI builds): a separate "MangaCracker Dev" app that installs next to the real one,
 // so a test build never has to replace the real app (and its library). It never checks for app updates.

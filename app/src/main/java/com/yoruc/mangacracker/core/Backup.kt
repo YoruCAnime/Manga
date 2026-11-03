@@ -82,6 +82,7 @@ object Backup {
         appRelease = device.appRelease, lastAppCheck = device.lastAppCheck,
         dismissedAppVersion = device.dismissedAppVersion, notifiedAppVersion = device.notifiedAppVersion,
         lastLibraryCheck = device.lastLibraryCheck, lastAutoBackup = device.lastAutoBackup,
+        readerSoundUri = device.readerSoundUri, readerSoundName = device.readerSoundName,
     )
 
     private fun shareable(s: Settings) = withDeviceOnly(s, Settings())

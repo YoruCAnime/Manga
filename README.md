@@ -13,7 +13,9 @@ Later); Later keeps it under Settings → App updates.
 
 - **Home**: Continue reading (page and % of where you stopped), Updates for you (new chapters of your library),
   Recommended for you (built from the genres you favourite and read, plus "more like this" of what you read last),
-  and a Popular row for every source. Pull down to check for new chapters.
+  and a Popular row for every source. Pull down to check for new chapters. A few sakura petals, light motes /
+  fireflies, autumn leaves or snowflakes drift gently over Home with the season, and stars twinkle at night (now
+  and then a shooting star). Settings › Home screen picks one or switches them off.
 - **Library** has three shelves: **Manga**, **Fav videos** (♥ in the player, or long-press any video) and
   **Watched** (every video you started, newest first, with % and time left; tap to resume, ✕ to remove, the bin
   clears the list after a Clear / Keep row at the top). **Manga**: your favourites (tap ♥ on a title). Search by title / author / genre, sort, filter by source,
@@ -38,6 +40,10 @@ Later); Later keeps it under Settings → App updates.
     go. It flows into the next chapter and stops at the very end.
   - **Night filter** (moon button, or reader settings): darkens the pages and/or gives them a warm tint, each with
     its own slider, remembered. It never touches the phone's own brightness.
+  - **Sounds while reading** (🎧 in the reader bar, or reader settings): Rain, Café, Lo-fi, Fireplace or Night
+    crickets, or **your own audio file**, with its own volume. The built-in sounds are made for the app (60-second
+    loops that repeat without a seam). It fades in, pauses while the app is in the background or a call / other
+    music starts, and fades out when you leave the reader.
   - **Two pages side by side** (reader settings, for doujins / galleries): with the phone turned sideways, pages show
     in pairs like a book, fitted to the screen height. The cover and wide two-page spreads stay on their own.
     **Right to left** (on by default: Japanese order, page 2 on the right) can be switched off. Pinch zoom, the page

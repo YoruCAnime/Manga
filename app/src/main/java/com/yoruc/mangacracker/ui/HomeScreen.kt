@@ -185,6 +185,8 @@ fun HomeScreen(nav: Nav) {
             }
             if (settings.disabledSources.isNotEmpty()) item { Spacer(Modifier.height(8.dp)) }
         }
+        // petals / leaves / snow / fireflies and night stars drifting over Home (Settings › Home screen)
+        SeasonLayer(Modifier.fillMaxSize())
     }
 }
 

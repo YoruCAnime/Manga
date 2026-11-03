@@ -45,6 +45,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ContentCut
 import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -112,7 +113,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -121,6 +125,7 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import coil.size.Dimension
 import com.yoruc.mangacracker.core.Chapter
+import com.yoruc.mangacracker.core.Ambient
 import com.yoruc.mangacracker.core.Downloads
 import com.yoruc.mangacracker.core.ImageSaver
 import com.yoruc.mangacracker.core.MangaRef
@@ -289,6 +294,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
     val screenW = with(density) { LocalConfiguration.current.screenWidthDp.dp.roundToPx() }
     var overlay by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showSounds by remember { mutableStateOf(false) }
     var pageMenu by remember { mutableStateOf<ReaderItem.PageItem?>(null) }
     /** where on that page the long-press was (0..1 of its width / height), for the character cutout */
     var pageTap by remember { mutableStateOf(Offset(0.5f, 0.5f)) }
@@ -330,6 +336,18 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
         ctl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         if (overlay) ctl.show(WindowInsetsCompat.Type.systemBars()) else ctl.hide(WindowInsetsCompat.Type.systemBars())
         onDispose { }
+    }
+    // ---- sounds while reading: play while the reader is on screen, hold in the background, fade out on leaving ----
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_START) Ambient.sync(ctx) else if (e == Lifecycle.Event.ON_STOP) Ambient.pause()
+        }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs); Ambient.stop() }
+    }
+    LaunchedEffect(settings.readerSound, settings.readerSoundUri, settings.readerSoundVolume) {
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) Ambient.sync(ctx)
     }
     DisposableEffect(Unit) {
         view.keepScreenOn = settings.keepScreenOn
@@ -411,7 +429,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
             val now = withFrameNanos { it }
             val dt = if (last == 0L) 0f else ((now - last) / 1e9f).coerceIn(0f, 0.1f)
             last = now
-            if (touching || list.isScrollInProgress || System.currentTimeMillis() - releasedAt < 1200 || showGrid || showSettings || pageMenu != null || cutout != null) continue
+            if (touching || list.isScrollInProgress || System.currentTimeMillis() - releasedAt < 1200 || showGrid || showSettings || showSounds || pageMenu != null || cutout != null) continue
             if (!list.canScrollForward) {
                 // the next chapter is on its way: wait for it; the real end: stop
                 val end = vm.items.lastOrNull() as? ReaderItem.Footer
@@ -567,6 +585,9 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                     Text(ref.title, color = Mc.Text, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(cur?.first?.chapter?.name ?: "", color = Mc.Text3, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                IconButton(onClick = { showSounds = true; overlay = false }) {
+                    Icon(Icons.Rounded.Headphones, "Sounds while reading", tint = if (settings.readerSound != "") Mc.Blue else Mc.Text)
+                }
                 IconButton(onClick = { Repo.updateSettings { it.copy(readerNight = !it.readerNight) } }) {
                     Icon(Icons.Rounded.DarkMode, "Night filter", tint = if (settings.readerNight) Mc.Blue else Mc.Text)
                 }
@@ -706,6 +727,11 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
             Column(Modifier.verticalScroll(rememberScrollState())) { ReaderSettings() }
         }
     }
+    if (showSounds) {
+        ModalBottomSheet(onDismissRequest = { showSounds = false }, containerColor = Mc.Card) {
+            Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 16.dp)) { SoundPicker(inReader = true) }
+        }
+    }
 }
 
 /** Decode at most screen-wide and 4096 px tall (the GPU texture limit), never larger than the file itself. */
@@ -824,7 +850,7 @@ private fun ChapterFooter(f: ReaderItem.Footer, fg: Color, vm: ReaderVM, auto: B
 }
 
 @Composable
-fun ReaderSettings() {
+fun ReaderSettings(inReader: Boolean = true) {
     val s by Repo.settings.collectAsState()
     Column(Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 4.dp)) {
         Text("Reader", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Mc.Text)
@@ -853,6 +879,9 @@ fun ReaderSettings() {
             Slider(s.readerWarm.toFloat(), { v -> Repo.updateSettings { it.copy(readerWarm = v.roundToInt()) } }, valueRange = 0f..100f,
                 colors = SliderDefaults.colors(thumbColor = Mc.Orange, activeTrackColor = Mc.Orange, inactiveTrackColor = Mc.Card2))
         }
+        Spacer(Modifier.height(8.dp))
+        SoundPicker(inReader)
+        Spacer(Modifier.height(6.dp))
         SwitchRow("Two pages side by side in landscape", s.readerTwoPage, sub = "For doujins and galleries. The cover and wide spreads stay alone.") { v ->
             Repo.updateSettings { it.copy(readerTwoPage = v) }
         }

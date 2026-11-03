@@ -276,8 +276,25 @@ fun SettingsScreen(nav: Nav) {
             }
         }
 
+        item { SectionHeader("Home screen") }
+        item {
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                Text("Season effects", color = Mc.Text, fontSize = 15.sp)
+                Text(Seasons.describe(s.homeEffect, s.homeNightSky), color = Mc.Text3, fontSize = 12.sp)
+                Spacer(Modifier.height(8.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Seasons.choices.forEach { (id, l) -> FilterPill(l, s.homeEffect == id) { Repo.updateSettings { it.copy(homeEffect = id) } } }
+                }
+                if (s.homeEffect != Seasons.OFF && s.homeEffect != Seasons.STARS) {
+                    SwitchRow("Stars at night", s.homeNightSky, sub = "8 pm to 6 am: twinkling stars, now and then a shooting star") { v ->
+                        Repo.updateSettings { it.copy(homeNightSky = v) }
+                    }
+                }
+            }
+        }
+
         item { SectionHeader("Reader") }
-        item { Box(Modifier.padding(horizontal = 0.dp)) { ReaderSettings() } }
+        item { Box(Modifier.padding(horizontal = 0.dp)) { ReaderSettings(inReader = false) } }
 
         item { SectionHeader("Downloads", action = "Open", onAction = { nav.downloads() }) }
         item {

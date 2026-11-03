@@ -126,6 +126,7 @@ jobs:
             --tests '*AiFilterTest.rules' \
             --tests '*TagFilterTest.rules' \
             --tests '*CutoutTest.rules' \
+            --tests '*CozyShotTest.seasonsRules' \
             --tests '*BackupTest' \
             --tests '*ReaderLogicTest' \
             --tests '*SourceMoveTest' \

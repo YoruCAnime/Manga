@@ -122,6 +122,14 @@ data class Settings(
     val downloadWifiOnly: Boolean = true,
     val deleteAfterReading: Boolean = false,
     val videoDownloadHeight: Int = 720,
+    /** Sounds while reading: "" = off, a built-in loop id (Ambient.sounds) or "own" = readerSoundUri; volume 0..1. */
+    val readerSound: String = "",
+    val readerSoundVolume: Float = 0.5f,
+    val readerSoundUri: String = "",
+    val readerSoundName: String = "",
+    /** Home screen: what drifts over it ("auto" follows the month, see Seasons) and stars from 8 pm to 6 am. */
+    val homeEffect: String = "auto",
+    val homeNightSky: Boolean = true,
 )
 
 object Repo {

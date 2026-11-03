@@ -258,6 +258,15 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
     panel px + radius, erase / restore); the models' alpha for a tap list is cached, so strokes are only painted on
     top (`Mask.paint`: distance to the polyline <= r sets 0 / 1, 1.5 px soft rim). `Picture` = one custom gesture:
     one finger taps or draws (live highlight, applied on lift), two fingers zoom 1-6x / pan. Shots 64-66.
+  - 1.8.0: new app icon (adaptive `mipmap-*/ic_launcher_{fg,bg,mono}.png` + `drawable-nodpi/splash_icon.webp`; the
+    old book vector stays as the notification small icon). `ui/Seasons.kt` = `SeasonLayer` over Home: `Seasons.scene()`
+    picks the kind (month: sakura / summer (motes by day, fireflies 20-6 h) / leaves / snow) + night stars; a frame
+    loop steps a `Field` at ~30 fps and only the Canvas draw reads the tick (no recomposition); off when the phone's
+    animator scale is 0. Settings `homeEffect` / `homeNightSky`. `core/Ambient.kt` = one ExoPlayer (audio focus on,
+    REPEAT_MODE_ONE, fades) for `res/raw/ambient_*.ogg` (Opus, made by the sounds script, no recordings) or the
+    user's file (`readerSoundUri`, persisted SAF permission, device-only in backups). The reader syncs it on
+    ON_START, pauses on ON_STOP, stops on dispose. `ui/SoundsUi.kt` SoundPicker (reader 🎧 sheet + ReaderSettings).
+    Tests: `CozyShotTest` (rules in CI; shots 100-108), `SeasonPreviewTest` (each effect alone, shots 109a-e).
   - Reader long-press undoes the strip zoom before finding the page (zoomed in, it used to pick the wrong page) and
     records where on the page the finger was (two-page spreads included).
 
