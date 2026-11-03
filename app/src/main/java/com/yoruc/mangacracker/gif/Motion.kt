@@ -57,10 +57,10 @@ class Flow(val w: Int, val h: Int, val gw: Int, val gh: Int, val vx: FloatArray,
 
 /**
  * Motion-compensated in-between frames ("a bit of optical flow"): hierarchical block matching on a small pyramid with
- * a smoothness bias and median-filtered vectors, both directions; each in-between pixel takes the better of the two
- * motion guesses and is only blended where both frames agree after moving; where they don't, it takes the nearer frame's
- * moved pixel (never a cross-fade, so no ghosts). Frames where too much doesn't line up, or scene cuts, return null
- * so the caller shows the nearest real frame instead.
+ * a smoothness bias and median-filtered vectors, both directions; each in-between pixel takes the best of the two
+ * motion guesses and "not moving" (keeps subtitles and borders crisp), and is only blended where both frames agree
+ * after moving; where they don't, it takes the nearer frame's moved pixel (never a cross-fade, so no ghosts). Frames
+ * where too much of what moves doesn't line up, or scene cuts, return null so the caller shows the nearest real frame.
  */
 object Motion {
     private const val CELL = Flow.CELL
@@ -238,14 +238,19 @@ object Motion {
                 else diff3(bilinear(a, w, h, x - t * bx, y - t * by), bilinear(b, w, h, x + t1 * bx, y + t1 * by))
         } }
         val s1 = blur(e1, w, h); val s2 = blur(e2, w, h)
+        // a third guess per pixel: not moving at all (subtitles, borders, a still background behind a moving body)
+        val s0 = blur(FloatArray(n) { diff3(a[it], b[it]) }, w, h)
         val out = IntArray(n)
         val bads = java.util.concurrent.atomic.AtomicInteger()
-        Par.rows(h) { y0, y1 -> val ca = FloatArray(3); val cb = FloatArray(3); var bad = 0; for (y in y0 until y1) for (x in 0 until w) {
+        val movers = java.util.concurrent.atomic.AtomicInteger()
+        Par.rows(h) { y0, y1 -> val ca = FloatArray(3); val cb = FloatArray(3); var bad = 0; var mov = 0; for (y in y0 until y1) for (x in 0 until w) {
             val i = y * w + x
             val first = s1[i] <= s2[i]
-            val e = if (first) s1[i] else s2[i]
-            val mx = if (first) v1x[i] else v2x[i]; val my = if (first) v1y[i] else v2y[i]
+            var e = if (first) s1[i] else s2[i]
+            var mx = if (first) v1x[i] else v2x[i]; var my = if (first) v1y[i] else v2y[i]
+            if (s0[i] < STILL_MAX && s0[i] + STILL_BIAS < e) { e = s0[i]; mx = 0f; my = 0f }
             if (e > E_HI) bad++
+            if (abs(mx) + abs(my) > 0.75f) mov++
             val wb = ((E_HI - e) / (E_HI - E_LO)).coerceIn(0f, 1f)
             if (mx == 0f && my == 0f) {
                 // still pixel: no resampling at all
@@ -261,14 +266,23 @@ object Motion {
                 r += wb * (t1 * ca[0] + t * cb[0] - r); g += wb * (t1 * ca[1] + t * cb[1] - g); bl += wb * (t1 * ca[2] + t * cb[2] - bl)
             }
             out[i] = (cl(r) shl 16) or (cl(g) shl 8) or cl(bl)
-        }; bads.addAndGet(bad) }
-        return if (bads.get() > n * BAD_SHARE) null else out
+        }; bads.addAndGet(bad); movers.addAndGet(mov) }
+        // judged against the part that moves: a missed scene change or a big turn mangles most of what moves even
+        // when it is a small part of the picture
+        lastBad = bads.get().toFloat() / maxOf(movers.get(), n / 10)
+        return if (lastBad > BAD_SHARE) null else out
     }
+
+    /** Share of the moving part that didn't line up in the last [inBetween] (for tests). */
+    @Volatile var lastBad = 0f; private set
 
     // mismatch (sum of |dR|+|dG|+|dB| after moving both frames) below E_LO: blend; above E_HI: the nearer frame alone
     private const val E_LO = 30f
     private const val E_HI = 75f
-    private const val BAD_SHARE = 0.3f
+    private const val BAD_SHARE = 0.14f
+    // "not moving" wins when its mismatch is this small and clearly below the moved guesses'
+    private const val STILL_MAX = 8f
+    private const val STILL_BIAS = 20f
 
     private fun mix(p: Int, q: Int, t: Float, wb: Float): Int {
         val near = if (t < 0.5f) p else q

@@ -90,6 +90,14 @@ class GifEngineTest {
         val (ps, fs) = GifMaker(src, GifOptions(speed = 0.5f)).timeline(24, true)
         assertEquals(24.0, fs, 1e-9); assertEquals(96, ps.size)
         assertTrue(ps.count { it.t in 0.45f..0.55f } > 40)
+        // a picked 50 fps above the video's 24: in-betweens at 50 fps, same length; a picked 24 of 30 fps: real frames
+        val (p50, f50) = GifMaker(src, GifOptions(fps = 50)).timeline(50, true)
+        assertEquals(50.0, f50, 1e-9); assertEquals(100, p50.size); assertTrue(p50.count { it.t > 0f } > 40)
+        assertEquals(200, GifMaker.delays(p50.size, f50).sum())
+        val (p24, f24) = GifMaker(src30, GifOptions(fps = 24)).timeline(24, true)
+        assertEquals(24.0, f24, 1e-9); assertTrue(p24.all { it.t == 0f })
+        // auto at 1x never makes in-betweens, even when the size's rate is above the video's
+        assertTrue(GifMaker(src, GifOptions()).timeline(30, true).first.all { it.t == 0f })
     }
 
     // ---------------- measurements on real frames ----------------

@@ -13,7 +13,11 @@ enum class GifSize(val label: String, val maxBytes: Long, val maxWidth: Int, val
     BIG("Big", 10_000_000, 640, 30),
 }
 
-data class GifOptions(val speed: Float = 1f, val pingPong: Boolean = false, val size: GifSize = GifSize.SMALL)
+/** [fps] = frames per second the user picked (0 = the size's own, lowered if needed to fit). */
+data class GifOptions(val speed: Float = 1f, val pingPong: Boolean = false, val size: GifSize = GifSize.SMALL, val fps: Int = 0)
+
+/** Frame-rate choices, 0 = auto (GIF delays are in 1/100 s, so 50 is the most a GIF can really play). */
+val GIF_FPS = listOf(0, 24, 30, 50)
 
 /** The real frames of the chosen range, all [width] x [height] 0xRRGGBB, [fps] per second. */
 interface FrameSource {
@@ -120,11 +124,14 @@ class GifMaker(private val src: FrameSource, private val opts: GifOptions) {
         Triple(f, if (cut) f else Motion.estimate(pb, pa), cut)
     }
 
-    /** Output frames and their rate. */
+    /**
+     * Output frames and their rate. Slow motion, or a picked frame rate above what the video has, makes in-betweens
+     * (smooth); otherwise real frames are picked.
+     */
     fun timeline(fpsCap: Int, interpolate: Boolean): Pair<List<Pick>, Double> {
         val speed = opts.speed.toDouble()
         val rate = src.fps * speed                      // source frames per output second
-        val slow = speed < 0.999 && interpolate
+        val slow = interpolate && (speed < 0.999 || (opts.fps > 0 && rate < fpsCap * 0.95))
         val fps = if (slow) fpsCap.toDouble() else {
             // fast / normal: take every m-th frame when that keeps the rate near the cap (even steps, no judder)
             val m = ceil(rate / fpsCap - 1e-6).toInt().coerceAtLeast(1)
@@ -155,17 +162,38 @@ class GifMaker(private val src: FrameSource, private val opts: GifOptions) {
     /**
      * Make the GIF, trying smaller settings until it fits the chosen size: first a little more "unchanged" tolerance,
      * then a smaller picture (down to 3/4), then fewer frames per second (down to 15), then smaller again, then 10 fps.
+     * A frame rate the user picked is kept until nothing else is left. Long GIFs start from a size guessed from a few
+     * stretches of the timeline, so they don't need many slow tries.
      */
     fun make(): GifResult {
         val size = opts.size
+        val fixed = opts.fps > 0
         val full = maxOf(src.width, src.height)
         var long = minOf(size.maxWidth, full)
-        var fpsCap = size.fps
+        var fpsCap = if (fixed) opts.fps else size.fps
         var colours = 256
         var threshold = 6
-        val minLong = minOf(long, (size.maxWidth * 0.75).toInt())
+        var minLong = minOf(long, (size.maxWidth * 0.75).toInt())
+        val target = size.maxBytes * 0.9
+        guess(GifParams(long, fpsCap, colours, threshold))?.let { first ->
+            var est = first
+            if (est <= target) return@let
+            if (est > target * 1.25) threshold = 10
+            if (!fixed && est > target / 0.45) {
+                // far too big: fewer frames first (down to 15 fps), the picture shrinks for the rest
+                val f = maxOf(15, (fpsCap * sqrt(target / est / 0.45)).toInt())
+                est *= f.toDouble() / fpsCap; fpsCap = f
+            }
+            // the file shrinks slower than the picture (detail packs closer), so guess again at the new size and
+            // correct by the slope the two guesses show
+            val l1 = (long * Math.pow(target / est, 1 / 1.6)).toInt().coerceIn(200, long)
+            val est1 = guess(GifParams(l1, fpsCap, colours, threshold)) ?: est
+            val k = if (l1 < long) (Math.log(est / est1) / Math.log(long.toDouble() / l1)).coerceIn(0.8, 2.4) else 1.6
+            long = (l1 * Math.pow(target / est1, 1 / k)).toInt().coerceIn(200, long)
+            minLong = minOf(minLong, long)
+        }
         var last: GifResult? = null
-        for (tryNo in 1..9) {
+        for (tryNo in 1..10) {
             val r = encode(GifParams(long, fpsCap, colours, threshold), tryNo)
             last = r
             if (r.bytes.size <= size.maxBytes) return r
@@ -174,14 +202,45 @@ class GifMaker(private val src: FrameSource, private val opts: GifOptions) {
                 ratio > 0.8 && threshold < 10 -> threshold = 10
                 ratio > 0.9 && colours > 160 -> colours = 160
                 long > minLong -> long = maxOf(minLong, (long * sqrt(ratio) * 0.97).toInt())
-                fpsCap > 15 -> fpsCap = maxOf(15, (fpsCap * ratio * 0.97).toInt())
+                !fixed && fpsCap > 15 -> fpsCap = maxOf(15, (fpsCap * ratio * 0.97).toInt())
                 long > 200 -> long = maxOf(200, (long * sqrt(ratio) * 0.95).toInt())
-                fpsCap > 10 -> fpsCap = 10
+                !fixed && fpsCap > 10 -> fpsCap = 10
                 colours > 64 -> colours = 64
+                fpsCap > 10 -> fpsCap = maxOf(10, (fpsCap * ratio * 0.97).toInt())   // the size limit wins in the end
                 else -> return r
             }
         }
         return last!!
+    }
+
+    /**
+     * Rough file size for [p] from ten short stretches of the timeline (null for short GIFs, where trying is quick):
+     * the first frame of a stretch costs a whole picture, the rest only what changes.
+     */
+    fun guess(p: GifParams): Double? {
+        val (dw, dh) = dims(p.long)
+        val (picks, _) = timeline(p.fpsCap, p.interpolate)
+        val len = 6
+        if (picks.size < 150) return null
+        progress("Sizing it up", 0f)
+        val frame = scaler(dw, dh)
+        val pal = palette(frame, p.colours, dw, dh)
+        var whole = 0.0; var change = 0.0
+        val runs = 10
+        for (r in 0 until runs) {
+            val start = ((picks.size - len) * (r + 0.5) / runs).toInt()
+            val one = FrameWriter(dw, dh, pal, p.threshold); val all = FrameWriter(dw, dh, pal, p.threshold)
+            for (k in start until start + len) {
+                check()
+                val idx = quantize(picture(picks[k], frame, dw, dh).first, dw, dh, pal, p.dither)
+                if (k == start) one.add(idx, 4)
+                all.add(idx, 4)
+            }
+            val a = one.finish().size.toDouble(); val b = all.finish().size.toDouble()
+            whole += a; change += (b - a) / (len - 1)
+            progress("Sizing it up", (r + 1f) / runs)
+        }
+        return whole / runs + change / runs * (picks.size - 1)
     }
 
     /** GIF size for a long side of [long] px (never larger than the source). */
@@ -211,13 +270,8 @@ class GifMaker(private val src: FrameSource, private val opts: GifOptions) {
         }
         lastMade = null
 
-        val scaled = LinkedHashMap<Int, IntArray>(16, 0.75f, true)
-        fun frame(i: Int): IntArray = scaled.getOrPut(i) { if (dw == src.width && dh == src.height) src.frame(i) else Resample.resize(src.frame(i), src.width, src.height, dw, dh) }
-            .also { while (scaled.size > 6) scaled.remove(scaled.keys.first()) }
-        // palette from up to 16 real frames spread over the range
-        val sampleIdx = (0 until minOf(16, n)).map { (it * (n - 1).toDouble() / maxOf(1, minOf(16, n) - 1)).roundToInt() }.distinct()
-        val step = maxOf(1, dw * dh * sampleIdx.size / 400_000)
-        val pal = Palette.build(sampleIdx.map { frame(it) }, p.colours, step)
+        val frame = scaler(dw, dh)
+        val pal = palette(frame, p.colours, dw, dh)
 
         // forward frames; ping-pong's way back reuses them. All of them are kept for the next try when they fit in ~100 MB.
         val forward = if (opts.pingPong) picks.size / 2 + 1 else picks.size
@@ -230,11 +284,8 @@ class GifMaker(private val src: FrameSource, private val opts: GifOptions) {
             check()
             val have = made[pk]
             if (have != null) { out.add(have, delays[k]); all?.add(have); continue }
-            val rgb: IntArray = if (pk.t == 0f || pk.a == pk.b) frame(pk.a) else {
-                val (f, b, cut) = flow(pk.a, pk.b)
-                val mid = if (cut) null else Motion.inBetween(frame(pk.a), frame(pk.b), dw, dh, f, b, pk.t)
-                if (mid == null) { fallbacks++; frame(if (pk.t < 0.5f) pk.a else pk.b) } else { inBetweens++; mid }
-            }
+            val (rgb, mid) = picture(pk, frame, dw, dh)
+            if (mid == true) inBetweens++ else if (mid == false) fallbacks++
             val idx = quantize(rgb, dw, dh, pal, p.dither)
             if (opts.pingPong && k < forward) made[pk] = idx
             out.add(idx, delays[k]); all?.add(idx)
@@ -242,6 +293,30 @@ class GifMaker(private val src: FrameSource, private val opts: GifOptions) {
         }
         if (all != null) lastMade = Made(key, pal, all, inBetweens, fallbacks)
         return GifResult(out.finish(), dw, dh, out.written, delays.sum() * 10L, fps, p, tryNo, inBetweens, fallbacks)
+    }
+
+    /** Real frames at [dw] x [dh] (the last few kept). */
+    private fun scaler(dw: Int, dh: Int): (Int) -> IntArray {
+        val scaled = LinkedHashMap<Int, IntArray>(16, 0.75f, true)
+        return { i ->
+            scaled.getOrPut(i) { if (dw == src.width && dh == src.height) src.frame(i) else Resample.resize(src.frame(i), src.width, src.height, dw, dh) }
+                .also { while (scaled.size > 6) scaled.remove(scaled.keys.first()) }
+        }
+    }
+
+    /** One palette for the whole GIF, from up to 16 real frames spread over the range. */
+    private fun palette(frame: (Int) -> IntArray, colours: Int, dw: Int, dh: Int): Palette {
+        val sampleIdx = (0 until minOf(16, n)).map { (it * (n - 1).toDouble() / maxOf(1, minOf(16, n) - 1)).roundToInt() }.distinct()
+        val step = maxOf(1, dw * dh * sampleIdx.size / 400_000)
+        return Palette.build(sampleIdx.map { frame(it) }, colours, step)
+    }
+
+    /** The picture of one output frame; second = true for an in-between, false when it fell back to a real frame. */
+    private fun picture(pk: Pick, frame: (Int) -> IntArray, dw: Int, dh: Int): Pair<IntArray, Boolean?> {
+        if (pk.t == 0f || pk.a == pk.b) return frame(pk.a) to null
+        val (f, b, cut) = flow(pk.a, pk.b)
+        val mid = if (cut) null else Motion.inBetween(frame(pk.a), frame(pk.b), dw, dh, f, b, pk.t)
+        return if (mid == null) frame(if (pk.t < 0.5f) pk.a else pk.b) to false else mid to true
     }
 
     private fun check() { if (cancelled()) throw GifCancelled() }

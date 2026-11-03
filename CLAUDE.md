@@ -100,7 +100,16 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
   seek (+ play again if it was playing). Controls / panel use `safePad` (safeDrawing: cutout + bars). In-window notes
   (`toast()` in PlayerScreen) for the GIF flow, no system toasts there.
   GIF: `ui/GifPanel.kt` (GifEdit state, range bar, thumbs from `TextureView.getBitmap`, speed / ping-pong / size chips,
-  progress, result with Coil + Save / Share / Change); capture = `gifStart` (30 s cap), range max 10 s.
+  progress, result with Coil + Save / Share / Change); capture = `gifStart` (30 s cap), range max 30 s (1.9.1).
+  1.9.1: FPS chips (`GIF_FPS` 0 = auto / 24 / 30 / 50; `GifOptions.fps`): a picked rate is kept while fitting (picture
+  shrinks first, fps only last), a picked rate above the video's makes in-betweens at 1x too. `GifMaker.guess()` =
+  size from 10 stretches of 6 frames (within ~7 %), `make()` starts from it with a second guess to correct the slope
+  (long GIFs fit on try 1, ~75-90 % of the limit). `Motion.inBetween`: a third per-pixel guess "not moving" (keeps
+  opaque subtitles / borders crisp) and the real-frame fallback judged against the MOVING part (BAD_SHARE 0.14 of
+  moving pixels): the old whole-frame 30 % let missed scene changes through as mangled frames. GifClip reads up to
+  60 fps for slow motion / 50 fps and shrinks long clips' work frames to a 450 MB cache budget. Tried and rejected
+  (on a JVM bench of gif/ outside the repo): cross-fade where motion is unsure (Exos: "No
+  blurred after images"), Horn-Schunck per-pixel flow (slower, no better), bigger blocks / lambda / medians (no change).
   `video/GifClip.kt`: `ClipSaver.cut(forGif = true)` (Transformer, video only, <= 720p via Presentation, 16 Mb/s,
   key frame every 0.5 s, same playerClient + beforePlay) -> MediaMetadataRetriever.getFramesAtIndex in chunks of 8
   (60 fps halved) -> Lanczos to 640 long side -> `gif/FileFrames` (cache file, 3 B/px) -> `GifMaker` -> cache/gif;

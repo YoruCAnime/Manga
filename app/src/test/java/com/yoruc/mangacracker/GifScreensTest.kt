@@ -114,18 +114,22 @@ class GifScreensTest {
         // drag the start handle to the right while holding, half speed, ping-pong
         text("0.5×", sub = false)[0].performClick(); pump(200)
         text("Ping-pong")[0].performClick(); pump(200)
+        text("50", sub = false)[0].performClick(); pump(200)
         desc("GIF range").performTouchInput { down(Offset(width * 0.05f, height / 2f)); moveTo(Offset(width * 0.3f, height / 2f)) }
         pump(500)
         shot("54_gif_range_drag")
         desc("GIF range").performTouchInput { up() }
         pump(600)
         val done = sampleGif()
-        PlayerTestHooks.gifJob = { _, prog ->
+        var asked: com.yoruc.mangacracker.video.GifRequest? = null
+        PlayerTestHooks.gifJob = { req, prog ->
+            asked = req
             for (i in 0..20) { prog(if (i < 8) "Getting the clip" else "Making the GIF", i / 20f); delay(40) }
             done
         }
         text("Make GIF", sub = false)[0].performClick(); pump(1300)
         shot("55_gif_working")
+        assertEquals("the picked frame rate reaches the maker", 50, asked?.opts?.fps)
         pump(4500)
         shot("56_gif_done")
         desc("Close GIF maker").performClick(); pump(1200)

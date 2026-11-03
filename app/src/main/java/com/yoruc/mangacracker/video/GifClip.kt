@@ -34,8 +34,9 @@ data class GifDone(val file: File, val bytes: Long, val width: Int, val height: 
  */
 object GifClip {
     const val MAX_CAPTURE_MS = 30_000L
-    const val MAX_RANGE_MS = 10_000L
+    const val MAX_RANGE_MS = 30_000L
     private const val WORK_LONG = 640   // frames are kept at the biggest GIF size; every try shrinks from there
+    private const val FRAMES_BUDGET = 450_000_000L   // bytes of frames in the cache file (long clips are kept smaller)
 
     private fun dir(ctx: Context) = File(ctx.cacheDir, "gif").apply { mkdirs() }
 
@@ -53,7 +54,9 @@ object GifClip {
             progress("Getting the clip", 0f)
             cutClip(ctx, src, stream, req.startMs, req.endMs, if (videoHeight > 720) 720 else 0, cut) { progress("Getting the clip", it / 100f) }
             val job = currentCoroutineContext()[Job]
-            val frames = withContext(Dispatchers.Default) { read(cut, File(dir, "frames.bin"), progress) { job?.isActive == false } }
+            // slow motion and 50 fps use every frame of a 60 fps video; otherwise about 30 a second are enough
+            val keepFps = if (req.opts.speed < 0.999f || req.opts.fps > 30) 60.0 else 30.0
+            val frames = withContext(Dispatchers.Default) { read(cut, File(dir, "frames.bin"), keepFps, progress) { job?.isActive == false } }
             try {
                 val r = withContext(Dispatchers.Default) {
                     GifMaker(frames, req.opts).apply { this.progress = progress; cancelled = { job?.isActive == false } }.make()
@@ -77,8 +80,11 @@ object GifClip {
             }
         }
 
-    /** Every frame of the clip (60 fps is halved), shrunk to [WORK_LONG] on the long side, into a cache file. */
-    private suspend fun read(file: File, store: File, progress: (String, Float) -> Unit, cancelled: () -> Boolean): FileFrames {
+    /**
+     * The clip's frames (at most [keepFps] a second: 60 fps is halved for 30), shrunk to [WORK_LONG] on the long side,
+     * or less when a long clip would pass [FRAMES_BUDGET], into a cache file.
+     */
+    private suspend fun read(file: File, store: File, keepFps: Double, progress: (String, Float) -> Unit, cancelled: () -> Boolean): FileFrames {
         val mmr = MediaMetadataRetriever()
         var frames: FileFrames? = null
         try {
@@ -87,7 +93,7 @@ object GifClip {
             val durMs = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
             if (count <= 0 || durMs <= 0) throw SourceException("Couldn't read the clip")
             val srcFps = count * 1000.0 / durMs
-            val step = maxOf(1, (srcFps / 30.0).roundToInt())
+            val step = maxOf(1, (srcFps / keepFps).roundToInt())
             val params = MediaMetadataRetriever.BitmapParams().apply { preferredConfig = Bitmap.Config.ARGB_8888 }
             var i = 0
             while (i < count) {
@@ -102,7 +108,9 @@ object GifClip {
                     if ((i + j) % step == 0) {
                         val w = bmp.width; val h = bmp.height
                         val fs = frames ?: run {
-                            val scale = minOf(1.0, WORK_LONG.toDouble() / maxOf(w, h))
+                            val kept = (count + step - 1) / step
+                            val budget = Math.sqrt(FRAMES_BUDGET / 3.0 / kept / (w.toDouble() * h))
+                            val scale = minOf(1.0, WORK_LONG.toDouble() / maxOf(w, h), budget)
                             FileFrames(store, maxOf(2, (w * scale).roundToInt()), maxOf(2, (h * scale).roundToInt()), srcFps / step)
                         }.also { frames = it }
                         val px = IntArray(w * h)

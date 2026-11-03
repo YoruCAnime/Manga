@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
@@ -56,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.yoruc.mangacracker.gif.GIF_FPS
 import com.yoruc.mangacracker.gif.GifSize
 import com.yoruc.mangacracker.ui.theme.Mc
 import com.yoruc.mangacracker.video.GifClip
@@ -71,6 +73,8 @@ class GifEdit(val spanStart: Long, val spanEnd: Long) {
     var speed by mutableFloatStateOf(1f)
     var pingPong by mutableStateOf(false)
     var size by mutableStateOf(GifSize.SMALL)
+    /** Frames per second picked (0 = auto: the size's own, lowered when needed to fit). */
+    var fps by mutableIntStateOf(0)
     var thumbA by mutableStateOf<ImageBitmap?>(null)
     var thumbB by mutableStateOf<ImageBitmap?>(null)
     /** What the maker is doing (null = not working) and how far it is (0..1). */
@@ -152,7 +156,7 @@ fun GifPanel(
                 }
                 LinearProgressIndicator(progress = { g.fraction.coerceIn(0f, 1f) }, color = Mc.Blue, trackColor = Mc.Line,
                     modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(6.dp).clip(RoundedCornerShape(3.dp)))
-                Text("${speedText(g.speed)}${if (g.pingPong) " · ping-pong" else ""} · ${g.size.label} (up to ${g.size.maxBytes / 1_000_000} MB)",
+                Text("${speedText(g.speed)}${if (g.pingPong) " · ping-pong" else ""} · ${fpsText(g.fps)} · ${g.size.label} (up to ${g.size.maxBytes / 1_000_000} MB)",
                     color = Mc.Text3, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
             }
             res != null -> Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -182,6 +186,12 @@ fun GifPanel(
                     Spacer(Modifier.width(10.dp))
                     Chip("⇄  Ping-pong", g.pingPong) { g.pingPong = !g.pingPong }
                 }
+                Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("FPS", color = Mc.Text3, fontSize = 12.sp, modifier = Modifier.width(44.dp))
+                    GIF_FPS.forEach { f -> Chip(if (f == 0) "Auto" else "$f", g.fps == f) { g.fps = f } }
+                    Spacer(Modifier.width(10.dp))
+                    Text(if (g.fps > 30) "extra frames made in between: smooth" else if (g.fps == 0) "fits the size" else "", color = Mc.Text3, fontSize = 12.sp)
+                }
                 Row(Modifier.padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Size", color = Mc.Text3, fontSize = 12.sp, modifier = Modifier.width(44.dp))
                     GifSize.entries.forEach { s -> Chip("${s.label} · ${s.maxBytes / 1_000_000} MB", g.size == s) { g.size = s } }
@@ -192,6 +202,8 @@ fun GifPanel(
         }
     }
 }
+
+fun fpsText(f: Int) = if (f == 0) "auto fps" else "$f fps"
 
 fun speedText(s: Float) = (if (s % 1f == 0f) s.toInt().toString() else s.toString().trimEnd('0')) + "×"
 

@@ -442,7 +442,7 @@ fun PlayerScreen(nav: Nav, key: String) {
     }
     fun makeGif(g: GifEdit) {
         val d = vm.details ?: return
-        val req = GifRequest(g.a, g.b, GifOptions(g.speed, g.pingPong, g.size))
+        val req = GifRequest(g.a, g.b, GifOptions(g.speed, g.pingPong, g.size, g.fps))
         val main = android.os.Handler(android.os.Looper.getMainLooper())
         var lastPct = -1; var lastStage = ""
         val progress: (String, Float) -> Unit = { stage, f ->

@@ -82,14 +82,16 @@ Later); Later keeps it under Settings → App updates.
   **Record** (tap to start, tap to stop: that part is saved as an MP4 clip to Movies/MangaCracker).
 - **GIF maker** (the GIF button in the player): tap GIF to start capturing (red dot + timer, up to 30 s), tap again
   to stop. A panel opens at the bottom of the player (no pop-up): drag the two handles to pick the part you want
-  (up to 10 s; the video behind shows the frame under the handle, small pictures show the start and the end), pick
+  (up to 30 s; the video behind shows the frame under the handle, small pictures show the start and the end), pick
   a speed (0.25× to 2×: slow motion makes real in-between frames from the motion, so it stays smooth and sharp, no
-  blurry cross-fades; fast skips frames), **Ping-pong** (plays forward then back, looping) and a size (**Tiny** up
+  blurry cross-fades or after-images; fast skips frames), **Ping-pong** (plays forward then back, looping), the
+  **FPS** (**Auto**, **24**, **30** or **50**: 50 makes extra in-between frames for very smooth motion, even at normal
+  speed) and a size (**Tiny** up
   to 2 MB, **Small** up to 5 MB, the default, **Big** up to 10 MB), then **Make GIF**. It shows its progress, then
   the GIF playing with its size in MB, picture size and length: **Save** (Pictures/MangaCracker/GIFs), **Share** or
   **Change** to try other settings. The GIF always fits the size you picked: if it would be bigger the app makes it
-  a bit smaller or lowers the frame rate, keeping it as sharp as it can. Long slow-motion GIFs come out smaller /
-  choppier, so pick a short part for 0.25×.
+  a bit smaller or lowers the frame rate (a frame rate you picked is kept), keeping it as sharp as it can. Long GIFs
+  come out smaller in picture size, so pick a short part for big, sharp slow motion.
 - **Updates**: new chapters grouped by day; checked in the background (every 6 h by default, Settings) with a
   notification.
 - **Settings**: app updates (check now, install, what's new, automatic check on / off), update interval, covers per
