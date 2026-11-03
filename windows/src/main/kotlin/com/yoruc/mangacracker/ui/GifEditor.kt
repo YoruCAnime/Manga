@@ -9,6 +9,9 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -68,6 +71,12 @@ import com.yoruc.mangacracker.platform.Desktop
 import com.yoruc.mangacracker.platform.Pixels
 import com.yoruc.mangacracker.platform.Rife
 import com.yoruc.mangacracker.ui.theme.Mc
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Codec
+import org.jetbrains.skia.Data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -111,7 +120,7 @@ private const val FRAMES_BUDGET = 450_000_000L   // bytes of full-size frames fo
  * start / end at the preview spot, Space plays / pauses the preview, Esc closes.
  */
 @Composable
-fun GifEditor(src: GifSource, at: Double, onClose: () -> Unit) {
+fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
     // a GIF of this video made before: open on that part again (the strip centred on it)
     var resume by remember { mutableStateOf(GifSpots.get(src.key)) }
@@ -132,7 +141,7 @@ fun GifEditor(src: GifSource, at: Double, onClose: () -> Unit) {
     var pingPong by remember { mutableStateOf(false) }
     var gifFps by remember { mutableIntStateOf(0) }      // 0 = auto
     var making by remember { mutableStateOf<Pair<String, Float>?>(null) }
-    var done by remember { mutableStateOf<File?>(null) }
+    var done by remember { mutableStateOf(savedDemo) }        // the saved GIF's box ([savedDemo]: tests open on it)
     var thumbs by remember { mutableStateOf<List<ImageBitmap>>(emptyList()) }
     var shown by remember { mutableStateOf<ImageBitmap?>(null) }
     val keys = remember { FocusRequester() }
@@ -214,117 +223,138 @@ fun GifEditor(src: GifSource, at: Double, onClose: () -> Unit) {
                 val long = minOf(size.maxWidth.coerceAtLeast(PREVIEW_LONG), budgetLong).coerceAtLeast(240)
                 val big = ClipRecorder.frames(src.input, from, to, src.width, src.height, src.fps, long, "make", keep) { making = "Getting the frames" to it * 0.3f }
                 try { ClipRecorder.gif(big, GifOptions(speed, pingPong, size, gifFps), out) { what, p -> making = what to 0.3f + 0.7f * p } } finally { big.close() }
-            }.onSuccess { done = it }.onFailure { Desktop.toast("Couldn't make the GIF: ${it.message}") }
+            }.onSuccess { done = it; playing = false }.onFailure { Desktop.toast("Couldn't make the GIF: ${it.message}") }
             making = null
         }
     }
 
-    Column(
-        Modifier.fillMaxSize().background(Mc.Bg).focusRequester(keys).focusable()
-            .onPreviewKeyEvent { e ->
-                if (e.type != KeyEventType.KeyDown || frames == null) return@onPreviewKeyEvent false
-                val step = if (e.isShiftPressed) 10 else 1
-                when (e.key) {
-                    Key.DirectionLeft -> move(active, (if (active == 0) a else b) - step)
-                    Key.DirectionRight -> move(active, (if (active == 0) a else b) + step)
-                    Key.Tab -> active = 1 - active
-                    Key.LeftBracket -> { active = 0; move(0, head) }
-                    Key.RightBracket -> { active = 1; move(1, head) }
-                    Key.Spacebar -> playing = !playing
-                    Key.Enter -> make()
-                    else -> return@onPreviewKeyEvent false
-                }
-                true
-            }
-    ) {
-        // the preview
-        Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
-            when {
-                error != null -> Text(error!!, color = Mc.Orange, modifier = Modifier.padding(20.dp))
-                loading != null -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = Mc.Blue)
-                    Spacer(Modifier.height(10.dp))
-                    Text("Reading the video… ${((loading ?: 0f) * 100).toInt()}%", color = Mc.Text2)
-                }
-                else -> shown?.let { Image(it, null, Modifier.fillMaxSize().padding(8.dp), contentScale = ContentScale.Fit) }
-            }
-            done?.let { f ->
-                Column(Modifier.align(Alignment.Center).clip(RoundedCornerShape(12.dp)).background(Color(0xF00B1622)).padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("GIF saved · ${f.length() / 1024} KB", color = Mc.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Text(f.parentFile.path, color = Mc.Text3, fontSize = 12.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { Desktop.reveal(f) }, colors = ButtonDefaults.buttonColors(containerColor = Mc.Blue, contentColor = Mc.Bg)) { Text("Show in folder") }
-                        Button(onClick = { copyFile(f); Desktop.toast("GIF copied: paste it in Discord, a chat or a folder") },
-                            colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text)) { Text("Copy") }
-                        Button(onClick = { done = null }, colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text)) { Text("Make another") }
-                        Button(onClick = onClose, colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text)) { Text("Done") }
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.fillMaxSize().background(Mc.Bg).focusRequester(keys).focusable()
+                .onPreviewKeyEvent { e ->
+                    // while the saved GIF's box is up, the editor's keys rest
+                    if (e.type != KeyEventType.KeyDown || frames == null || done != null) return@onPreviewKeyEvent false
+                    val step = if (e.isShiftPressed) 10 else 1
+                    when (e.key) {
+                        Key.DirectionLeft -> move(active, (if (active == 0) a else b) - step)
+                        Key.DirectionRight -> move(active, (if (active == 0) a else b) + step)
+                        Key.Tab -> active = 1 - active
+                        Key.LeftBracket -> { active = 0; move(0, head) }
+                        Key.RightBracket -> { active = 1; move(1, head) }
+                        Key.Spacebar -> playing = !playing
+                        Key.Enter -> make()
+                        else -> return@onPreviewKeyEvent false
                     }
+                    true
+                }
+        ) {
+            // the preview
+            Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
+                when {
+                    error != null -> Text(error!!, color = Mc.Orange, modifier = Modifier.padding(20.dp))
+                    loading != null -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = Mc.Blue)
+                        Spacer(Modifier.height(10.dp))
+                        Text("Reading the video… ${((loading ?: 0f) * 100).toInt()}%", color = Mc.Text2)
+                    }
+                    else -> shown?.let { Image(it, null, Modifier.fillMaxSize().padding(8.dp), contentScale = ContentScale.Fit) }
+                }
+            }
+            val f = frames
+            Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // times
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // picking an end shows its frame (paused there); a click on the strip then moves that end
+                    TimeTag("Start", if (f != null) clockS(secs(a)) else "–", active == 0) { active = 0; head = a; playing = false }
+                    Spacer(Modifier.width(8.dp))
+                    TimeTag("End", if (f != null) clockS(secs(b)) else "–", active == 1) { active = 1; head = b; playing = false }
+                    Spacer(Modifier.width(12.dp))
+                    Text(if (f != null) "%.1f s · %d frames".format(java.util.Locale.US, (b - a + 1) / f.fps / speed, b - a + 1) else "", color = Mc.Text2, fontSize = 13.sp)
+                    // where the preview is in the whole video
+                    if (f != null) Text("   ▶ ${clockS(secs(head))}" + (if (src.duration > 0) " of ${clockS(src.duration).substringBefore('.')}" else ""),
+                        color = Color(0xFFFF5C8A), fontSize = 13.sp)
+                    Spacer(Modifier.weight(1f))
+                    Text("Pick Start / End, click the strip · ← → one frame (Shift 10) · Tab other end · Space play", color = Mc.Text3, fontSize = 11.5.sp)
+                }
+                // the filmstrip with the two handles
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SmallBtn("◀ Earlier", enabled = loading == null && winStart > 0) { winStart = (winStart - WINDOW_S / 2).coerceAtLeast(0.0); a = 0; b = 0 }
+                    Filmstrip(thumbs, f?.count ?: 0, a, b, head, active, winStart, f?.fps ?: 24.0, Modifier.weight(1f).height(84.dp).padding(horizontal = 8.dp),
+                        // a click moves the picked end (Start / End) there and shows that frame; dragging takes the nearest handle
+                        onPick = { which, i -> playing = false; if (which == -1) move(active, i) else { active = which; move(which, i) } })
+                    SmallBtn("Later ▶", enabled = loading == null && (src.duration <= 0 || winStart + WINDOW_S < src.duration)) { winStart += WINDOW_S / 2; a = 0; b = 0 }
+                }
+                // opened on the last GIF's part: one click back to where the video is
+                if (resumed) Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Opened where your last GIF of this video was", color = Mc.Text3, fontSize = 11.5.sp)
+                    Spacer(Modifier.width(8.dp))
+                    SmallBtn("Go to where the video is", enabled = loading == null) {
+                        a = 0; b = 0
+                        val w = (at - WINDOW_S * 2 / 3).coerceAtLeast(0.0)
+                        if (w == winStart) winStart = w + 1e-6 else winStart = w
+                    }
+                }
+                // options + make
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Size", color = Mc.Text2, fontSize = 13.sp)
+                    GifSize.entries.forEach { g -> Chip("${g.label} · ${g.maxBytes / 1_000_000} MB", size == g) { size = g } }
+                    Spacer(Modifier.width(10.dp))
+                    Text("Speed", color = Mc.Text2, fontSize = 13.sp)
+                    listOf(0.25f, 0.5f, 1f, 1.5f, 2f).forEach { s -> Chip(if (s == 1f) "1×" else "$s×", speed == s) { speed = s } }
+                    Spacer(Modifier.width(10.dp))
+                    Chip("Ping-pong", pingPong) { pingPong = !pingPong }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("FPS", color = Mc.Text2, fontSize = 13.sp)
+                    GIF_FPS.forEach { v -> Chip(if (v == 0) "Auto" else "$v", gifFps == v) { gifFps = v } }
+                    Text(when {
+                        gifFps <= 30 && speed >= 1f -> ""
+                        Rife.available -> "  in-between frames drawn by RIFE (graphics card): smooth"
+                        else -> "  extra frames made in between: smooth"
+                    }, color = Mc.Text3, fontSize = 12.sp)
+                    Spacer(Modifier.weight(1f))
+                    making?.let { (what, p) ->
+                        Column(Modifier.width(180.dp)) {
+                            Text("$what…", color = Mc.Text2, fontSize = 12.sp)
+                            LinearProgressIndicator(progress = { p }, Modifier.fillMaxWidth(), color = Mc.Blue, trackColor = Mc.Card2)
+                        }
+                    }
+                    Button(onClick = onClose, colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text)) { Text("Close") }
+                    Button(enabled = f != null && making == null, onClick = { make() },
+                        colors = ButtonDefaults.buttonColors(containerColor = Mc.Blue, contentColor = Mc.Bg)) { Text("Make GIF") }
                 }
             }
         }
-        val f = frames
-        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            // times
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // picking an end shows its frame (paused there); a click on the strip then moves that end
-                TimeTag("Start", if (f != null) clockS(secs(a)) else "–", active == 0) { active = 0; head = a; playing = false }
-                Spacer(Modifier.width(8.dp))
-                TimeTag("End", if (f != null) clockS(secs(b)) else "–", active == 1) { active = 1; head = b; playing = false }
-                Spacer(Modifier.width(12.dp))
-                Text(if (f != null) "%.1f s · %d frames".format(java.util.Locale.US, (b - a + 1) / f.fps / speed, b - a + 1) else "", color = Mc.Text2, fontSize = 13.sp)
-                // where the preview is in the whole video
-                if (f != null) Text("   ▶ ${clockS(secs(head))}" + (if (src.duration > 0) " of ${clockS(src.duration).substringBefore('.')}" else ""),
-                    color = Color(0xFFFF5C8A), fontSize = 13.sp)
-                Spacer(Modifier.weight(1f))
-                Text("Pick Start / End, click the strip · ← → one frame (Shift 10) · Tab other end · Space play", color = Mc.Text3, fontSize = 11.5.sp)
-            }
-            // the filmstrip with the two handles
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SmallBtn("◀ Earlier", enabled = loading == null && winStart > 0) { winStart = (winStart - WINDOW_S / 2).coerceAtLeast(0.0); a = 0; b = 0 }
-                Filmstrip(thumbs, f?.count ?: 0, a, b, head, active, winStart, f?.fps ?: 24.0, Modifier.weight(1f).height(84.dp).padding(horizontal = 8.dp),
-                    // a click moves the picked end (Start / End) there and shows that frame; dragging takes the nearest handle
-                    onPick = { which, i -> playing = false; if (which == -1) move(active, i) else { active = which; move(which, i) } })
-                SmallBtn("Later ▶", enabled = loading == null && (src.duration <= 0 || winStart + WINDOW_S < src.duration)) { winStart += WINDOW_S / 2; a = 0; b = 0 }
-            }
-            // opened on the last GIF's part: one click back to where the video is
-            if (resumed) Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Opened where your last GIF of this video was", color = Mc.Text3, fontSize = 11.5.sp)
-                Spacer(Modifier.width(8.dp))
-                SmallBtn("Go to where the video is", enabled = loading == null) {
-                    a = 0; b = 0
-                    val w = (at - WINDOW_S * 2 / 3).coerceAtLeast(0.0)
-                    if (w == winStart) winStart = w + 1e-6 else winStart = w
-                }
-            }
-            // options + make
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Size", color = Mc.Text2, fontSize = 13.sp)
-                GifSize.entries.forEach { g -> Chip("${g.label} · ${g.maxBytes / 1_000_000} MB", size == g) { size = g } }
-                Spacer(Modifier.width(10.dp))
-                Text("Speed", color = Mc.Text2, fontSize = 13.sp)
-                listOf(0.25f, 0.5f, 1f, 1.5f, 2f).forEach { s -> Chip(if (s == 1f) "1×" else "$s×", speed == s) { speed = s } }
-                Spacer(Modifier.width(10.dp))
-                Chip("Ping-pong", pingPong) { pingPong = !pingPong }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("FPS", color = Mc.Text2, fontSize = 13.sp)
-                GIF_FPS.forEach { v -> Chip(if (v == 0) "Auto" else "$v", gifFps == v) { gifFps = v } }
-                Text(when {
-                    gifFps <= 30 && speed >= 1f -> ""
-                    Rife.available -> "  in-between frames drawn by RIFE (graphics card): smooth"
-                    else -> "  extra frames made in between: smooth"
-                }, color = Mc.Text3, fontSize = 12.sp)
-                Spacer(Modifier.weight(1f))
-                making?.let { (what, p) ->
-                    Column(Modifier.width(180.dp)) {
-                        Text("$what…", color = Mc.Text2, fontSize = 12.sp)
-                        LinearProgressIndicator(progress = { p }, Modifier.fillMaxWidth(), color = Mc.Blue, trackColor = Mc.Card2)
-                    }
-                }
-                Button(onClick = onClose, colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text)) { Text("Close") }
-                Button(enabled = f != null && making == null, onClick = { make() },
-                    colors = ButtonDefaults.buttonColors(containerColor = Mc.Blue, contentColor = Mc.Bg)) { Text("Make GIF") }
+        done?.let { f -> SavedBox(f, onDelete = {
+            if (f.delete() || !f.exists()) Desktop.toast("GIF deleted") else Desktop.toast("Couldn't delete the GIF (is it open somewhere?)")
+            done = null; playing = true
+        }, onAnother = { done = null; playing = true }, onClose = onClose) }
+    }
+}
+
+/**
+ * Over the whole editor once a GIF is made: the GIF playing (as big as the window allows), its size, and Show in
+ * folder / Copy / Delete (not happy with it: the file goes, the editor stays on the same part to change and make
+ * again) / Make another / Done. Clicks don't reach the editor under it.
+ */
+@Composable
+private fun SavedBox(f: File, onDelete: () -> Unit, onAnother: () -> Unit, onClose: () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xCC060B12)).pointerInput(Unit) { detectTapGestures { } },
+        contentAlignment = Alignment.Center) {
+        val previewH = (maxHeight - 170.dp).coerceIn(80.dp, 340.dp)
+        Column(Modifier.clip(RoundedCornerShape(12.dp)).background(Mc.Card).padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            var info by remember(f) { mutableStateOf("") }
+            GifPlayer(f, previewH, Modifier.widthIn(max = 640.dp)) { info = it }
+            Text("GIF saved · ${f.length() / 1024} KB" + (if (info.isNotEmpty()) " · $info" else ""), color = Mc.Text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Text(f.path, color = Mc.Text3, fontSize = 12.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { Desktop.reveal(f) }, colors = ButtonDefaults.buttonColors(containerColor = Mc.Blue, contentColor = Mc.Bg)) { Text("Show in folder") }
+                Button(onClick = { copyFile(f); Desktop.toast("GIF copied: paste it in Discord, a chat or a folder") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text)) { Text("Copy") }
+                Button(onClick = onDelete, colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Orange)) { Text("Delete") }
+                Button(onClick = onAnother, colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text)) { Text("Make another") }
+                Button(onClick = onClose, colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text)) { Text("Done") }
             }
         }
     }
@@ -410,6 +440,44 @@ private fun Filmstrip(
                 drawText(label, topLeft = Offset(lx, 3f))
             }
         }
+    }
+}
+
+/**
+ * Plays a GIF file in a loop at its own timing (Skia decodes one frame at a time onto the last, so even a long GIF
+ * holds only one picture). [onInfo] gets "W×H · N frames · S s".
+ */
+@Composable
+private fun GifPlayer(file: File, maxHeight: Dp, modifier: Modifier, onInfo: (String) -> Unit) {
+    var pic by remember(file) { mutableStateOf<ImageBitmap?>(null) }
+    var aspect by remember(file) { mutableStateOf(16f / 9f) }
+    var natural by remember(file) { mutableStateOf(0) }       // the GIF's own height, px: never shown bigger than that
+    LaunchedEffect(file) {
+        val codec = withContext(Dispatchers.IO) { runCatching { Codec.makeFromData(Data.makeFromBytes(file.readBytes())) }.getOrNull() } ?: return@LaunchedEffect
+        aspect = codec.width.toFloat() / codec.height.coerceAtLeast(1)
+        natural = codec.height
+        val n = codec.frameCount.coerceAtLeast(1)
+        val durations = IntArray(n) { i -> runCatching { codec.getFrameInfo(i).duration }.getOrDefault(100).let { if (it <= 10) 100 else it } }
+        onInfo("${codec.width}×${codec.height} · $n frames · ${"%.1f".format(java.util.Locale.US, durations.sum() / 1000.0)} s")
+        val bmp = Bitmap().apply { allocN32Pixels(codec.width, codec.height) }
+        try {
+            var i = 0
+            while (true) {
+                val started = System.nanoTime()
+                pic = withContext(Dispatchers.Default) {
+                    // each frame is drawn over the one before (GIF frames only hold what changed)
+                    if (i == 0) codec.readPixels(bmp, 0) else codec.readPixels(bmp, i, i - 1)
+                    org.jetbrains.skia.Image.makeFromBitmap(bmp).toComposeImageBitmap()
+                }
+                delay((durations[i] - (System.nanoTime() - started) / 1_000_000).coerceAtLeast(5))
+                i = (i + 1) % n
+            }
+        } finally { bmp.close(); codec.close() }
+    }
+    val h = if (natural > 0) minOf(maxHeight, with(LocalDensity.current) { natural.toDp() }) else maxHeight
+    Box(modifier.height(h).aspectRatio(aspect, matchHeightConstraintsFirst = true), contentAlignment = Alignment.Center) {
+        pic?.let { Image(it, "The GIF", Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
+            ?: CircularProgressIndicator(color = Mc.Blue)
     }
 }
 
