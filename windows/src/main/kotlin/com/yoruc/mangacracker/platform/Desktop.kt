@@ -14,6 +14,8 @@ import java.io.File
  * long as the app), in-window toasts, Windows notifications from the tray icon, and the folders pictures are saved in.
  */
 object Desktop {
+    /** The app's version (packageVersion in build.gradle.kts, handed over by the packaged app's launcher; "dev" in tests) */
+    val version: String = System.getProperty("jpackage.app-version")?.takeIf { it.isNotBlank() } ?: "dev"
     /** %LOCALAPPDATA%\MangaCracker (or ~/.mangacracker elsewhere) */
     val root: File = File(System.getenv("LOCALAPPDATA")?.takeIf { it.isNotBlank() } ?: (System.getProperty("user.home") + "/.local/share"), "MangaCracker")
         .apply { mkdirs() }

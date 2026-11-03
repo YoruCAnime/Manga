@@ -16,7 +16,7 @@ version is just unzipped over the old folder.
 
 ## Using it
 
-Start it from MangaCracker.exe (or your shortcut).
+Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.0.0).
 
 - **Left rail**: Home, Library, Browse, Videos, Updates, More (the phone's bottom bar).
 - **Going back**: Esc, Alt+←, the mouse's back button, or the ← arrows. **F11** = full screen.

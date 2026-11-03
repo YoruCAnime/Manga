@@ -71,7 +71,7 @@ private fun tray() {
     if (!SystemTray.isSupported()) return
     runCatching {
         val img = iconImage ?: return
-        val icon = TrayIcon(img, "MangaCracker").apply { isImageAutoSize = true }
+        val icon = TrayIcon(img, "MangaCracker ${Desktop.version}").apply { isImageAutoSize = true }
         SystemTray.getSystemTray().add(icon)
         Desktop.notifier = { title, text -> icon.displayMessage(title, text, TrayIcon.MessageType.NONE) }
     }
@@ -116,7 +116,7 @@ private fun run() = application {
             focusable = !off,
             onCloseRequest = { Edge.close(); exitApplication() },
             state = state,
-            title = "MangaCracker",
+            title = "MangaCracker ${Desktop.version}",
             icon = iconImage?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.toComposeImageBitmap()) },
             onPreviewKeyEvent = { e ->
                 // Esc and Alt+Left go back; F11 full screen
