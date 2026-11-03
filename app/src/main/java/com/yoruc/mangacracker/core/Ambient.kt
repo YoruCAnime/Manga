@@ -32,9 +32,14 @@ object Ambient {
     val sounds = listOf(
         Sound("rain", "Rain", R.raw.ambient_rain),
         Sound("cafe", "Café", R.raw.ambient_cafe),
-        Sound("lofi", "Lo-fi", R.raw.ambient_lofi),
         Sound("fire", "Fireplace", R.raw.ambient_fire),
         Sound("night", "Night crickets", R.raw.ambient_night),
+        // lo-fi loops, each its own chords / tempo / instruments
+        Sound("lofi", "Lo-fi chill", R.raw.ambient_lofi),
+        Sound("lofi_night", "Lo-fi night drive", R.raw.ambient_lofi_night),
+        Sound("lofi_sunny", "Lo-fi sunny day", R.raw.ambient_lofi_sunny),
+        Sound("lofi_rainy", "Lo-fi rainy window", R.raw.ambient_lofi_rainy),
+        Sound("lofi_jazz", "Lo-fi study jazz", R.raw.ambient_lofi_jazz),
     )
 
     private val main = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)

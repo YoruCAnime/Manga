@@ -276,6 +276,15 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
     user's file (`readerSoundUri`, persisted SAF permission, device-only in backups). The reader syncs it on
     ON_START, pauses on ON_STOP, stops on dispose. `ui/SoundsUi.kt` SoundPicker (reader 🎧 sheet + ReaderSettings).
     Tests: `CozyShotTest` (rules in CI; shots 100-108), `SeasonPreviewTest` (each effect alone, shots 109a-e).
+  - 1.9.1 seasons: Exos found the shapes "lame and basic". `Sprites` in Seasons.kt draws each piece once into a 192 px
+    bitmap with android.graphics (six-armed crystals with seeded branches / plate / tips over a blurred ice-blue glow;
+    maple + slim momiji leaves = 7 lance-shaped saw-toothed lobes + a centre painted one by one (Path.op UNION did
+    nothing under Robolectric) with a radial red-gold fill, then light, veins via SRC_ATOP; sakura blossoms with
+    stamens + gradient petals) plus a softened copy (shrunk / grown) for far ones; the Field only moves / turns /
+    squeezes them (drawImage). Paint default colour must be opaque: a shader is multiplied by the paint's alpha.
+    sin(pi) is a hair below 0, so pow() of it is NaN and broke whole lobe paths. Summer by day = lens bokeh discs
+    with a rim + glints. A faint seasonal glow at the top. Lo-fi: 4 more loops (`ambient_lofi_{night,sunny,rainy,jazz}`,
+    made by a script like the others; ids lofi_* in `Ambient.sounds`).
   - Reader long-press undoes the strip zoom before finding the page (zoomed in, it used to pick the wrong page) and
     records where on the page the finger was (two-page spreads included).
 
