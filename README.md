@@ -1,13 +1,25 @@
 # MangaCracker
 
-A personal Android manga reader in the spirit of Tachiyomi / Mihon, with an AniList-style dark look.
-A personal project, shared as is. Not affiliated with any of the sites below.
+## Install
 
-## Download
+**Android phone** (Android 10 or newer)
+1. Download the APK from the **[latest release](https://github.com/YoruCAnime/Manga/releases/latest)** on the phone.
+2. Open it and tap Install (allow "Install unknown apps" for your browser if asked).
+3. Done: the app updates itself after that ("Update ready" pop-up, or Settings › App updates).
 
-**[Get the latest APK from Releases](https://github.com/YoruCAnime/Manga/releases/latest)** (Android 10 or newer).
-From 1.1.0 on the app updates itself: when a new release is out it shows an "Update ready" pop-up (Update now /
-Later); Later keeps it under Settings → App updates.
+**Windows PC** (Windows 10 / 11, 64-bit)
+1. Download **MangaCracker-Windows-…zip** from the **[Windows release](https://github.com/YoruCAnime/Manga/releases?q=windows)**.
+2. Unzip it anywhere and run **MangaCracker.exe** (right-click › Send to › Desktop for a shortcut). If Windows says
+   "Windows protected your PC": More info › Run anyway.
+3. Once, for AVIF pages, GIFs and recording: `winget install Gyan.FFmpeg` in a terminal.
+
+More on the Windows version: [windows/README.md](windows/README.md).
+
+---
+
+A personal Android manga reader in the spirit of Tachiyomi / Mihon, with an AniList-style dark look, and a
+Windows version of it ([windows/](windows/)). A personal project, shared as is. Not affiliated with any of the sites
+below.
 
 ## What it does
 
@@ -211,3 +223,7 @@ uses the debug key. Checks:
 Releasing: bump `versionCode` / `versionName` in `app/build.gradle.kts`, build, then
 `gh release create v<version> MangaCracker-<version>.apk --repo YoruCAnime/Manga --title "MangaCracker <version>" --notes-file NOTES.md`.
 The release notes show in the app's pop-up ("**bold**", "- " lists are fine).
+
+Windows releases are tagged `windows-v<version>` and must be made with `--latest=false`: the phone app updates from
+the release marked Latest, so a Windows release must never take that place. The Windows app's code is in `windows/`
+(built on its own, see [windows/README.md](windows/README.md)).
