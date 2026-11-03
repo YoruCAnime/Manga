@@ -5,7 +5,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,11 +30,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -108,6 +111,9 @@ private object GifSpots {
     }
 }
 
+/** Tests: gets start frame, end frame and the picked end (0 = Start, 1 = End) after every change. */
+internal var gifRangeProbe: ((Int, Int, Int) -> Unit)? = null
+
 private const val WINDOW_S = 36.0          // the filmstrip shows this much of the video (a 30 s GIF and some around it)
 private const val PREVIEW_LONG = 480       // preview frames' long side
 private const val FRAMES_BUDGET = 450_000_000L   // bytes of full-size frames for the GIF (long ones are read smaller)
@@ -148,6 +154,7 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
     val maxFrames = { f: FileFrames -> (ClipRecorder.MAX_GIF_SECONDS * f.fps).toInt() }
 
     BackHandlerCompat(onClose)
+    SideEffect { gifRangeProbe?.invoke(a, b, active) }
     DisposableEffect(Unit) { onDispose { frames?.close() } }
 
     // the window's frames (small), then the handles: the last 3 s before where the video was
@@ -195,13 +202,14 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
     LaunchedEffect(head, playing) { if (!playing) frames?.let { f -> shown = withContext(Dispatchers.Default) { Pixels.image(f.frame(head).withAlpha(), f.width, f.height) } } }
 
     fun secs(i: Int) = winStart + i / (frames?.fps ?: 24.0)
-    fun move(handle: Int, to: Int) {
+    /** [jump] = false while dragging: the moved end stops at the other one instead of taking the whole part along. */
+    fun move(handle: Int, to: Int, jump: Boolean = true) {
         val f = frames ?: return
         val n = f.count
         val len = b - a
         // the start put past the end (or the end before the start): the whole part goes there, keeping its length
-        if (handle == 0 && to >= b) { a = to.coerceIn(0, n - 2); b = (a + len).coerceIn(a + 1, n - 1); head = a; return }
-        if (handle == 1 && to <= a) { b = to.coerceIn(1, n - 1); a = (b - len).coerceIn(0, b - 1); head = b; return }
+        if (jump && handle == 0 && to >= b) { a = to.coerceIn(0, n - 2); b = (a + len).coerceIn(a + 1, n - 1); head = a; return }
+        if (jump && handle == 1 && to <= a) { b = to.coerceIn(1, n - 1); a = (b - len).coerceIn(0, b - 1); head = b; return }
         if (handle == 0) { a = to.coerceIn(0, b - 1).coerceAtLeast(b - maxFrames(f)); head = a }
         else { b = to.coerceIn(a + 1, n - 1).coerceAtMost(a + maxFrames(f)); head = b }
     }
@@ -274,14 +282,15 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
                     if (f != null) Text("   ▶ ${clockS(secs(head))}" + (if (src.duration > 0) " of ${clockS(src.duration).substringBefore('.')}" else ""),
                         color = Color(0xFFFF5C8A), fontSize = 13.sp)
                     Spacer(Modifier.weight(1f))
-                    Text("Pick Start / End, click the strip · ← → one frame (Shift 10) · Tab other end · Space play", color = Mc.Text3, fontSize = 11.5.sp)
+                    Text("Pick Start / End, then click or drag on the strip · ← → one frame (Shift 10) · Tab other end · Space play", color = Mc.Text3, fontSize = 11.5.sp)
                 }
                 // the filmstrip with the two handles
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     SmallBtn("◀ Earlier", enabled = loading == null && winStart > 0) { winStart = (winStart - WINDOW_S / 2).coerceAtLeast(0.0); a = 0; b = 0 }
                     Filmstrip(thumbs, f?.count ?: 0, a, b, head, active, winStart, f?.fps ?: 24.0, Modifier.weight(1f).height(84.dp).padding(horizontal = 8.dp),
-                        // a click moves the picked end (Start / End) there and shows that frame; dragging takes the nearest handle
-                        onPick = { which, i -> playing = false; if (which == -1) move(active, i) else { active = which; move(which, i) } })
+                        // a press moves the picked end (Start / End) there and shows that frame; holding and moving
+                        // the mouse keeps moving that same end (stopping at the other end)
+                        onPick = { i, held -> playing = false; move(active, i, jump = !held) })
                     SmallBtn("Later ▶", enabled = loading == null && (src.duration <= 0 || winStart + WINDOW_S < src.duration)) { winStart += WINDOW_S / 2; a = 0; b = 0 }
                 }
                 // opened on the last GIF's part: one click back to where the video is
@@ -361,16 +370,18 @@ private fun SavedBox(f: File, onDelete: () -> Unit, onAnother: () -> Unit, onClo
 }
 
 /**
- * The strip: thumbnails, the picked part lit, start / end handles (drag them, or click: the picked end moves there), the
- * preview spot, a ruler of video times along the bottom ([start] = the strip's first frame in the video, s) and the time
- * under the mouse.
+ * The strip: thumbnails, the picked part lit, start / end handles, the preview spot, a ruler of video times along the
+ * bottom ([start] = the strip's first frame in the video, s) and the time under the mouse. Pressing, clicking or
+ * dragging anywhere on it moves the PICKED end (Start / End) only: [onPick] gets the frame and whether it's the press
+ * (false) or the mouse moving while held (true). (It used to hand a drag to the nearest handle, and a click with the
+ * mouse moving a pixel counted as a drag, so End clicks often moved Start and switched to it.)
  */
 @Composable
 private fun Filmstrip(
     thumbs: List<ImageBitmap>, n: Int, a: Int, b: Int, head: Int, active: Int, start: Double, fps: Double, modifier: Modifier,
-    onPick: (Int, Int) -> Unit,
+    onPick: (Int, Boolean) -> Unit,
 ) {
-    var dragging by remember { mutableIntStateOf(-1) }
+    val pick by rememberUpdatedState(onPick)
     var hover by remember { mutableStateOf<Float?>(null) }
     val text = rememberTextMeasurer()
     Canvas(modifier.clip(RoundedCornerShape(8.dp)).background(Mc.Card)
@@ -382,18 +393,22 @@ private fun Filmstrip(
                 }
             }
         }
-        .pointerInput(n, a, b) {
+        // keyed on the frame count only: a key that changes as the handles move restarted the gesture mid-drag
+        .pointerInput(n) {
             fun idx(x: Float) = if (n <= 1) 0 else (x / size.width * (n - 1)).roundToInt().coerceIn(0, n - 1)
-            detectTapGestures { o -> onPick(-1, idx(o.x)) }
-        }
-        .pointerInput(n, a, b) {
-            fun idx(x: Float) = if (n <= 1) 0 else (x / size.width * (n - 1)).roundToInt().coerceIn(0, n - 1)
-            fun xOf(i: Int) = if (n <= 1) 0f else i.toFloat() / (n - 1) * size.width
-            detectDragGestures(
-                onDragStart = { o -> dragging = if (kotlin.math.abs(o.x - xOf(a)) < kotlin.math.abs(o.x - xOf(b))) 0 else 1; onPick(dragging, idx(o.x)) },
-                onDrag = { c, _ -> onPick(dragging, idx(c.position.x)) },
-                onDragEnd = { dragging = -1 },
-            )
+            awaitEachGesture {
+                val down = awaitFirstDown()
+                down.consume()
+                pick(idx(down.position.x), false)
+                var last = idx(down.position.x)
+                while (true) {
+                    val c = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                    if (!c.pressed) break
+                    val i = idx(c.position.x)
+                    if (i != last) { last = i; pick(i, true) }
+                    c.consume()
+                }
+            }
         }
     ) {
         val w = size.width; val h = size.height
