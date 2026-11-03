@@ -58,10 +58,16 @@ object VideoRepo {
 
     fun isFav(key: String) = key in _favs.value
 
+    /** [ref] with the tags its details brought (lists often have none): what Recommended for you learns from. */
+    private fun withTags(ref: VideoRef): VideoRef {
+        val t = details[ref.key]?.tags.orEmpty()
+        return if (t.isEmpty() || t.all { it in ref.tags }) ref else ref.copy(tags = (ref.tags + t).distinct())
+    }
+
     /** Adds or removes; returns true when it is a favourite now. */
     fun toggleFav(ref: VideoRef): Boolean {
         val now = ref.key !in _favs.value
-        _favs.update { if (now) it + (ref.key to FavVideo(ref, System.currentTimeMillis())) else it - ref.key }
+        _favs.update { if (now) it + (ref.key to FavVideo(withTags(ref), System.currentTimeMillis())) else it - ref.key }
         persistFavs()
         return now
     }
@@ -97,7 +103,7 @@ object VideoRepo {
 
     fun save(ref: VideoRef, positionMs: Long, durationMs: Long) {
         if (durationMs <= 0) return
-        _watch.update { it + (ref.key to WatchState(ref, positionMs, durationMs, System.currentTimeMillis())) }
+        _watch.update { it + (ref.key to WatchState(withTags(ref), positionMs, durationMs, System.currentTimeMillis())) }
         persist()
     }
 

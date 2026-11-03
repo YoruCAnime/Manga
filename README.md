@@ -66,7 +66,9 @@ Later); Later keeps it under Settings → App updates.
   so a 20 000 px strip is never handled whole. Works best on clean art; very busy black-and-white pages full of tone
   may need a few taps.
 - **Videos** (own tab): anime from Anikoto and AnimeHeaven, then Hentaigasm, Oppai.stream, MuchoHentai, HentaiMama, NSFW R34, Porcore, SFM Compile and Rule34Video. Latest / Popular, search with genre autocomplete,
-  a genre sheet (include / exclude), Continue watching (resumes where you stopped). Tap a **series name ›** (on a
+  a genre sheet (include / exclude), Continue watching (resumes where you stopped), and **Recommended for you** under it:
+  picked from the genres of what you favourite, finish and watch for a while, on every site you use (plus similar
+  sites you haven't tried), leaving out what you've seen; one card per show. Tap a **series name ›** (on a
   card, the player's title or in Watched) for the series page: every episode in every language (Raw / English /
   Español / previews, anime Sub / Dub) with language filters. On the anime sites Popular and search list whole shows: tap one
   for all its episodes, with **Sub** and **Dub** side by side (SUB / DUB badges). Long-press a video to add it to your favourites. covers that fall back to other

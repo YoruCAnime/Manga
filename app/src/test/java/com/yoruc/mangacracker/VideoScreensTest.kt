@@ -42,6 +42,20 @@ class VideoScreensTest {
 
     private fun text(t: String) = rule.onAllNodesWithText(t, substring = true, useUnmergedTree = true)
 
+    /** Videos → Continue watching + Recommended for you, from a made-up history (three Anikoto shows, one half watched). */
+    @Test fun recommended() {
+        rule.mainClock.autoAdvance = false
+        pump(3000)
+        val shows = kotlinx.coroutines.runBlocking { com.yoruc.mangacracker.video.AnikotoSource.popular(1).items.take(3) }
+        val now = System.currentTimeMillis()
+        com.yoruc.mangacracker.video.VideoRepo.restore(
+            shows.mapIndexed { i, r -> r.key to com.yoruc.mangacracker.video.WatchState(r, if (i == 0) 600_000 else 1_400_000, 1_420_000, now - i * 60_000L) }.toMap(),
+            emptyMap(),
+        )
+        rule.onAllNodesWithContentDescription("Videos", useUnmergedTree = true)[0].performClick(); pump(45000)
+        shot("46_videos_recommended")
+    }
+
     /** Anime sites: Anikoto's latest (Sub badges), Popular shows, a show's page (Sub / Dub), a Dub episode's player. */
     @Test fun anime() {
         rule.mainClock.autoAdvance = false

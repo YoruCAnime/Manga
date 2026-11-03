@@ -83,6 +83,7 @@ import com.yoruc.mangacracker.core.SearchQuery
 import com.yoruc.mangacracker.core.Tag
 import com.yoruc.mangacracker.ui.theme.Mc
 import com.yoruc.mangacracker.video.VideoPage
+import com.yoruc.mangacracker.video.VideoRecommender
 import com.yoruc.mangacracker.video.VideoRef
 import com.yoruc.mangacracker.video.VideoRepo
 import com.yoruc.mangacracker.video.VideoSafety
@@ -152,7 +153,20 @@ class VideosVM : ViewModel() {
         }
     }
 
-    init { paged.reset(); loadGenres() }
+    /** Recommended for you (every site, from what you watch and favourite); [recsLoading] while it searches. */
+    var recs by mutableStateOf(VideoRecommender.cached()); private set
+    var recsLoading by mutableStateOf(false); private set
+
+    init { paged.reset(); loadGenres(); loadRecs() }
+
+    fun loadRecs(force: Boolean = false) {
+        if (recsLoading) return
+        recsLoading = true
+        viewModelScope.launch {
+            recs = runCatching { VideoRecommender.load(force) }.getOrDefault(recs)
+            recsLoading = false
+        }
+    }
 
     private fun loadGenres() {
         val s = source
@@ -272,6 +286,23 @@ fun VideosScreen(nav: Nav) {
                         }
                     }
                 }
+            }
+            // from what you watch and favourite, on every site (VideoRecommender)
+            if (vm.recs.isNotEmpty() && vm.mode != 2) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)) {
+                            Text("Recommended for you", color = Mc.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                            Text(if (vm.recsLoading) "Finding…" else "Refresh", color = Mc.Blue, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(enabled = !vm.recsLoading) { vm.loadRecs(true) }.padding(horizontal = 8.dp, vertical = 4.dp))
+                        }
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(vm.recs, key = { it.key }) { v -> RecCard(v) { nav.player(v) } }
+                        }
+                    }
+                }
+            }
+            if ((cont.isNotEmpty() || vm.recs.isNotEmpty()) && vm.mode != 2) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Text(if (vm.mode == 1) "Popular on ${vm.source.name}" else "New on ${vm.source.name}", color = Mc.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
                 }
@@ -366,6 +397,22 @@ fun VideoCard(v: VideoRef, w: WatchState?, onSeries: (() -> Unit)? = null, headi
         }
         val sub = listOfNotNull(v.episode.ifEmpty { null }?.takeIf { heading == null }?.let { "Episode $it" }, v.views.ifEmpty { null }?.let { "$it views" }).joinToString(" · ")
         if (sub.isNotEmpty()) Text(sub, color = Mc.Text3, fontSize = 12.sp, maxLines = 1, modifier = Modifier.padding(horizontal = 2.dp))
+    }
+}
+
+/** A recommended video or show: its cover, name and "Site · Episode 3" (the row mixes every site). */
+@Composable
+private fun RecCard(v: VideoRef, onClick: () -> Unit) {
+    Column(Modifier.width(220.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(Mc.Card)) {
+            VideoCover(v, Modifier.fillMaxSize())
+            if (v.lang.isNotEmpty()) Badge(v.lang, Modifier.align(Alignment.TopStart), when { v.lang == "EN" || v.lang.startsWith("SUB") -> Mc.Blue.copy(alpha = 0.9f); v.lang == "DUB" -> Mc.Pink.copy(alpha = 0.9f); else -> Color(0xCC000000) })
+            if (v.duration.isNotEmpty()) Badge(v.duration, Modifier.align(Alignment.BottomEnd))
+        }
+        Text(v.series.ifEmpty { v.title }, color = Mc.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 2.dp, top = 6.dp))
+        Text(listOfNotNull(VideoSources.byId(v.source)?.name, v.episode.ifEmpty { null }?.takeIf { !v.show }?.let { "Episode $it" }).joinToString(" · "),
+            color = Mc.Text3, fontSize = 12.sp, maxLines = 1, modifier = Modifier.padding(start = 2.dp))
     }
 }
 
