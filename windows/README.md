@@ -46,8 +46,10 @@ Start it from MangaCracker.exe (or your shortcut).
   drag, or ← → one frame, Shift 10, Tab other end, [ ] at the preview spot), video times along the strip and the
   time under the mouse, the preview spot's time in the whole video, a looping
   preview of exactly the GIF, size (Tiny 2 MB / Small 5 MB / Big 10 MB), speed (0.25× to 2×), ping-pong, FPS (Auto /
-  24 / 30 / 50: 50 makes smooth in-between frames), then the phone's GIF engine; Show in folder /
-  Copy (paste into Discord, a chat, Explorer). A video you made a GIF of before opens on that GIF's part again
+  24 / 30 / 50: 50 makes smooth in-between frames), then the phone's GIF engine. The finished GIF then plays in a
+  box (at most its own size, with its size / frames / length): Show in folder, Copy (paste into Discord, a chat,
+  Explorer), **Delete** (not happy with it: the file goes and you're back in the editor on the same part), Make
+  another, Done. A video you made a GIF of before opens on that GIF's part again
   ("Go to where the video is" goes back to where you are watching).
   Slow motion and 50 fps get their in-between frames from **RIFE** (rife-ncnn-vulkan, rife-v4.6 model, on the
   graphics card; the same as the ScreenToGif AnimeGif presets): one run per GIF draws every pair of drawings' in-betweens.
