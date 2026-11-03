@@ -64,10 +64,11 @@ Later); Later keeps it under Settings → App updates.
   fine edges, ↶ undoes, 👁 previews only what Save keeps. Manhwa strips are cut at their panel gaps,
   so a 20 000 px strip is never handled whole. Works best on clean art; very busy black-and-white pages full of tone
   may need a few taps.
-- **Videos** (own tab): Hentaigasm, Oppai.stream, MuchoHentai, HentaiMama, NSFW R34, Porcore, SFM Compile and Rule34Video. Latest / Popular, search with genre autocomplete,
+- **Videos** (own tab): anime from Anikoto and AnimeHeaven, then Hentaigasm, Oppai.stream, MuchoHentai, HentaiMama, NSFW R34, Porcore, SFM Compile and Rule34Video. Latest / Popular, search with genre autocomplete,
   a genre sheet (include / exclude), Continue watching (resumes where you stopped). Tap a **series name ›** (on a
   card, the player's title or in Watched) for the series page: every episode in every language (Raw / English /
-  Español / previews) with language filters. Long-press a video to add it to your favourites. covers that fall back to other
+  Español / previews, anime Sub / Dub) with language filters. On the anime sites Popular and search list whole shows: tap one
+  for all its episodes, with **Sub** and **Dub** side by side (SUB / DUB badges). Long-press a video to add it to your favourites. covers that fall back to other
   sizes / the same series when a site refuses a picture. The player opens in landscape (forced: works with
   auto-rotate locked; Rotate switches to portrait and back), controls hide after 3 s, tap to show them. All the
   big play / pause sits in the middle of the picture between −1s / +1s and previous / next episode; the seek bar
@@ -153,6 +154,8 @@ Later); Later keeps it under Settings → App updates.
 | Manhwa18.net | adult manhwa; genres include / exclude, status, sort, tags, artists |
 | Manhwa18.cc | adult manhwa; one genre at a time, sort, Raw / Completed lists |
 | Manga18.club | adult manga / manhwa; one genre at a time, sort |
+| Anikoto (anime) | its pages + its player's API; HLS 1080p, Sub and Dub, subtitles in up to 9 languages |
+| AnimeHeaven (anime) | its pages; one MP4 per episode (720p, English subs in the picture), no dub |
 | Hentaigasm (videos) | its WordPress feed; one MP4 per episode (720p) |
 | Oppai.stream (videos) | its pages + search form; one WebM per episode (1440p, heavy on mobile data), English subtitles |
 | MuchoHentai (videos) | its pages; HLS up to 1080p (the stream key is unlocked the way the site's own player does), Raw / English / Spanish subtitles |

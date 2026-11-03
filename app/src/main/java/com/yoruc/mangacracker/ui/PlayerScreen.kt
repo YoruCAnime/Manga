@@ -571,7 +571,7 @@ fun PlayerScreen(nav: Nav, key: String) {
                     // tap the title: the series page (every episode, every language)
                     Column(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { r?.let { nav.videoSeries(it) } }.padding(vertical = 2.dp)) {
                         Text((r?.series?.ifEmpty { null } ?: r?.title.orEmpty()) + "  ›", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(listOfNotNull(r?.episode?.ifEmpty { null }?.let { "Episode $it" }, r?.lang?.ifEmpty { null }, src.name).joinToString(" · "),
+                        Text(listOfNotNull(r?.episode?.ifEmpty { null }?.let { "Episode $it" }, r?.lang?.let { com.yoruc.mangacracker.video.langName(it) }?.ifEmpty { null }, src.name).joinToString(" · "),
                             color = Color(0xCCFFFFFF), fontSize = 12.5.sp, maxLines = 1)
                     }
                     if (d != null && d.stream.subs.isNotEmpty()) {

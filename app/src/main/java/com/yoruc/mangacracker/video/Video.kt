@@ -23,11 +23,13 @@ data class VideoRef(
     val cover: String = "",
     val duration: String = "",
     val views: String = "",
-    /** "EN", "RAW", "ES", "PV" or "" */
+    /** "EN", "RAW", "ES", "PV", anime "SUB" / "DUB", or "" */
     val lang: String = "",
     val tags: List<String> = emptyList(),
     /** Other addresses of the same picture (another server / size), tried when [cover] is refused. */
     val altCovers: List<String> = emptyList(),
+    /** A whole show (anime sites' popular / search lists), not one episode: opens the show's episode list. */
+    val show: Boolean = false,
 ) {
     val key: String get() = "$source|$id"
     /** "Series · Episode 3" style second line. */
@@ -83,7 +85,7 @@ interface VideoSource {
 }
 
 object VideoSources {
-    val all: List<VideoSource> = listOf(HentaigasmSource, OppaiStreamSource, MuchoHentaiSource, HentaiMamaSource, NsfwR34Source, PorcoreSource, SfmCompileSource, Rule34VideoSource)
+    val all: List<VideoSource> = listOf(AnikotoSource, AnimeHeavenSource, HentaigasmSource, OppaiStreamSource, MuchoHentaiSource, HentaiMamaSource, NsfwR34Source, PorcoreSource, SfmCompileSource, Rule34VideoSource)
     fun byId(id: String) = all.firstOrNull { it.id == id }
 }
 
@@ -154,8 +156,8 @@ fun episodeOf(title: String): String =
 
 fun episodeNumber(e: String): Float = e.toFloatOrNull() ?: Float.MAX_VALUE
 
-/** Series lists: by episode, then English, Raw, Spanish, preview. */
-val seriesOrder: Comparator<VideoRef> = compareBy({ episodeNumber(it.episode) }, { listOf("EN", "RAW", "ES", "PV", "").indexOf(it.lang).let { i -> if (i < 0) 9 else i } })
+/** Series lists: by episode, then English, Raw, Spanish, preview (anime: sub, then dub). */
+val seriesOrder: Comparator<VideoRef> = compareBy({ episodeNumber(it.episode) }, { listOf("EN", "SUB", "DUB", "RAW", "ES", "PV", "").indexOf(it.lang).let { i -> if (i < 0) 9 else i } })
 
 /** Language badge names in full. */
-fun langName(l: String) = when (l) { "EN" -> "English"; "RAW" -> "Raw"; "ES" -> "Español"; "PV" -> "Preview"; else -> l }
+fun langName(l: String) = when (l) { "EN" -> "English"; "RAW" -> "Raw"; "ES" -> "Español"; "PV" -> "Preview"; "SUB" -> "Sub"; "DUB" -> "Dub"; else -> l }

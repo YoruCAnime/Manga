@@ -77,6 +77,8 @@ class Nav(val c: NavHostController) {
     fun globalSearch(text: String = "") = c.navigate("search?q=${Uri.encode(text)}")
     fun web(url: String) = c.navigate("web?url=${Uri.encode(url)}")
     fun player(v: com.yoruc.mangacracker.video.VideoRef) {
+        // a whole show (anime lists) opens its episodes
+        if (v.show) return videoSeries(v)
         com.yoruc.mangacracker.video.VideoRepo.remember(v)
         c.navigate("player/${Uri.encode(v.key)}") { launchSingleTop = true }
     }

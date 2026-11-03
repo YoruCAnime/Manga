@@ -344,7 +344,7 @@ fun VideoCard(v: VideoRef, w: WatchState?, onSeries: (() -> Unit)? = null, headi
     )) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(Mc.Card)) {
             VideoCover(v, Modifier.fillMaxSize())
-            if (v.lang.isNotEmpty()) Badge(v.lang, Modifier.align(Alignment.TopStart), if (v.lang == "EN") Mc.Blue.copy(alpha = 0.9f) else Color(0xCC000000))
+            if (v.lang.isNotEmpty()) Badge(v.lang, Modifier.align(Alignment.TopStart), when { v.lang == "EN" || v.lang.startsWith("SUB") -> Mc.Blue.copy(alpha = 0.9f); v.lang == "DUB" -> Mc.Pink.copy(alpha = 0.9f); else -> Color(0xCC000000) })
             if (fav) Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(24.dp).clip(CircleShape).background(Mc.Pink), contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.Favorite, "Favourite", tint = Color.White, modifier = Modifier.size(14.dp))
             }
