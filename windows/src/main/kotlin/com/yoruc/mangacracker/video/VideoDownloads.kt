@@ -236,6 +236,7 @@ object VideoDownloads {
             }
             segments(src, media, File(dir, "video.ts"), 0, if (audioUrl != null) 800 else 1000, progress)
             audioUrl?.let { segments(src, it, File(dir, "audio.ts"), 800, 200, progress) }
+            dir.listFiles()?.filter { it.name.endsWith(".done") }?.forEach { it.delete() }
             val size = dirSize(dir)
             progress(1000, 1000, size)
             SavedVideo(ref, "hls", stream.url, "video.ts", emptyList(), subs, size, height, System.currentTimeMillis())
@@ -277,7 +278,13 @@ object VideoDownloads {
         }
         if (segs.isEmpty()) throw IOException("The stream has no pieces")
         val done = File(out.path + ".done")
-        val start = done.takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull() ?: 0
+        val mark = done.takeIf { it.exists() }?.readText()?.trim()?.split(' ').orEmpty()
+        var start = mark.getOrNull(0)?.toIntOrNull() ?: 0
+        val length = mark.getOrNull(1)?.toLongOrNull()
+        if (start > 0 && !out.isFile) start = 0
+        if (start > 0 && length != null && out.length() != length) {
+            if (out.length() > length) java.io.RandomAccessFile(out, "rw").use { it.setLength(length) } else start = 0
+        }
         if (start == 0) out.delete()
         val cap = testByteCap
         FileOutputStream(out, start > 0).use { os ->
@@ -294,12 +301,12 @@ object VideoDownloads {
                 }
                 os.write(b)
                 os.flush()
-                done.writeText((i + 1).toString())
+                done.writeText("${i + 1} ${out.length()}")
                 progress(from + span * (i + 1) / segs.size, 1000, out.length())
                 if (cap != null && out.length() >= cap) break
             }
         }
-        done.delete()
+        done.writeText("${segs.size} ${out.length()}")   // kept until the whole download is done (see hls)
         return out.length()
     }
 

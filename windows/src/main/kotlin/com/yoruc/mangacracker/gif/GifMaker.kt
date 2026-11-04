@@ -26,11 +26,23 @@ interface FrameSource {
     val height: Int
     val fps: Double
     fun frame(i: Int): IntArray
+    /** True when frames were cut out just before frame [i]: nothing is drawn in between across it (a cut). */
+    fun gapBefore(i: Int): Boolean = false
 }
 
 class ListFrames(private val frames: List<IntArray>, override val width: Int, override val height: Int, override val fps: Double) : FrameSource {
     override val count get() = frames.size
     override fun frame(i: Int) = frames[i]
+}
+
+/** [src]'s frames [keep] only (in order), e.g. with frames deleted in the editor; a gap is where frames were left out. */
+class PickedFrames(private val src: FrameSource, private val keep: IntArray) : FrameSource {
+    override val count get() = keep.size
+    override val width get() = src.width
+    override val height get() = src.height
+    override val fps get() = src.fps
+    override fun frame(i: Int) = src.frame(keep[i])
+    override fun gapBefore(i: Int) = i > 0 && keep[i] != keep[i - 1] + 1
 }
 
 /** One output frame: real frame [a], or the in-between of real frames [a] and [b] at [t] (0..1). */
@@ -133,9 +145,12 @@ class GifMaker(private val src: FrameSource, private val opts: GifOptions) {
     private fun flow(a: Int, b: Int): Triple<Flow, Flow, Boolean> = flows.getOrPut(a.toLong() * 1_000_000 + b) {
         val pa = plane(a); val pb = plane(b)
         val f = Motion.estimate(pa, pb)
-        val cut = Motion.isCut(pa, pb, f)
+        val cut = gap(a, b) || Motion.isCut(pa, pb, f)
         Triple(f, if (cut) f else Motion.estimate(pb, pa), cut)
     }
+
+    /** Frames were deleted somewhere between [a] and [b]. */
+    private fun gap(a: Int, b: Int) = (a + 1..b).any { src.gapBefore(it) }
 
     /**
      * Output frames and their rate. Slow motion, or a picked frame rate above what the video has, makes in-betweens
@@ -199,10 +214,10 @@ class GifMaker(private val src: FrameSource, private val opts: GifOptions) {
             }
             // the file shrinks slower than the picture (detail packs closer), so guess again at the new size and
             // correct by the slope the two guesses show
-            val l1 = (long * Math.pow(target / est, 1 / 1.6)).toInt().coerceIn(200, long)
+            val l1 = (long * Math.pow(target / est, 1 / 1.6)).toInt().coerceIn(minOf(200, long), long)
             val est1 = guess(GifParams(l1, fpsCap, colours, threshold)) ?: est
             val k = if (l1 < long) (Math.log(est / est1) / Math.log(long.toDouble() / l1)).coerceIn(0.8, 2.4) else 1.6
-            long = (l1 * Math.pow(target / est1, 1 / k)).toInt().coerceIn(200, long)
+            long = (l1 * Math.pow(target / est1, 1 / k)).toInt().coerceIn(minOf(200, long), long)
             minLong = minOf(minLong, long)
         }
         var last: GifResult? = null
@@ -290,6 +305,7 @@ class GifMaker(private val src: FrameSource, private val opts: GifOptions) {
         val forward = if (opts.pingPong) picks.size / 2 + 1 else picks.size
         val keepAll = forward.toLong() * dw * dh <= 100_000_000L
         val made = HashMap<Pick, ByteArray>()
+        val keepMade = forward.toLong() * dw * dh <= 150_000_000L
         val all = if (keepAll) ArrayList<ByteArray>(picks.size) else null
         val out = FrameWriter(dw, dh, pal, p.threshold)
         var inBetweens = 0; var fallbacks = 0
@@ -300,7 +316,7 @@ class GifMaker(private val src: FrameSource, private val opts: GifOptions) {
             val (rgb, mid) = picture(pk, frame, dw, dh)
             if (mid == true) inBetweens++ else if (mid == false) fallbacks++
             val idx = quantize(rgb, dw, dh, pal, p.dither)
-            if (opts.pingPong && k < forward) made[pk] = idx
+            if (opts.pingPong && k < forward && keepMade) made[pk] = idx
             out.add(idx, delays[k]); all?.add(idx)
             progress(label, k.toFloat() / picks.size)
         }
@@ -358,12 +374,13 @@ class GifMaker(private val src: FrameSource, private val opts: GifOptions) {
         val step = (pk.t * drawnSteps).roundToInt()
         if (step <= 0) return frame(pk.a) to null
         if (step >= drawnSteps) return frame(pk.b) to null
-        val px = d.get(pair, step)
+        val px = try { d.get(pair, step) } catch (e: GifCancelled) { throw e } catch (e: Throwable) { return null }   // built-in in-between
         return (if (dw == drawnW && dh == drawnH) px else Resample.resize(px, drawnW, drawnH, dw, dh)) to true
     }
 
     private fun cut(a: Int, b: Int): Boolean {
         val k = a.toLong() * 1_000_000 + b
+        if (gap(a, b)) return true
         flows[k]?.let { return it.third }
         return cuts.getOrPut(k) { val pa = plane(a); val pb = plane(b); Motion.isCut(pa, pb, Motion.estimate(pa, pb)) }
     }

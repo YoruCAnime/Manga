@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import java.io.File
@@ -20,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
 /** Where a video was left (resume + Continue watching). */
 @Serializable
 data class WatchState(val ref: VideoRef, val positionMs: Long, val durationMs: Long, val time: Long) {
-    val done: Boolean get() = durationMs > 0 && positionMs >= durationMs - 30_000
+    val done: Boolean get() = durationMs > 0 && positionMs >= (if (durationMs < 60_000) durationMs * 9 / 10 else durationMs - 30_000)
     val percent: Int get() = if (durationMs > 0) (positionMs * 100 / durationMs).toInt().coerceIn(0, 100) else 0
 }
 
@@ -54,7 +55,15 @@ object VideoRepo {
         favFile = File(context.filesDir, "data/video_favs.json")
         _favs.value = runCatching { Http.json.decodeFromString(favSer, favFile!!.readText()) }.getOrDefault(emptyMap())
         _favs.value.values.forEach { refs.putIfAbsent(it.ref.key, it.ref) }
+        // shows / videos opened lately: their screens come back after Android closed the app in the background
+        recentFile = File(context.filesDir, "data/video_recent.json")
+        runCatching { Http.json.decodeFromString(ListSerializer(VideoRef.serializer()), recentFile!!.readText()) }.getOrNull()
+            ?.forEach { r -> refs.putIfAbsent(r.key, r); synchronized(recent) { recent[r.key] = r } }
     }
+
+    private var recentFile: File? = null
+    private var recentJob: Job? = null
+    private val recent = LinkedHashMap<String, VideoRef>()
 
     fun isFav(key: String) = key in _favs.value
 
@@ -97,7 +106,24 @@ object VideoRepo {
 
     fun clearWatched() { _watch.update { emptyMap() }; persist() }
 
-    fun remember(ref: VideoRef) { refs[ref.key] = ref }
+    fun remember(ref: VideoRef) {
+        refs[ref.key] = ref
+        val list = synchronized(recent) {
+            recent.remove(ref.key); recent[ref.key] = ref
+            while (recent.size > 80) recent.remove(recent.keys.first())
+            recent.values.toList()
+        }
+        val f = recentFile ?: return
+        recentJob?.cancel()
+        recentJob = scope.launch {
+            delay(1000)
+            runCatching {
+                val tmp = File(f.path + ".tmp")
+                tmp.writeText(Http.json.encodeToString(ListSerializer(VideoRef.serializer()), list))
+                if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
+            }
+        }
+    }
 
     fun state(key: String): WatchState? = _watch.value[key]
 

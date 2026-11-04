@@ -3,6 +3,7 @@ package com.yoruc.mangacracker.platform
 import com.sun.jna.platform.win32.Kernel32
 import com.sun.jna.platform.win32.WinNT
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -25,7 +26,7 @@ object ClipRecorder {
      * Record: start..end into an H.264 / AAC MP4. The graphics card's encoder (NVENC) first, the processor's (x264)
      * if that fails. [onProgress] 0..1. Returns [out].
      */
-    suspend fun cut(input: List<String>, start: Double, end: Double, out: File, onProgress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
+    suspend fun cut(input: List<String>, start: Double, end: Double, out: File, audio: File? = null, onProgress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
         val ff = Avif.ffmpeg ?: throw Failed("Recording needs ffmpeg (not found)")
         val len = (end - start).coerceAtLeast(0.5)
         val encoders = listOf(
@@ -37,13 +38,15 @@ object ClipRecorder {
             val tmp = File(out.path + ".part.mp4")
             val args = mutableListOf(ff.path, "-hide_banner", "-loglevel", "error", "-y", "-nostdin", "-ss", t(start))
             args += input
-            args += listOf("-t", t(len), "-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn")
+            if (audio != null) args += listOf("-ss", t(start), "-i", audio.path)
+            args += listOf("-t", t(len), "-map", "0:v:0", "-map", if (audio != null) "1:a:0?" else "0:a:0?", "-sn", "-dn")
             args += enc
             args += listOf("-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", tmp.path)
             val p = ProcessBuilder(args).start()
             lower(p)
             val err = StringBuilder()
             val errThread = Thread { runCatching { p.errorStream.bufferedReader().forEachLine { if (err.length < 4000) err.appendLine(it) } } }.apply { start() }
+            val stop = currentCoroutineContext()[Job]?.invokeOnCompletion { if (it != null) p.destroyForcibly() }
             try {
                 p.inputStream.bufferedReader().useLines { lines ->
                     for (l in lines) {
@@ -52,7 +55,8 @@ object ClipRecorder {
                     }
                 }
                 p.waitFor()
-            } catch (e: Throwable) { p.destroyForcibly(); tmp.delete(); throw e }
+                currentCoroutineContext().ensureActive()
+            } catch (e: Throwable) { p.destroyForcibly(); tmp.delete(); throw e } finally { stop?.dispose() }
             errThread.join(2000)
             if (p.exitValue() == 0 && tmp.length() > 0) {
                 out.delete()
@@ -83,7 +87,10 @@ object ClipRecorder {
             else ((long.toDouble() * srcW / srcH / 2).toInt() * 2).coerceAtLeast(2) to long
         val fps = if (srcFps > keepFps + 1) srcFps / 2 else if (srcFps > 1) srcFps else 24.0
         val dir = File(Desktop.ctx.cacheDir, "gif").apply { mkdirs() }
-        val frames = com.yoruc.mangacracker.gif.FileFrames(File(dir, "$name.bin"), w, h, fps)
+        // a file of its own for every reading (and every running copy): a new reading never cuts an old one short
+        // while its frames are still being drawn; files left by a crash are cleared after a day
+        dir.listFiles()?.filter { it.name.endsWith(".bin") && System.currentTimeMillis() - it.lastModified() > 86_400_000L }?.forEach { it.delete() }
+        val frames = com.yoruc.mangacracker.gif.FileFrames(File(dir, "$name-${ProcessHandle.current().pid()}-${System.nanoTime()}.bin"), w, h, fps)
         val args = mutableListOf(ff.path, "-hide_banner", "-loglevel", "error", "-nostdin", "-ss", t(start))
         args += input
         args += listOf("-t", t(len), "-an", "-sn", "-dn", "-vf", "fps=%.4f,scale=$w:$h:flags=lanczos".format(Locale.US, fps),
@@ -93,6 +100,7 @@ object ClipRecorder {
         val frameBytes = w * h * 3
         val buf = ByteArray(frameBytes)
         val total = (len * fps).toInt().coerceAtLeast(1)
+        val stop = currentCoroutineContext()[Job]?.invokeOnCompletion { if (it != null) p.destroyForcibly() }
         try {
             p.inputStream.buffered(1 shl 20).use { inp ->
                 while (true) {
@@ -105,7 +113,8 @@ object ClipRecorder {
                 }
             }
             p.waitFor()
-        } catch (e: Throwable) { p.destroyForcibly(); frames.close(); throw e }
+            currentCoroutineContext().ensureActive()
+        } catch (e: Throwable) { p.destroyForcibly(); frames.close(); throw e } finally { stop?.dispose() }
         if (frames.count == 0) { frames.close(); throw Failed("ffmpeg couldn't read the video here") }
         frames
     }
@@ -130,7 +139,12 @@ object ClipRecorder {
         }
 
     /** Below normal priority, so a clip never slows the video or the PC. */
+    private val live = java.util.concurrent.ConcurrentHashMap.newKeySet<Process>()
+    init { Runtime.getRuntime().addShutdownHook(Thread { live.forEach { runCatching { it.destroyForcibly() } } }) }
+
     internal fun lower(p: Process) {
+        live += p
+        p.onExit().thenRun { live -= p }
         runCatching {
             val h = Kernel32.INSTANCE.OpenProcess(WinNT.PROCESS_SET_INFORMATION, false, p.pid().toInt()) ?: return
             Kernel32.INSTANCE.SetPriorityClass(h, com.sun.jna.platform.win32.WinDef.DWORD(0x00004000L))

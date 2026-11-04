@@ -35,7 +35,23 @@ import com.yoruc.mangacracker.platform.Back
 import com.yoruc.mangacracker.platform.Desktop
 import com.yoruc.mangacracker.platform.Edge
 import com.yoruc.mangacracker.platform.Files
+import com.yoruc.mangacracker.core.DlState
+import com.yoruc.mangacracker.platform.SelfUpdate
 import com.yoruc.mangacracker.ui.AppRoot
+import com.yoruc.mangacracker.ui.Here
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import com.yoruc.mangacracker.ui.theme.MangaCrackerTheme
 import com.yoruc.mangacracker.video.VideoRepo
 import okio.Path.Companion.toOkioPath
@@ -59,6 +75,26 @@ private fun startUp() {
     UpdateWorker.schedule(ctx)
     Backup.autoIfDue(ctx)
     com.yoruc.mangacracker.platform.MemoryKeeper.start()
+    SelfUpdate.start()
+    // the last mouse / key use anywhere in the window (the update switch waits for a quiet moment)
+    java.awt.Toolkit.getDefaultToolkit().addAWTEventListener({ Here.lastInput = System.currentTimeMillis() },
+        java.awt.AWTEvent.MOUSE_EVENT_MASK or java.awt.AWTEvent.MOUSE_MOTION_EVENT_MASK or java.awt.AWTEvent.MOUSE_WHEEL_EVENT_MASK or java.awt.AWTEvent.KEY_EVENT_MASK)
+}
+
+/** "Update ready · Switch now": a newer copy is installed; the app also switches by itself at a quiet moment. */
+@androidx.compose.runtime.Composable
+private fun UpdateBar(modifier: Modifier, onSwitch: () -> Unit) {
+    androidx.compose.foundation.layout.Row(
+        modifier.padding(14.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+            .background(com.yoruc.mangacracker.ui.theme.Mc.Card2).padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        androidx.compose.material3.Text("Update ready", color = com.yoruc.mangacracker.ui.theme.Mc.Text, fontSize = 13.sp)
+        androidx.compose.foundation.layout.Spacer(Modifier.width(10.dp))
+        androidx.compose.material3.TextButton(onClick = onSwitch) {
+            androidx.compose.material3.Text("Switch now", color = com.yoruc.mangacracker.ui.theme.Mc.Blue, fontSize = 13.sp)
+        }
+    }
 }
 
 /** The app icon (the phone app's), from the resources. */
@@ -108,7 +144,12 @@ private fun run() = application {
         }
         // MC_OFFSCREEN=1: tests run the real window far off the screen, never taking the focus
         val off = System.getenv("MC_OFFSCREEN") == "1"
-        val state = rememberWindowState(size = DpSize(1280.dp, 860.dp),
+        // after an update switch: the same place, size and state as the copy before
+        val h = SelfUpdate.handoff
+        val state = if (h != null && !off) rememberWindowState(
+            placement = if (h.maximized) androidx.compose.ui.window.WindowPlacement.Maximized else androidx.compose.ui.window.WindowPlacement.Floating,
+            isMinimized = h.minimized, position = WindowPosition(h.x.dp, h.y.dp), size = DpSize(h.w.dp, h.h.dp))
+        else rememberWindowState(size = DpSize(1280.dp, 860.dp),
             position = if (off) WindowPosition.Absolute((-6000).dp, (-6000).dp) else WindowPosition.Aligned(androidx.compose.ui.Alignment.Center))
         CompositionLocalProvider(androidx.compose.ui.window.LocalWindowExceptionHandlerFactory provides
             androidx.compose.ui.window.WindowExceptionHandlerFactory { _ -> androidx.compose.ui.window.WindowExceptionHandler { e -> crashed(e) } }) {
@@ -138,11 +179,49 @@ private fun run() = application {
                     androidx.compose.ui.window.WindowPlacement.Floating else androidx.compose.ui.window.WindowPlacement.Fullscreen
             }
             window.minimumSize = java.awt.Dimension(560, 520)
+            // a newer copy installed next to this one: switch at a quiet moment (or now, from the bar)
+            val ready by SelfUpdate.ready.collectAsState()
+            val switchScope = androidx.compose.runtime.rememberCoroutineScope()
+            var switching by remember { mutableStateOf(false) }
+            fun switchNow() {
+                val exe = ready ?: return
+                if (switching) return
+                val pos = state.position
+                val hand = SelfUpdate.Handoff(
+                    x = if (pos is WindowPosition.Absolute) pos.x.value.toInt() else window.x, y = if (pos is WindowPosition.Absolute) pos.y.value.toInt() else window.y,
+                    w = state.size.width.value.toInt(), h = state.size.height.value.toInt(),
+                    maximized = state.placement == androidx.compose.ui.window.WindowPlacement.Maximized, minimized = state.isMinimized,
+                    route = Here.route, key = Here.key)
+                switching = true
+                switchScope.launch {
+                    if (SelfUpdate.switchTo(exe, hand)) { Edge.close(); exitApplication() }
+                    else Desktop.toast("The update didn't start, so this version stays open")
+                    switching = false
+                }
+            }
+            LaunchedEffect(ready) {
+                // tests (off-screen): MC_SWITCH_NOW=1 switches as soon as the newer copy is there
+                if (ready != null && System.getenv("MC_SWITCH_NOW") == "1") { delay(1_000); switchNow(); return@LaunchedEffect }
+                if (ready == null || off) return@LaunchedEffect
+                while (true) {
+                    delay(5_000)
+                    // never while reading, watching (player, recording, GIF editor), signing in or downloading
+                    val busy = Here.route.startsWith("reader/") || Here.route.startsWith("player/") || Here.route.startsWith("web") ||
+                        Here.route == "exlogin" || Here.route == "sourcetest" ||
+                        Downloads.queue.tasks.value.any { it.state == DlState.RUNNING || it.state == DlState.QUEUED }
+                    if (busy) continue
+                    // minimized: switch unseen (the new copy starts minimized too); in front: only after 3 untouched minutes.
+                    // Behind other windows: wait (a new window could come up over them)
+                    val idle = System.currentTimeMillis() - Here.lastInput
+                    if (state.isMinimized || (window.isFocused && idle > 180_000)) { switchNow(); return@LaunchedEffect }
+                }
+            }
             MangaCrackerTheme {
                 BoxWithConstraints(Modifier.onPointerEvent(PointerEventType.Press) { if (it.buttons.isBackPressed) Back.press() }) {
                     CompositionLocalProvider(LocalConfiguration provides Configuration(maxWidth.value.toInt(), maxHeight.value.toInt())) {
                         AppRoot(System.getenv("MC_OPEN"))
                     }
+                    if (ready != null) UpdateBar(Modifier.align(androidx.compose.ui.Alignment.BottomEnd)) { switchNow() }
                 }
             }
         }

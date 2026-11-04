@@ -57,7 +57,7 @@ object Mpv {
 
     val lib: Lib? by lazy {
         val f = dll ?: return@lazy null
-        runCatching { Native.load(f.absolutePath, Lib::class.java) }.getOrNull()
+        runCatching { Native.load(f.absolutePath, Lib::class.java, mapOf(com.sun.jna.Library.OPTION_STRING_ENCODING to "UTF-8")) }.getOrNull()
     }
 
     val available: Boolean get() = lib != null
@@ -87,13 +87,13 @@ object Mpv {
             opt("audio-client-name", "MangaCracker")
             // test runs (off-screen): never any sound
             if (System.getenv("MC_OFFSCREEN") == "1") opt("ao", "null")
-            check(l.mpv_initialize(h), "initialize")
+            try { check(l.mpv_initialize(h), "initialize") } catch (e: Throwable) { alive = false; l.mpv_terminate_destroy(h); throw e }
         }
 
         private fun check(r: Int, what: String) { if (r < 0) throw IllegalStateException("mpv $what: ${l.mpv_error_string(r)}") }
         fun opt(name: String, value: String) = l.mpv_set_option_string(h, name, value)
         fun set(name: String, value: String) { if (alive) l.mpv_set_property_string(h, name, value) }
-        fun cmd(vararg args: String) { if (alive) l.mpv_command(h, arrayOf(*args, null)) }
+        fun cmd(vararg args: String): Boolean = alive && l.mpv_command(h, arrayOf(*args, null)) >= 0
 
         fun getString(name: String): String? {
             if (!alive) return null
