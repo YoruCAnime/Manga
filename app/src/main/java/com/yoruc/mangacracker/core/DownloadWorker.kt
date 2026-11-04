@@ -109,6 +109,11 @@ object DownloadRunner {
         } catch (e: PermanentDownloadError) {
             q.failed(t.id, e.message ?: "Can't download this", permanent = true)
         } catch (e: Throwable) {
+            if (currentCoroutineContext()[Job]?.isActive == false) {
+                q.interrupted(t.id)
+                if (q[t.id] == null) Downloads.removePartial(t)
+                throw CancellationException("cancelled").apply { initCause(e) }
+            }
             q.failed(t.id, friendly(e))
         } finally {
             Downloads.jobs.remove(t.id)

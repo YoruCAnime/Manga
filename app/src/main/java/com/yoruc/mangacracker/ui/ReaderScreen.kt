@@ -339,15 +339,16 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
     }
     // ---- sounds while reading: play while the reader is on screen, hold in the background, fade out on leaving ----
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val soundOwner = remember { Any() }
     DisposableEffect(lifecycle) {
         val obs = LifecycleEventObserver { _, e ->
-            if (e == Lifecycle.Event.ON_START) Ambient.sync(ctx) else if (e == Lifecycle.Event.ON_STOP) Ambient.pause()
+            if (e == Lifecycle.Event.ON_START) Ambient.sync(ctx, soundOwner) else if (e == Lifecycle.Event.ON_STOP) Ambient.pause(soundOwner)
         }
         lifecycle.addObserver(obs)
-        onDispose { lifecycle.removeObserver(obs); Ambient.stop() }
+        onDispose { lifecycle.removeObserver(obs); Ambient.stop(soundOwner) }
     }
     LaunchedEffect(settings.readerSound, settings.readerSoundUri, settings.readerSoundVolume) {
-        if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) Ambient.sync(ctx)
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) Ambient.sync(ctx, soundOwner)
     }
     DisposableEffect(Unit) {
         view.keepScreenOn = settings.keepScreenOn

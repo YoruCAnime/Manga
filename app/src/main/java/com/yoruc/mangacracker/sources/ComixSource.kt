@@ -282,7 +282,8 @@ object ComixSource : Source {
      * "/title/zgk6j-unbeknownst-to-me.../11677446-chapter-43"); "/title/<hid>/..." is a 404 page.
      */
     private suspend fun titlePath(ref: MangaRef): String {
-        val m = runCatching { titleData(ref.id).firstOrNull { key(it.first, "manga", "detail") }?.second }.getOrNull()
+        val m = try { titleData(ref.id).firstOrNull { key(it.first, "manga", "detail") }?.second }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
         val slug = m?.str("slug").orEmpty().ifEmpty {
             (m?.str("title").orEmpty().ifEmpty { ref.title }).lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
         }
