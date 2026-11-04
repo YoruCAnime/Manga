@@ -155,7 +155,8 @@ fun PlayerScreen(nav: Nav, key: String) {
     var volume by remember { mutableFloatStateOf(Repo.settings.value.videoVolume) }
     var muted by remember { mutableStateOf(Repo.settings.value.videoMuted) }
     var speed by remember { mutableFloatStateOf(1f) }
-    var quality by remember { mutableStateOf(Repo.settings.value.videoQuality) }
+    // no Auto (it took whatever stream the site listed first): Best = the highest there is, or a size picked
+    var quality by remember { mutableStateOf(Repo.settings.value.videoQuality.let { if (it == 0) -1 else it }) }
     var subsOn by remember { mutableStateOf(Repo.settings.value.videoSubtitles) }
     var loadedKey by remember { mutableStateOf<String?>(null) }
     var scrubbing by remember { mutableStateOf(false) }
@@ -219,7 +220,7 @@ fun PlayerScreen(nav: Nav, key: String) {
         val local = s.url.startsWith("file:")
         val url = if (local) File(java.net.URI(s.url)).path else StreamProxy.url(d.ref.source, s.url)
         val start = at ?: VideoRepo.state(d.ref.key)?.let { w -> if (w.durationMs > 0 && w.positionMs < w.durationMs - 15_000) w.positionMs / 1000.0 else 0.0 } ?: 0.0
-        p.set("hls-bitrate", if (quality == -1) "max" else if (quality == 0) "no" else "max")
+        p.set("hls-bitrate", "max")
         p.set("volume", (volume * 100).toInt().toString())
         p.set("mute", if (muted) "yes" else "no")
         p.set("speed", speed.toString())
@@ -442,7 +443,7 @@ fun PlayerScreen(nav: Nav, key: String) {
                 }
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                     Menu("${if (speed == 1f) "1" else speed.toString().trimEnd('0').trimEnd('.')}×", SPEEDS.map { "${it}×" to { speed = it; player?.set("speed", it.toString()); Unit } })
-                    val qs = listOf(-1 to "Best", 0 to "Auto") + heights.map { it to "${it}p" }
+                    val qs = listOf(-1 to (heights.maxOrNull()?.let { "Best (${it}p)" } ?: "Best")) + heights.map { it to "${it}p" }
                     val label = if (vm.details?.stream?.kind != "hls" && heights.isEmpty()) "Original"
                         else qs.firstOrNull { it.first == quality }?.second ?: "${quality}p"
                     Menu(label, if (heights.isEmpty() && vm.details?.stream?.kind != "hls") listOf("Original" to {})

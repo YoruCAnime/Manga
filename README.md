@@ -93,7 +93,7 @@ below.
   the dot grows, a time bubble rides above your finger and the picture follows (it plays on from there when you
   let go). Double-tap the left / right side to step 1 s (taps stack), double-tap the middle to pause, hold
   anywhere for 2×, speeds 0.25× to 3×, previous / next episode of the same series (and "Up next" at the end),
-  subtitles on / off, quality for streams with several sizes (**Best** by default, or Auto / 1080p / 720p / 480p; your pick is remembered), **Snapshot** (the current frame to Pictures/MangaCracker/Snapshots) and
+  subtitles on / off, quality for streams with several sizes (**Best** = the highest there is, 1080p on these sites, or at most 1080p / 720p / 480p; your pick is remembered), **Snapshot** (the current frame to Pictures/MangaCracker/Snapshots) and
   **Record** (tap to start, tap to stop: that part is saved as an MP4 clip to Movies/MangaCracker).
 - **GIF maker** (the GIF button in the player): tap GIF to start capturing (red dot + timer, up to 30 s), tap again
   to stop. A panel opens at the bottom of the player (no pop-up): drag the two handles to pick the part you want

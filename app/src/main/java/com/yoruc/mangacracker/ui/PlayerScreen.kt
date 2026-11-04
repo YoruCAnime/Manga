@@ -244,7 +244,8 @@ fun PlayerScreen(nav: Nav, key: String) {
     var showSpeeds by remember { mutableStateOf(false) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showQuality by remember { mutableStateOf(false) }
-    var qualityCap by remember { mutableIntStateOf(Repo.settings.value.videoQuality) }
+    // no Auto (by connection speed it often sat at a low size): Best = the highest stream, or a size picked
+    var qualityCap by remember { mutableIntStateOf(Repo.settings.value.videoQuality.let { if (it == 0) -1 else it }) }
     var volume by remember { mutableFloatStateOf(Repo.settings.value.videoVolume) }
     var muted by remember { mutableStateOf(Repo.settings.value.videoMuted) }
     var landscape by remember { mutableStateOf(true) }
@@ -629,7 +630,7 @@ fun PlayerScreen(nav: Nav, key: String) {
                     }
                     if (showQuality) {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
-                            items(listOf(-1, 0, 1080, 720, 480)) { h ->
+                            items(listOf(-1, 1080, 720, 480)) { h ->
                                 Pill(qualityLabel(h), Modifier.clickable {
                                     qualityCap = h; showQuality = false; show()
                                     player.trackSelectionParameters = qualityParams(player.trackSelectionParameters.buildUpon(), h).build()
@@ -767,11 +768,11 @@ fun PlayerScreen(nav: Nav, key: String) {
     }
 }
 
-private fun qualityLabel(h: Int) = when (h) { -1 -> "Best"; 0 -> "Auto"; else -> "${h}p" }
+private fun qualityLabel(h: Int) = when (h) { -1, 0 -> "Best"; else -> "${h}p" }
 
-/** HLS quality: Best = always the highest stream the phone can play, Auto = by connection speed, else at most [h]p. */
+/** HLS quality: Best = always the highest stream the phone can play (1080p on these sites), else the highest up to [h]p. */
 private fun qualityParams(b: TrackSelectionParameters.Builder, h: Int): TrackSelectionParameters.Builder =
-    b.setForceHighestSupportedBitrate(h == -1).setMaxVideoSize(Int.MAX_VALUE, if (h <= 0) Int.MAX_VALUE else h + 10)
+    b.setForceHighestSupportedBitrate(true).setMaxVideoSize(Int.MAX_VALUE, if (h <= 0) Int.MAX_VALUE else h + 10)
 
 private fun speedLabel(s: Float) = (if (s % 1f == 0f) s.toInt().toString() else s.toString().trimEnd('0')) + "×"
 
