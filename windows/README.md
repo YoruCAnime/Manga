@@ -27,8 +27,8 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
   **Right-click** a page (or press and hold): a small menu opens right at the mouse - **Save image** (first), *Save a
   cutout of this character*, Copy image (to the clipboard).
 - **Videos** play in mpv inside the window, with the controls under the picture: volume on the left (the app's own,
-  remembered for every video); previous / −1s / play / +1s / next in the middle; speed, quality (Best, Auto and the
-  sizes the video really has), Picture (saturation / contrast, remembered), snapshot, Record, GIF, subtitles and full
+  remembered for every video); previous / −1s / play / +1s / next in the middle; speed, quality (Best = the highest the
+  video has, 1080p on these sites, or one of the sizes it really has), Picture (saturation / contrast, remembered), snapshot, Record, GIF, subtitles and full
   screen on the right. The title opens every episode of the show (so does the name on a Continue watching card; its
   picture plays). Keys: Space / K play-pause, ← → 1 s (keeps playing), [ ] one frame back / forward, J / L 10 s, ↑ ↓ volume, M mute, F full
   screen, N / P next / previous episode, R record, G GIF.
