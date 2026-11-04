@@ -21,9 +21,11 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
 - **Left rail**: Home, Library, Browse, Videos, Updates, More (the phone's bottom bar).
 - **Going back**: Esc, Alt+←, the mouse's back button, or the ← arrows. **F11** = full screen.
 - **Reader**: pages sit in a centred column (Reader settings › *Page width*, up to the whole window).
-  ↓ ↑ or J K scroll a little, Page Down / Space and Page Up / Shift+Space a screen, Home / End.
-  **Right-click** a page (or press and hold) for its menu: save, copy to the clipboard, *Save a cutout of this
-  character*.
+  ↓ ↑ or J K scroll a little, Page Down / Space and Page Up / Shift+Space a screen, Home / End; ← / P previous
+  chapter, → / N next chapter. A small bar at the bottom is always there: ‹ Previous chapter · page counter · Next
+  chapter › (greyed when there's no chapter that way).
+  **Right-click** a page (or press and hold): a small menu opens right at the mouse - **Save image** (first), *Save a
+  cutout of this character*, Copy image (to the clipboard).
 - **Videos** play in mpv inside the window, with the controls under the picture: volume on the left (the app's own,
   remembered for every video); previous / −1s / play / +1s / next in the middle; speed, quality (Best, Auto and the
   sizes the video really has), Picture (saturation / contrast, remembered), snapshot, Record, GIF, subtitles and full
@@ -41,10 +43,17 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
 - **Record**: press to start, press again to stop; the stretch is saved as an MP4 (graphics card encoder) in the
   recordings folder (Settings › Videos: recordings and snapshots folders, default Videos\MangaCracker and
   Pictures\MangaCracker\Snapshots).
-- **GIF**: opens the GIF editor in place of the video: a 36 s filmstrip around where you were with start / end
-  handles (GIFs up to 30 s; click Start or End to see that frame, then click or drag on the strip: only that end
-  moves, a drag stops at the other end; or ← → one frame, Shift 10, Tab other end, [ ] at the preview spot), video times along the strip and the
-  time under the mouse, the preview spot's time in the whole video, a looping
+- **GIF**: opens the GIF editor in place of the video (GIFs up to 30 s). A small seeking strip of the 36 s around
+  where you were (video times along it, the time under the mouse; a click or drag jumps there, ◀ Earlier / Later ▶
+  move along the video), and under it **every frame one by one** (ScreenToGif-style), each with its own number (#) and
+  time, the GIF's part bright with START / END marks, the rest dimmed, a scrollbar (the mouse wheel scrolls it too).
+  A click shows the frame and picks / unpicks it, sliding across squares picks the run, the ✕ on a square deletes it;
+  ← → step the shown frame (Shift 10). Buttons: **Set Start / Set End** (at the shown frame; keys [ ]), **« Delete all
+  before #N / Delete all after #N »** (from the picked or shown frame), **Delete frames [first #] to [last #]** →
+  Delete / Pick only, Select between, All, None, **Delete picked**, Undo (Ctrl+Z, also brings Start / End back),
+  Restore all; the Delete key deletes the picked frames, or the shown one (again = the next). Any range can go: when
+  the whole GIF part is deleted it moves to the frames left just after, same length. Numbers never change when frames go;
+  deleted frames are skipped in the preview, red on the strip, and the GIF never blends across where they were. A looping
   preview of exactly the GIF, size (Tiny 2 MB / Small 5 MB / Big 10 MB), speed (0.25× to 2×), ping-pong, FPS (Auto /
   24 / 30 / 50: 50 makes smooth in-between frames), then the phone's GIF engine. The finished GIF then plays in a
   box (at most its own size, with its size / frames / length): Show in folder, Copy (paste into Discord, a chat,
@@ -92,7 +101,11 @@ Measured (Task Manager working set): Home ~250 MB, Browse ~270 MB, reading ~300 
 
 ## Building
 
-- `Build and install.bat`: builds and copies the app to `MangaCracker App\` and makes the Desktop shortcut.
+- `Build and install.bat`: builds and installs to `MangaCracker App\v<date-time>\` (the Desktop shortcut points at it)
+  **while the app may be open**: `current.txt` names the newest copy, and a running copy switches to it by itself at a
+  quiet moment (minimized, or in front and untouched for 3 minutes on a calm screen; never while reading, watching,
+  making a GIF or downloading), on the same tab and in the same place, or at once from its "Update ready · Switch now"
+  bar (`platform/SelfUpdate.kt`). Old copies are deleted once nothing in them is in use.
 - Needs JDK 21 (Gradle uses it) and Python (the copy step). Not in git, put them in `appResources\windows\` first:
   `libmpv-2.dll` (mpv's Windows build, 120 MB) and `rife\` (from the
   [rife-ncnn-vulkan release](https://github.com/nihui/rife-ncnn-vulkan/releases): `rife-ncnn-vulkan.exe`,

@@ -25,10 +25,21 @@ object VideoRecommender {
         "1080p", "720p", "new", "tv", "ova", "ona", "movie", "special", "uncategorized", "preview")
 
     private var cache: List<VideoRef> = emptyList()
+    /** Tags of liked videos fetched for this (not VideoRepo.details: those carry a stream link that expires). */
+    private val fetchedTags = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
     private var cachedAt = 0L
 
     /** Filtered again on the way out: a switch turned on later (futanari / furry) applies to a list made before it. */
-    fun cached(): List<VideoRef> = cache.filterNot { VideoSafety.blocked(it) }
+    fun cached(): List<VideoRef> = fresh(cache)
+
+    /** Leaves out what was watched or favourited since the list was made (and other episodes of those shows), and
+     *  anything a safety switch hides now; the row stays current without a new search. */
+    fun fresh(list: List<VideoRef>): List<VideoRef> {
+        val seen = VideoRepo.favs.value.values.map { it.ref } + VideoRepo.watch.value.values.map { it.ref }
+        val keys = seen.mapTo(HashSet()) { it.key }
+        val shows = seen.map { showKey(it) }.filter { it.length >= 3 }.toHashSet()
+        return list.filterNot { r -> VideoSafety.blocked(r) || r.key in keys || showKey(r).let { it.length >= 3 && it in shows } }
+    }
 
     /** A tag as a taste word: no "series:" / "cat:" markers, ids, plain words or hidden kinds. */
     private fun taste(t: String): String? {
@@ -65,12 +76,12 @@ object VideoRecommender {
         }
 
         // tags from the lists, from details opened this run, or (a few recent ones without any) fetched now
-        fun tagsOf(r: VideoRef) = (r.tags + VideoRepo.details[r.key]?.tags.orEmpty()).mapNotNull { taste(it) }.distinct()
+        fun tagsOf(r: VideoRef) = (r.tags + VideoRepo.details[r.key]?.tags.orEmpty() + fetchedTags[r.key].orEmpty()).mapNotNull { taste(it) }.distinct()
         coroutineScope {
             liked.values.map { it.first }.filter { tagsOf(it).isEmpty() }.take(4).map { r ->
                 async {
                     val src = VideoSources.byId(r.source) ?: return@async
-                    withTimeoutOrNull(15_000) { runCatching { src.details(r) }.getOrNull() }?.let { VideoRepo.details[r.key] = it }
+                    withTimeoutOrNull(15_000) { runCatching { src.details(r) }.getOrNull() }?.let { fetchedTags[r.key] = it.tags }
                 }
             }.awaitAll()
         }

@@ -52,7 +52,7 @@ object Edge {
         fun running(): Boolean = proc?.isAlive == true
 
         /** Starts Edge if needed ([offScreen]: the window sits far off the screen). */
-        fun connect(offScreen: Boolean = false): Cdp? {
+        @Synchronized fun connect(offScreen: Boolean = false): Cdp? {
             cdp?.takeIf { it.open && proc?.isAlive == true }?.let { return it }
             close()
             val edge = exe ?: return null
@@ -73,7 +73,7 @@ object Edge {
             return Cdp(ws, wsUrl).also { cdp = it }
         }
 
-        fun close() {
+        @Synchronized fun close() {
             runCatching { cdp?.call0("Browser.close") }
             cdp?.close(); cdp = null
             proc?.let { p -> if (!p.waitFor(3, TimeUnit.SECONDS)) p.destroyForcibly() }
@@ -157,27 +157,41 @@ object Edge {
         list.size
     }
 
+    /** Off-screen Edge for Cloudflare checks (its own profile; never the sign-in window). */
+    private val checker = Instance("edge-cf-profile", headless = false)
+    private val cfLock = Any()
+
     /** Closes every Edge the app started. */
-    fun close() { window.close(); com.yoruc.mangacracker.platform.ComixEdge.close() }
+    fun close() { window.close(); checker.close(); com.yoruc.mangacracker.platform.ComixEdge.close() }
 
     /**
      * Cloudflare: opens [url] in an Edge window off to the side until cf_clearance arrives (25 s), then copies the
      * cookies. True when the pass came. Used by [Http.solver].
      */
-    fun solveCloudflare(url: String): Boolean = runBlocking {
-        if (!available) return@runBlocking false
-        val host = runCatching { java.net.URI(url).host }.getOrNull() ?: return@runBlocking false
+    fun solveCloudflare(url: String): Boolean {
+        if (!available) return false
+        val host = runCatching { java.net.URI(url).host }.getOrNull() ?: return false
         val before = WebCookieJar.get(url, "cf_clearance")
-        if (!open(url, offScreen = true)) return@runBlocking false
-        val until = System.currentTimeMillis() + 25_000
-        while (System.currentTimeMillis() < until) {
-            delay(700)
-            importCookies(listOf(host.split('.').takeLast(2).joinToString(".")))
-            val now = WebCookieJar.get(url, "cf_clearance")
-            if (now != null && now != before) { window.close(); return@runBlocking true }
+        synchronized(cfLock) {
+            // another request's check (pictures load several at once) may have just brought the pass
+            WebCookieJar.get(url, "cf_clearance")?.let { if (it != before) return true }
+            return runBlocking {
+                val c = checker.connect(offScreen = true) ?: return@runBlocking false
+                if (runCatching { c.call("Target.createTarget", buildJsonObject { put("url", url); put("newWindow", true) }) }.isFailure) {
+                    checker.close(); return@runBlocking false
+                }
+                try {
+                    val until = System.currentTimeMillis() + 25_000
+                    while (System.currentTimeMillis() < until) {
+                        delay(700)
+                        importCookies(listOf(host.split('.').takeLast(2).joinToString(".")), from = checker)
+                        val now = WebCookieJar.get(url, "cf_clearance")
+                        if (now != null && now != before) return@runBlocking true
+                    }
+                    false
+                } finally { checker.close() }
+            }
         }
-        window.close()
-        false
     }
 
     /** A tiny DevTools protocol client: numbered calls over one WebSocket. */

@@ -10,6 +10,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.foundation.gestures.animateScrollBy
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -20,6 +22,9 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.shadow
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
@@ -141,6 +146,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.flowOn
@@ -294,7 +300,8 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
     val ctx = LocalContext.current
     val density = LocalDensity.current
     val screenW = with(density) { LocalConfiguration.current.screenWidthDp.dp.roundToPx() }
-    // test runs: MC_READER_OPEN=bar opens the top bar, =sounds the sounds sheet (pictures without clicks)
+    // test runs: MC_READER_OPEN=bar opens the top bar, =sounds the sounds sheet, =menu the right-click page menu
+    // (pictures without clicks)
     var overlay by remember { mutableStateOf(System.getenv("MC_READER_OPEN") == "bar") }
     var showSettings by remember { mutableStateOf(false) }
     var showSounds by remember { mutableStateOf(System.getenv("MC_READER_OPEN") == "sounds") }
@@ -346,18 +353,19 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
     }
 
     // ---- sounds while reading: plays while the reader is open, holds while the window is minimised ----
+    val soundOwner = remember { Any() }
     DisposableEffect(Unit) {
         val w = com.yoruc.mangacracker.platform.Files.owner
         val l = object : java.awt.event.WindowAdapter() {
-            override fun windowIconified(e: java.awt.event.WindowEvent) = Ambient.pause()
-            override fun windowDeiconified(e: java.awt.event.WindowEvent) = Ambient.sync()
+            override fun windowIconified(e: java.awt.event.WindowEvent) = Ambient.pause(soundOwner)
+            override fun windowDeiconified(e: java.awt.event.WindowEvent) = Ambient.sync(soundOwner)
         }
         w?.addWindowListener(l)
-        onDispose { w?.removeWindowListener(l); Ambient.stop() }
+        onDispose { w?.removeWindowListener(l); Ambient.stop(soundOwner) }
     }
     LaunchedEffect(settings.readerSound, settings.readerSoundUri, settings.readerSoundVolume) {
         val minimised = com.yoruc.mangacracker.platform.Files.owner?.let { it.extendedState and java.awt.Frame.ICONIFIED != 0 } == true
-        if (!minimised) Ambient.sync()
+        if (!minimised) Ambient.sync(soundOwner)
     }
 
     // ---- jump to the saved spot once ----
@@ -444,8 +452,11 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
     val bg = when (settings.readerBackground) { 1 -> Mc.Bg; 2 -> Color(0xFFF4F1EA); else -> Color.Black }
     val fg = if (settings.readerBackground == 2) Color(0xFF222222) else Mc.Text2
 
+    /** Where the page menu opens: right at the mouse (in the reader's own coordinates). */
+    var menuAt by remember { mutableStateOf(Offset.Zero) }
     /** The page menu for the page under [o] (long-press or right-click), remembering where on the page it was. */
     val openMenu: (Offset) -> Unit = { o ->
+                        menuAt = o
                         // undo the zoom: the strip is drawn scaled around the pivot and shifted sideways
                         val pvx = pivot.pivotFractionX * boxSize.width; val pvy = pivot.pivotFractionY * boxSize.height
                         val x = pvx + (o.x - pvx - panX) / scale
@@ -472,7 +483,20 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                             }
                         }
     }
-    // Windows keys: ↓ ↑ / J K a little, Page Down / Space and Page Up / Shift+Space a screen, Home / End
+    if (System.getenv("MC_READER_OPEN") == "menu") LaunchedEffect(boxSize.width > 0 && vm.items.isNotEmpty()) {
+        if (boxSize.width > 0 && vm.items.isNotEmpty()) { delay(3000); openMenu(Offset(boxSize.width * 0.6f, boxSize.height * 0.45f)) }
+    }
+    /** Opens the chapter before / after the one on screen (none = nothing happens). */
+    var leaving by remember { mutableStateOf(false) }
+    fun goChapter(next: Boolean) {
+        if (leaving) return
+        val ch = current?.first?.chapter ?: return
+        val to = (if (next) vm.nextOf(ch) else vm.prevOf(ch)) ?: return
+        leaving = true
+        nav.back(); nav.reader(ref, to)
+    }
+    // Windows keys: ↓ ↑ / J K a little, Page Down / Space and Page Up / Shift+Space a screen, Home / End,
+    // ← / P previous chapter, → / N next chapter
     val keys = remember { androidx.compose.ui.focus.FocusRequester() }
     LaunchedEffect(Unit) { runCatching { keys.requestFocus() } }
     Box(
@@ -480,10 +504,11 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
             .focusRequester(keys).focusable()
             // right-click = long-press (the page menu: save, copy, cutout)
             .onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press) { e ->
-                if (e.buttons.isSecondaryPressed) openMenu(e.changes.first().position)
+                if (e.buttons.isSecondaryPressed && !showGrid && cutout == null) openMenu(e.changes.first().position)
             }
             .onPreviewKeyEvent { e ->
                 if (e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                if (showGrid || cutout != null || e.isCtrlPressed || e.isAltPressed) return@onPreviewKeyEvent false
                 val step = boxSize.height * 0.12f; val page = boxSize.height * 0.85f
                 val k = e.key
                 val by = when {
@@ -497,6 +522,8 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                     by != null -> { scope.launch { list.animateScrollBy(by / scale) }; true }
                     k == androidx.compose.ui.input.key.Key.MoveHome -> { scope.launch { list.scrollToItem(0) }; true }
                     k == androidx.compose.ui.input.key.Key.MoveEnd -> { scope.launch { list.scrollToItem((rows.size - 1).coerceAtLeast(0)) }; true }
+                    k == androidx.compose.ui.input.key.Key.DirectionLeft || k == androidx.compose.ui.input.key.Key.P -> { goChapter(next = false); true }
+                    k == androidx.compose.ui.input.key.Key.DirectionRight || k == androidx.compose.ui.input.key.Key.N -> { goChapter(next = true); true }
                     else -> false
                 }
             }
@@ -569,16 +596,22 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
             })
         }
 
-        // always-on tiny page counter
+        // always-on small bar (Windows): ‹ previous chapter · page counter · next chapter ›
         val cur = current
-        if (!overlay && cur != null && settings.showReaderPageNumber) {
+        if (!overlay && cur != null) {
+            val prev = vm.prevOf(cur.first.chapter); val next = vm.nextOf(cur.first.chapter)
             val pct = ((cur.second + 1) * 100 / cur.first.total.coerceAtLeast(1))
-            Text(
-                "${cur.second + 1} / ${cur.first.total} · $pct%",
-                color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 6.dp)
-                    .clip(RoundedCornerShape(50)).background(Color(0x99000000)).padding(horizontal = 10.dp, vertical = 3.dp)
-            )
+            Row(
+                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 6.dp)
+                    .clip(RoundedCornerShape(50)).background(Color(0x99000000)).padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ChapterJump("‹ Previous chapter", prev != null) { goChapter(next = false) }
+                if (settings.showReaderPageNumber)
+                    Text("${cur.second + 1} / ${cur.first.total} · $pct%", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 8.dp))
+                ChapterJump("Next chapter ›", next != null) { goChapter(next = true) }
+            }
         }
 
         // auto-scroll running: slower / speed / faster / stop, always at hand
@@ -710,13 +743,30 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
         }
     }
 
-    // ---- long-press page menu ----
+    // ---- right-click (or long-press) page menu: a small menu right at the mouse, Save image first ----
     pageMenu?.let { p ->
-        ModalBottomSheet(onDismissRequest = { pageMenu = null }, containerColor = Mc.Card) {
-            Column(Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 6.dp)) {
-                Text("Page ${p.page.index + 1} · ${p.chapter.name}", color = Mc.Text2, fontSize = 13.sp)
-                Spacer(Modifier.height(10.dp))
-                SheetAction(Icons.Rounded.Download, "Save image") {
+        val at = menuAt
+        val place = remember(at) {
+            object : androidx.compose.ui.window.PopupPositionProvider {
+                override fun calculatePosition(
+                    anchorBounds: androidx.compose.ui.unit.IntRect, windowSize: androidx.compose.ui.unit.IntSize,
+                    layoutDirection: androidx.compose.ui.unit.LayoutDirection, popupContentSize: androidx.compose.ui.unit.IntSize,
+                ): androidx.compose.ui.unit.IntOffset {
+                    // open down-right of the mouse; flip up / left when it would run off the window
+                    var x = anchorBounds.left + at.x.toInt(); var y = anchorBounds.top + at.y.toInt()
+                    if (x + popupContentSize.width > windowSize.width) x -= popupContentSize.width
+                    if (y + popupContentSize.height > windowSize.height) y -= popupContentSize.height
+                    return androidx.compose.ui.unit.IntOffset(x.coerceAtLeast(0), y.coerceAtLeast(0))
+                }
+            }
+        }
+        androidx.compose.ui.window.Popup(popupPositionProvider = place, onDismissRequest = { pageMenu = null },
+            properties = androidx.compose.ui.window.PopupProperties(focusable = true)) {
+            Column(Modifier.width(260.dp).shadow(10.dp, RoundedCornerShape(10.dp)).clip(RoundedCornerShape(10.dp)).background(Mc.Card)
+                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp)).padding(vertical = 6.dp)) {
+                Text("Page ${p.page.index + 1} · ${p.chapter.name}", color = Mc.Text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
+                MenuAction(Icons.Rounded.Download, "Save image", bold = true) {
                     pageMenu = null
                     scope.launch {
                         runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), ref.title, "${p.chapter.name} - %03d".format(p.page.index + 1)) }
@@ -724,7 +774,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                             .onFailure { Toast.makeText(ctx, "Couldn't save: ${it.message}", Toast.LENGTH_SHORT).show() }
                     }
                 }
-                SheetAction(Icons.Rounded.ContentCut, "Save a cutout of this character") {
+                MenuAction(Icons.Rounded.ContentCut, "Save a cutout of this character") {
                     pageMenu = null
                     val tap = pageTap
                     scope.launch {
@@ -733,11 +783,15 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                             .onFailure { Toast.makeText(ctx, "Couldn't load the page", Toast.LENGTH_SHORT).show() }
                     }
                 }
-                SheetAction(Icons.Rounded.Share, "Share image") {
+                // Windows: "share" puts the picture on the clipboard
+                MenuAction(Icons.Rounded.ContentCopy, "Copy image") {
                     pageMenu = null
-                    scope.launch { runCatching { ImageSaver.share(ctx, vm.urlOf(p.page)) }.onFailure { Toast.makeText(ctx, "Couldn't share", Toast.LENGTH_SHORT).show() } }
+                    scope.launch {
+                        runCatching { ImageSaver.share(ctx, vm.urlOf(p.page)) }
+                            .onSuccess { Toast.makeText(ctx, "Image copied: paste it anywhere", Toast.LENGTH_SHORT).show() }
+                            .onFailure { Toast.makeText(ctx, "Couldn't copy", Toast.LENGTH_SHORT).show() }
+                    }
                 }
-                Spacer(Modifier.height(12.dp))
             }
         }
     }
@@ -762,15 +816,16 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
  */
 private fun pageSize(screenW: Int) = coil3.size.Size(screenW, 16384)
 
+/** One line of the right-click page menu: big enough to hit easily, lights up under the mouse. */
 @Composable
-private fun SheetAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+private fun MenuAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, bold: Boolean = false, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(vertical = 14.dp, horizontal = 6.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = Mc.Blue)
-        Spacer(Modifier.width(16.dp))
-        Text(label, color = Mc.Text, fontSize = 16.sp)
+        Icon(icon, null, tint = Mc.Blue, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(label, color = Mc.Text, fontSize = 14.sp, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal)
     }
 }
 
@@ -856,6 +911,13 @@ private fun ChapterHeader(h: ReaderItem.Header, fg: Color, vm: ReaderVM, nav: Na
         Text(h.chapter.name, color = fg, fontWeight = FontWeight.Bold, fontSize = 17.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 24.dp))
         if (h.chapter.group.isNotEmpty()) Text(h.chapter.group, color = fg.copy(alpha = 0.6f), fontSize = 12.sp)
     }
+}
+
+/** One end of the reader's small bottom bar; greyed when there's no chapter that way. */
+@Composable
+private fun ChapterJump(label: String, enabled: Boolean, onClick: () -> Unit) {
+    Text(label, color = if (enabled) Color.White else Color.White.copy(alpha = 0.3f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.clip(RoundedCornerShape(50)).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 10.dp, vertical = 5.dp))
 }
 
 @Composable

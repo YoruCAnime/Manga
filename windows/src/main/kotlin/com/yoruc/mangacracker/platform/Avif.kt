@@ -44,8 +44,9 @@ object Avif {
             args += listOf("-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "pipe:1")
             val p = ProcessBuilder(args).redirectError(ProcessBuilder.Redirect.DISCARD).start()
             p.outputStream.close()
-            val out = p.inputStream.use { it.readBytes() }
-            if (!p.waitFor(30, TimeUnit.SECONDS)) { p.destroy(); throw IllegalStateException("ffmpeg took too long") }
+            val reading = java.util.concurrent.CompletableFuture.supplyAsync { p.inputStream.use { it.readBytes() } }
+            if (!p.waitFor(30, TimeUnit.SECONDS)) { p.destroyForcibly(); throw IllegalStateException("ffmpeg took too long") }
+            val out = reading.get(10, TimeUnit.SECONDS)
             if (out.isEmpty()) throw IllegalStateException("This AVIF picture can't be read")
             return out
         } finally { tmp.delete() }

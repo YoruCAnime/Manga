@@ -39,6 +39,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -114,6 +115,13 @@ class Nav(val c: NavHostController) {
 /** A search handed from one screen to the browse screen it opens. */
 object Pending { var query: SearchQuery? = null }
 
+/** Where the app is now (for the update switch): the screen's route pattern, its key argument, the last input time. */
+object Here {
+    @Volatile var route = "home"
+    @Volatile var key = ""
+    @Volatile var lastInput = System.currentTimeMillis()
+}
+
 @Composable
 fun AppRoot(open: String?) {
     val c = rememberNavController()
@@ -164,6 +172,20 @@ fun AppRoot(open: String?) {
     }
 
     LaunchedEffect(Unit) { com.yoruc.mangacracker.platform.Back.fallback = { if (c.previousBackStackEntry != null) nav.back() } }
+
+    SideEffect { Here.route = route; Here.key = entry?.arguments?.getString("key") ?: "" }
+    // just switched to a newer copy: back on the same tab (and the same title / show page)
+    LaunchedEffect(Unit) {
+        val h = com.yoruc.mangacracker.platform.SelfUpdate.handoff ?: return@LaunchedEffect
+        val tab = tabs.firstOrNull { it.route == h.route }?.route
+        when {
+            tab != null -> nav.tab(tab)
+            h.route == "details/{key}" && h.key.isNotEmpty() -> c.navigate("details/${Uri.encode(h.key)}")
+            h.route == "vseries/{key}" && h.key.isNotEmpty() -> { nav.tab("videos"); c.navigate("vseries/${Uri.encode(h.key)}") }
+            h.route in setOf("history", "settings", "downloads") -> { nav.tab("more"); c.navigate(h.route) }
+            h.route.startsWith("browse/") -> nav.tab("sources")
+        }
+    }
 
     // Windows: the main tabs sit in a rail on the left (hidden in the reader / player, like the phone's bar)
     Row(Modifier.fillMaxSize().background(Mc.Bg)) {

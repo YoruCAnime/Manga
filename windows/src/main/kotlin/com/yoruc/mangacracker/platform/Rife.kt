@@ -23,7 +23,7 @@ import javax.imageio.ImageWriteParam
  * frames a second. Shipped in appResources/windows/rife (not in git); MC_NO_RIFE=1 turns it off (tests).
  */
 class Rife private constructor(private val exe: File, private val model: File) : InBetweens, Closeable {
-    private val dir = File(Desktop.ctx.cacheDir, "gif/rife")
+    private val dir = File(Desktop.ctx.cacheDir, "gif/rife-${ProcessHandle.current().pid()}-${System.nanoTime()}")
     private val out = File(dir, "out")
     private var w = 0; private var h = 0; private var steps = 1
     private val recent = LinkedHashMap<Int, IntArray>(16, 0.75f, true)
@@ -61,8 +61,8 @@ class Rife private constructor(private val exe: File, private val model: File) :
         recent.getOrPut(pair * steps + step) {
             // Skia decodes PNGs several times faster than ImageIO
             val img = Image.makeFromEncoded(File(out, name(pair * steps + step)).readBytes())
-            val b = Bitmap.makeFromImage(img).readPixels(ImageInfo(w, h, ColorType.BGRA_8888, ColorAlphaType.OPAQUE))!!
-            img.close()
+            val b = try { Bitmap.makeFromImage(img).use { it.readPixels(ImageInfo(w, h, ColorType.BGRA_8888, ColorAlphaType.OPAQUE)) } }
+                finally { img.close() } ?: error("RIFE frame ${pair * steps + step} unreadable")
             IntArray(w * h) { k -> ((b[4 * k + 2].toInt() and 0xFF) shl 16) or ((b[4 * k + 1].toInt() and 0xFF) shl 8) or (b[4 * k].toInt() and 0xFF) }
         }.also { while (recent.size > 6) recent.remove(recent.keys.first()) }
     }

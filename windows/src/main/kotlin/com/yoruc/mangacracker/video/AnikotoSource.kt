@@ -152,7 +152,7 @@ object AnikotoSource : VideoSource {
             VideoRef(id, "$slug/$num/$lang", "${s.title} Episode $num", "$baseUrl/watch/$slug/ep-$num", series = s.title, episode = num,
                 cover = s.cover, lang = lang.uppercase(), tags = s.tags)
         }
-    }.sortedWith(seriesOrder)
+    }.distinctBy { it.id }.sortedWith(seriesOrder)
 
     override suspend fun series(ref: VideoRef): List<VideoRef> {
         val slug = ref.id.substringBefore('/')

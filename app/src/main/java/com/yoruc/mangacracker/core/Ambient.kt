@@ -57,7 +57,8 @@ object Ambient {
     }
 
     /** Plays what Settings say, or fades out when nothing is chosen. Call again whenever the choice or volume changes. */
-    fun sync(ctx: Context) {
+    fun sync(ctx: Context, who: Any? = null) {
+        if (who != null) owner = who
         val s = Repo.settings.value
         val uri = uriOf(ctx, s) ?: return stop()
         val p = player ?: ExoPlayer.Builder(ctx.applicationContext).build().also {
@@ -82,11 +83,22 @@ object Ambient {
         fadeTo(s.readerSoundVolume.coerceIn(0f, 1f))
     }
 
+    /** The reader that last asked for the sound. Previous / Next chapter opens the new reader before the old one
+     *  leaves; the old one's pause / stop must not silence the new one's sound. */
+    private var owner: Any? = null
+
     /** The app went to the background: fade out and hold. */
-    fun pause() = fadeTo(0f) { player?.pause() }
+    fun pause(who: Any? = null) {
+        if (who != null && owner !== who) return
+        fadeTo(0f) { player?.pause() }
+    }
 
     /** The reader closed: fade out and let the player go. */
-    fun stop() = fadeTo(0f) { release() }
+    fun stop(who: Any? = null) {
+        if (who != null && owner !== who) return
+        owner = null
+        fadeTo(0f) { release() }
+    }
 
     private fun release() {
         fade?.cancel()

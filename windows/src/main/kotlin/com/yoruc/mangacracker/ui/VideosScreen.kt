@@ -196,6 +196,9 @@ fun VideosScreen(nav: Nav) {
     val vm: VideosVM = viewModel { VideosVM() }
     val watch by VideoRepo.watch.collectAsState()
     val cont = remember(watch) { VideoRepo.continueList() }
+    val favsNow by VideoRepo.favs.collectAsState()
+    // what you watched / favourited since leaves the row at once
+    val recs = remember(watch, favsNow, vm.recs) { VideoRecommender.fresh(vm.recs) }
     var text by remember { mutableStateOf(vm.query.text) }
     var focused by remember { mutableStateOf(false) }
     var showGenres by remember { mutableStateOf(false) }
@@ -288,7 +291,7 @@ fun VideosScreen(nav: Nav) {
                 }
             }
             // from what you watch and favourite, on every site (VideoRecommender)
-            if (vm.recs.isNotEmpty() && vm.mode != 2) {
+            if (recs.isNotEmpty() && vm.mode != 2) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)) {
@@ -297,12 +300,12 @@ fun VideosScreen(nav: Nav) {
                                 modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(enabled = !vm.recsLoading) { vm.loadRecs(true) }.padding(horizontal = 8.dp, vertical = 4.dp))
                         }
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(vm.recs, key = { it.key }) { v -> RecCard(v, onSeries = { nav.videoSeries(v) }) { nav.player(v) } }
+                            items(recs, key = { it.key }) { v -> RecCard(v, onSeries = { nav.videoSeries(v) }) { nav.player(v) } }
                         }
                     }
                 }
             }
-            if ((cont.isNotEmpty() || vm.recs.isNotEmpty()) && vm.mode != 2) {
+            if ((cont.isNotEmpty() || recs.isNotEmpty()) && vm.mode != 2) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Text(if (vm.mode == 1) "Popular on ${vm.source.name}" else "New on ${vm.source.name}", color = Mc.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
                 }

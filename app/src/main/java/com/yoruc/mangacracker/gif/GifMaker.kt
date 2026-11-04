@@ -186,10 +186,10 @@ class GifMaker(private val src: FrameSource, private val opts: GifOptions) {
             }
             // the file shrinks slower than the picture (detail packs closer), so guess again at the new size and
             // correct by the slope the two guesses show
-            val l1 = (long * Math.pow(target / est, 1 / 1.6)).toInt().coerceIn(200, long)
+            val l1 = (long * Math.pow(target / est, 1 / 1.6)).toInt().coerceIn(minOf(200, long), long)
             val est1 = guess(GifParams(l1, fpsCap, colours, threshold)) ?: est
             val k = if (l1 < long) (Math.log(est / est1) / Math.log(long.toDouble() / l1)).coerceIn(0.8, 2.4) else 1.6
-            long = (l1 * Math.pow(target / est1, 1 / k)).toInt().coerceIn(200, long)
+            long = (l1 * Math.pow(target / est1, 1 / k)).toInt().coerceIn(minOf(200, long), long)
             minLong = minOf(minLong, long)
         }
         var last: GifResult? = null
@@ -277,6 +277,7 @@ class GifMaker(private val src: FrameSource, private val opts: GifOptions) {
         val forward = if (opts.pingPong) picks.size / 2 + 1 else picks.size
         val keepAll = forward.toLong() * dw * dh <= 100_000_000L
         val made = HashMap<Pick, ByteArray>()
+        val keepMade = forward.toLong() * dw * dh <= 150_000_000L
         val all = if (keepAll) ArrayList<ByteArray>(picks.size) else null
         val out = FrameWriter(dw, dh, pal, p.threshold)
         var inBetweens = 0; var fallbacks = 0
@@ -287,7 +288,7 @@ class GifMaker(private val src: FrameSource, private val opts: GifOptions) {
             val (rgb, mid) = picture(pk, frame, dw, dh)
             if (mid == true) inBetweens++ else if (mid == false) fallbacks++
             val idx = quantize(rgb, dw, dh, pal, p.dither)
-            if (opts.pingPong && k < forward) made[pk] = idx
+            if (opts.pingPong && k < forward && keepMade) made[pk] = idx
             out.add(idx, delays[k]); all?.add(idx)
             progress(label, k.toFloat() / picks.size)
         }

@@ -174,7 +174,16 @@ fun PlayerScreen(nav: Nav, key: String) {
     var contrast by remember { mutableStateOf(Repo.settings.value.videoContrast) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val keys = remember { FocusRequester() }
-    val canvas = remember { java.awt.Canvas().apply { background = java.awt.Color.BLACK } }
+    val canvas = remember {
+        java.awt.Canvas().apply {
+            background = java.awt.Color.BLACK
+            isFocusable = false
+            addMouseListener(object : java.awt.event.MouseAdapter() {
+                override fun mousePressed(e: java.awt.event.MouseEvent) { runCatching { keys.requestFocus() } }
+            })
+        }
+    }
+    var subsJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     if (!Mpv.available) {
         Column(Modifier.fillMaxSize().background(Mc.Bg).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -187,12 +196,14 @@ fun PlayerScreen(nav: Nav, key: String) {
     // the player is made once the panel has a native window
     LaunchedEffect(Unit) {
         while (!canvas.isDisplayable) delay(50)
-        player = Mpv.Player(Native.getComponentID(canvas))
+        runCatching { Mpv.Player(Native.getComponentID(canvas)) }
+            .onSuccess { player = it }
+            .onFailure { Desktop.toast("The video player couldn't start: ${it.message}"); nav.back() }
     }
     DisposableEffect(Unit) {
         onDispose {
             val p = player
-            vm.details?.let { d -> if (dur > 0) VideoRepo.save(d.ref, (pos * 1000).toLong(), (dur * 1000).toLong()) }
+            vm.details?.let { d -> if (dur > 0 && loadedKey == d.ref.key) VideoRepo.save(d.ref, (pos * 1000).toLong(), (dur * 1000).toLong()) }
             Repo.updateSettings { it.copy(videoVolume = volume, videoMuted = muted, videoQuality = quality, videoSubtitles = subsOn) }
             Desktop.scope.launch(Dispatchers.IO) { p?.destroy() }
             com.yoruc.mangacracker.platform.MemoryKeeper.release()
@@ -214,10 +225,28 @@ fun PlayerScreen(nav: Nav, key: String) {
         p.set("speed", speed.toString())
         p.set("saturation", saturation.toString())
         p.set("contrast", contrast.toString())
-        VideoDownloads.offline(d.ref.key)?.let { o -> VideoDownloads.audioFile(o)?.let { p.set("audio-files", it.path) } }
+        // a downloaded episode's separate sound; always set, so the last episode's never plays on the next one
+        p.set("audio-files", VideoDownloads.offline(d.ref.key)?.let { o -> VideoDownloads.audioFile(o)?.path }.orEmpty())
+        val sid = if (at != null) p.getString("sid") else null      // same episode again (quality): same subtitles
+        if (at == null) recStart = null
         p.load(url, start)
+        // the new file's clock starts from nothing (the old one's position / length must not be saved for it)
+        pos = start; dur = 0.0; cached = 0.0
         loadedKey = d.ref.key
         buffering = true
+        // subtitles once the file is open (every load: a reload drops them)
+        subsJob?.cancel()
+        if (d.stream.subs.isNotEmpty()) subsJob = scope.launch {
+            delay(400)   // loadfile is queued: the old file can still answer for a moment
+            var waited = 0
+            while (p.getDouble("duration") == null && waited < 60_000) { delay(250); waited += 250 }
+            d.stream.subs.forEach { sub ->
+                val u = if (sub.url.startsWith("file:")) File(java.net.URI(sub.url)).path else StreamProxy.url(d.ref.source, sub.url)
+                p.cmd("sub-add", u, "auto", sub.label, sub.lang)
+            }
+            if (sid != null && sid != "no") p.set("sid", sid)
+            p.set("sub-visibility", if (subsOn) "yes" else "no")
+        }
     }
     // the sizes this video comes in (for the quality menu)
     LaunchedEffect(vm.details?.ref?.key) {
@@ -233,17 +262,7 @@ fun PlayerScreen(nav: Nav, key: String) {
         }
     }
     LaunchedEffect(player, vm.details) {
-        if (player != null && vm.details != null && loadedKey != vm.details?.ref?.key) {
-            load()
-            // subtitles once the file is open
-            val d = vm.details!!
-            delay(1500)
-            d.stream.subs.forEach { sub ->
-                val u = if (sub.url.startsWith("file:")) File(java.net.URI(sub.url)).path else StreamProxy.url(d.ref.source, sub.url)
-                player?.cmd("sub-add", u, "auto", sub.label, sub.lang)
-            }
-            player?.set("sub-visibility", if (subsOn) "yes" else "no")
-        }
+        if (player != null && vm.details != null && loadedKey != vm.details?.ref?.key) load()
     }
     // clock: position, length, pause, buffering; saves the watch spot; next episode at the end
     LaunchedEffect(player) {
@@ -256,9 +275,10 @@ fun PlayerScreen(nav: Nav, key: String) {
             cached = p.getDouble("demuxer-cache-time") ?: cached
             paused = p.getString("pause") == "yes"
             buffering = p.getString("paused-for-cache") == "yes" || p.getString("idle-active") == "yes"
-            if (++n % 20 == 0 && !paused && dur > 0) vm.details?.let { VideoRepo.save(it.ref, (pos * 1000).toLong(), (dur * 1000).toLong()) }
-            if (p.getString("eof-reached") == "yes" && dur > 0) {
-                vm.details?.let { VideoRepo.save(it.ref, (dur * 1000).toLong(), (dur * 1000).toLong()) }
+            val open = vm.details?.takeIf { it.ref.key == loadedKey }
+            if (++n % 20 == 0 && !paused && dur > 0) open?.let { VideoRepo.save(it.ref, (pos * 1000).toLong(), (dur * 1000).toLong()) }
+            if (p.getString("eof-reached") == "yes" && dur > 0 && open != null) {
+                VideoRepo.save(open.ref, (dur * 1000).toLong(), (dur * 1000).toLong())
                 val next = vm.neighbour(1)
                 if (next != null && loadedKey == vm.details?.ref?.key) { loadedKey = null; vm.open(next) }
             }
@@ -280,8 +300,8 @@ fun PlayerScreen(nav: Nav, key: String) {
         val d = vm.details ?: return
         val dir = Desktop.snapshots
         val f = Desktop.freeFile(dir, Desktop.clean("${d.ref.title} ${clock((pos * 1000).toLong()).replace(':', '.')}"), "png")
-        player?.cmd("screenshot-to-file", f.path, "video")
-        Desktop.toast("Snapshot saved to ${dir.path}")
+        if (player?.cmd("screenshot-to-file", f.path, "video") == true) Desktop.toast("Snapshot saved to ${dir.path}")
+        else Desktop.toast("Couldn't take the snapshot")
     }
     /** ffmpeg's input for this video: the downloaded file, or the site's stream with its cookies / keys. */
     fun ffInput(): List<String>? {
@@ -313,9 +333,11 @@ fun PlayerScreen(nav: Nav, key: String) {
         val out = Desktop.freeFile(Desktop.clips, Desktop.clean("${d.ref.title} ${clock((from * 1000).toLong())}-${clock((to * 1000).toLong())}".replace(':', '.')), "mp4")
         saving = 0f
         scope.launch {
-            runCatching { com.yoruc.mangacracker.platform.ClipRecorder.cut(input, from, to, out) { f -> saving = f } }
+            // a downloaded episode with its sound in a file of its own: both go into the clip
+            val audio = if (d.stream.url.startsWith("file:")) VideoDownloads.offline(d.ref.key)?.let { VideoDownloads.audioFile(it) } else null
+            runCatching { com.yoruc.mangacracker.platform.ClipRecorder.cut(input, from, to, out, audio) { f -> saving = f } }
                 .onSuccess { f -> Desktop.toast("Clip saved to ${f.parentFile.path}") }
-                .onFailure { Desktop.toast("Couldn't save the clip: ${it.message}") }
+                .onFailure { if (it !is kotlinx.coroutines.CancellationException) Desktop.toast("Couldn't save the clip: ${it.message}") }
             saving = null
         }
     }
