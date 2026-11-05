@@ -14,5 +14,5 @@ data class AppRelease(
 )
 
 object AppUpdate {
-    const val current: String = "1.0.0 (Windows)"
+    const val current: String = "1.0.1 (Windows)"
 }
