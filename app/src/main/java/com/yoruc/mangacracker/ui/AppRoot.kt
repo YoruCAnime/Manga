@@ -8,6 +8,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CollectionsBookmark
@@ -76,6 +77,8 @@ class Nav(val c: NavHostController) {
     fun globalSearch(text: String = "") = c.navigate("search?q=${Uri.encode(text)}")
     fun web(url: String) = c.navigate("web?url=${Uri.encode(url)}")
     fun player(v: com.yoruc.mangacracker.video.VideoRef) {
+        // a whole show (anime lists) opens its episodes
+        if (v.show) return videoSeries(v)
         com.yoruc.mangacracker.video.VideoRepo.remember(v)
         c.navigate("player/${Uri.encode(v.key)}") { launchSingleTop = true }
     }
@@ -83,8 +86,12 @@ class Nav(val c: NavHostController) {
         com.yoruc.mangacracker.video.VideoRepo.remember(v)
         c.navigate("vseries/${Uri.encode(v.key)}") { launchSingleTop = true }
     }
+    fun otherSites(key: String) = c.navigate("othersites/${Uri.encode(key)}") { launchSingleTop = true }
+    fun downloads() = c.navigate("downloads") { launchSingleTop = true }
     fun history() = c.navigate("history")
     fun settings() = c.navigate("settings")
+    fun sourceTest() = c.navigate("sourcetest")
+    fun exLogin() = c.navigate("exlogin") { launchSingleTop = true }
     fun tab(route: String) = c.navigate(route) {
         popUpTo(c.graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
@@ -107,7 +114,10 @@ fun AppRoot(open: String?) {
     val settings by Repo.settings.collectAsState()
     var updateAsked by remember { mutableStateOf(open == "appupdate") }
 
-    LaunchedEffect(open) { if (open == "updates") nav.tab("updates") }
+    LaunchedEffect(open) {
+        if (open == "updates") nav.tab("updates")
+        if (open == "downloads") { nav.tab("more"); nav.downloads() }
+    }
     LaunchedEffect(Unit) { if (settings.autoAppUpdates) AppUpdate.check() }
 
     // the update pop-up: on the main tabs only (never over the reader), once per version unless opened from the notification
@@ -167,6 +177,8 @@ fun AppRoot(open: String?) {
                 composable("more") { MoreScreen(nav) }
                 composable("history") { HistoryScreen(nav) }
                 composable("settings") { SettingsScreen(nav) }
+                composable("sourcetest") { SourceTestScreen(nav) }
+                composable("exlogin") { ExLoginScreen(nav) }
                 composable("browse/{source}?search={search}") { b ->
                     BrowseScreen(nav, b.arguments?.getString("source") ?: "", b.arguments?.getString("search") == "1")
                 }
@@ -176,7 +188,11 @@ fun AppRoot(open: String?) {
                     ReaderScreen(nav, b.arguments?.getString("key") ?: "", b.arguments?.getString("chapter") ?: "", b.arguments?.getString("grid") == "1")
                 }
                 composable("web?url={url}") { b -> WebScreen(nav, b.arguments?.getString("url") ?: "") }
+                composable("othersites/{key}") { b -> OtherSitesScreen(nav, b.arguments?.getString("key") ?: "") }
+                composable("downloads") { DownloadsScreen(nav) }
             }
+            // in-window notes (Undo etc.), above the bottom bar
+            NoteHost(Modifier.align(androidx.compose.ui.Alignment.BottomCenter).then(if (showBar) Modifier else Modifier.navigationBarsPadding()))
         }
     }
 }

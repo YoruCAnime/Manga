@@ -55,6 +55,8 @@ data class HistoryEntry(
     val chapter: Chapter,
     val state: ReadState,
     val time: Long,
+    /** How many chapters the title had when it was last read (0 = unknown); read badges use it. */
+    val chapterCount: Int = 0,
 )
 
 @Serializable
@@ -73,7 +75,21 @@ data class Settings(
     val keepScreenOn: Boolean = true,
     val readerAutoNext: Boolean = true,
     val showReaderPageNumber: Boolean = true,
+    /** Auto-scroll speed, 1 = 60 dp a second. */
+    val autoScrollSpeed: Float = 1f,
+    /** Night filter: dim (0-80 %) and warm tint (0-100 %) over the pages; never the system brightness. */
+    val readerNight: Boolean = false,
+    val readerDim: Int = 30,
+    val readerWarm: Int = 40,
+    /** Two pages side by side when the phone is landscape; right-to-left order for Japanese books. */
+    val readerTwoPage: Boolean = false,
+    val readerRtl: Boolean = true,
     val gridColumns: Int = 3,
+    /** Browse / Home / search grids leave out titles whose every known chapter is read. */
+    val hideFinished: Boolean = false,
+    /** Weekly backup file in Download/MangaCracker. */
+    val autoBackup: Boolean = false,
+    val lastAutoBackup: Long = 0L,
     val gelbooruUser: String = "",
     val gelbooruKey: String = "",
     val danbooruUser: String = "",
@@ -91,9 +107,29 @@ data class Settings(
     val notifiedAppVersion: String = "",
     /** Hide manga / pictures marked AI-generated (title words or AI tags); videos are not filtered. */
     val hideAi: Boolean = true,
+    /** Hide futanari / furry manga, pictures and videos (tags and title words). */
+    val hideFuta: Boolean = true,
+    val hideFurry: Boolean = true,
     /** Videos tab: the source picked last; player subtitles on / off. */
     val lastVideoSource: String = "",
     val videoSubtitles: Boolean = true,
+    /** Player quality for HLS: -1 = always the best the phone can play, 0 = auto (by speed), else the highest height. */
+    val videoQuality: Int = -1,
+    /** The player's own volume (0..1, on top of the phone's media volume) and mute. */
+    val videoVolume: Float = 1f,
+    val videoMuted: Boolean = false,
+    /** Offline downloads: only on Wi-Fi (unmetered); delete a downloaded chapter once it is read; HLS video height. */
+    val downloadWifiOnly: Boolean = true,
+    val deleteAfterReading: Boolean = false,
+    val videoDownloadHeight: Int = 720,
+    /** Sounds while reading: "" = off, a built-in loop id (Ambient.sounds) or "own" = readerSoundUri; volume 0..1. */
+    val readerSound: String = "",
+    val readerSoundVolume: Float = 0.5f,
+    val readerSoundUri: String = "",
+    val readerSoundName: String = "",
+    /** Home screen: what drifts over it ("auto" follows the month, see Seasons) and stars from 8 pm to 6 am. */
+    val homeEffect: String = "auto",
+    val homeNightSky: Boolean = true,
 )
 
 object Repo {
@@ -133,6 +169,8 @@ object Repo {
         _settings.value = load("settings.json", Settings.serializer()) ?: Settings()
         Safety.userHidden = _settings.value.hiddenTags.map { Safety.norm(it) }.toSet()
         Safety.hideAi = _settings.value.hideAi
+        Safety.hideFuta = _settings.value.hideFuta
+        Safety.hideFurry = _settings.value.hideFurry
         (_library.value.values.map { it.ref } + _history.value.values.map { it.ref }).forEach { refs[it.key] = it }
     }
 
@@ -237,20 +275,95 @@ object Repo {
 
     fun clearUpdates() { _updates.value = emptyList(); saveUpdates() }
 
+    // ---------- moving a title to another site ----------
+
+    /** Everything a move touched, as it was before (for Undo). */
+    data class MoveUndo(
+        val oldKey: String,
+        val newKey: String,
+        val library: Map<String, LibraryEntry?>,
+        val history: Map<String, HistoryEntry?>,
+        val progress: Map<String, ReadState>,
+        val updates: List<UpdateItem>,
+    )
+
+    /**
+     * Moves the library entry, history and read marks of [oldKey] to [newRef] (the same title on another site).
+     * Read marks are carried by chapter number ([SourceMatch.carry]); the library entry keeps its added date.
+     */
+    fun moveTitle(oldKey: String, newRef: MangaRef, details: MangaDetails?, newChapters: List<Chapter>, carry: SourceMatch.Carry): MoveUndo {
+        val newKey = newRef.key
+        val undo = MoveUndo(
+            oldKey, newKey,
+            library = mapOf(oldKey to _library.value[oldKey], newKey to _library.value[newKey]),
+            history = mapOf(oldKey to _history.value[oldKey], newKey to _history.value[newKey]),
+            progress = _progress.value.filterKeys { it.startsWith("$oldKey#") || it.startsWith("$newKey#") },
+            updates = _updates.value.filter { it.ref.key == oldKey || it.ref.key == newKey },
+        )
+        val now = System.currentTimeMillis()
+        val old = _library.value[oldKey]
+        if (old != null) {
+            val existing = _library.value[newKey]
+            _library.update {
+                it - oldKey + (newKey to LibraryEntry(
+                    ref = newRef.copy(cover = details?.ref?.cover?.ifEmpty { null } ?: newRef.cover.ifEmpty { old.ref.cover }),
+                    added = minOf(old.added, existing?.added ?: Long.MAX_VALUE),
+                    genres = details?.genres?.ifEmpty { null } ?: old.genres,
+                    authors = details?.let { d -> (d.authors + d.artists).distinct() }?.ifEmpty { null } ?: old.authors,
+                    knownChapters = newChapters.map { c -> c.id },
+                    chapterCount = newChapters.size,
+                    latestChapter = newChapters.maxByOrNull { c -> c.number }?.name.orEmpty(),
+                    lastChecked = now,
+                    lastUpdate = old.lastUpdate,
+                ))
+            }
+        }
+        _progress.update { m ->
+            val n = m.filterKeys { !it.startsWith("$oldKey#") }.toMutableMap()
+            carry.progress.forEach { (id, st) ->
+                val k = pkey(newKey, id)
+                // a mark the new title already had wins when it is further on
+                val mine = n[k]
+                if (mine == null || (!mine.read && (st.read || st.page > mine.page))) n[k] = st
+            }
+            n
+        }
+        _history.update { h ->
+            val moved = carry.history
+            val mine = h[newKey]
+            val keep = if (moved != null && (mine == null || moved.time >= mine.time)) moved else mine
+            (h - oldKey - newKey).let { if (keep != null) it + (newKey to keep) else it }
+        }
+        _updates.update { list -> list.filterNot { it.ref.key == oldKey } }
+        remember(newRef)
+        saveLibrary(); saveHistory(); saveProgress(); saveUpdates()
+        return undo
+    }
+
+    /** Puts back what [moveTitle] changed. */
+    fun undoMove(u: MoveUndo) {
+        _library.update { m -> u.library.entries.fold(m) { acc, (k, v) -> if (v == null) acc - k else acc + (k to v) } }
+        _history.update { m -> u.history.entries.fold(m) { acc, (k, v) -> if (v == null) acc - k else acc + (k to v) } }
+        _progress.update { m -> m.filterKeys { !it.startsWith("${u.oldKey}#") && !it.startsWith("${u.newKey}#") } + u.progress }
+        _updates.update { list -> (list.filterNot { it.ref.key == u.oldKey || it.ref.key == u.newKey } + u.updates).sortedByDescending { it.found } }
+        saveLibrary(); saveHistory(); saveProgress(); saveUpdates()
+    }
+
     // ---------- reading progress ----------
 
     private fun pkey(mangaKey: String, chapterId: String) = "$mangaKey#$chapterId"
 
     fun state(mangaKey: String, chapterId: String): ReadState? = _progress.value[pkey(mangaKey, chapterId)]
 
-    fun saveRead(ref: MangaRef, chapter: Chapter, page: Int, pages: Int, offset: Int) {
+    fun saveRead(ref: MangaRef, chapter: Chapter, page: Int, pages: Int, offset: Int, chapterCount: Int = 0) {
         val now = System.currentTimeMillis()
         val k = pkey(ref.key, chapter.id)
         val old = _progress.value[k]
         val done = (old?.read == true) || (pages > 0 && page >= pages - 1)
         val st = ReadState(page, pages, offset, done, now)
         _progress.update { it + (k to st) }
-        _history.update { it + (ref.key to HistoryEntry(refs[ref.key] ?: ref, chapter, st.copy(read = page >= pages - 1 && pages > 0), now)) }
+        val count = chapterCount.takeIf { it > 0 } ?: _history.value[ref.key]?.chapterCount ?: 0
+        _history.update { it + (ref.key to HistoryEntry(refs[ref.key] ?: ref, chapter, st.copy(read = page >= pages - 1 && pages > 0), now, count)) }
         saveProgress(); saveHistory()
     }
 
@@ -283,6 +396,21 @@ object Repo {
         _settings.update(f)
         Safety.userHidden = _settings.value.hiddenTags.map { Safety.norm(it) }.toSet()
         Safety.hideAi = _settings.value.hideAi
+        Safety.hideFuta = _settings.value.hideFuta
+        Safety.hideFurry = _settings.value.hideFurry
         saveSettings()
+    }
+
+    // ---------- backup ----------
+
+    /** Puts restored data in place (see Backup): saved at once; update items of titles no longer in the library go. */
+    fun restore(library: Map<String, LibraryEntry>, history: Map<String, HistoryEntry>, progress: Map<String, ReadState>, settings: Settings) {
+        _library.value = library
+        _history.value = history
+        _progress.value = progress
+        _updates.update { list -> list.filter { it.ref.key in library } }
+        (library.values.map { it.ref } + history.values.map { it.ref }).forEach { refs[it.key] = it }
+        saveLibrary(); saveHistory(); saveProgress(); saveUpdates()
+        updateSettings { settings }
     }
 }

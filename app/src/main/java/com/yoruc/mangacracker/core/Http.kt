@@ -139,9 +139,13 @@ object Http {
         }
     }
 
+    /** Tests: every request fails as if the phone were offline (the offline reader / player checks). */
+    @Volatile var blockNetwork = false
+
     private object HeaderInterceptor : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response {
             val req = chain.request()
+            if (blockNetwork) throw java.net.UnknownHostException("offline (test): ${req.url.host}")
             val b = req.newBuilder()
             val host = req.url.host
             if (req.header("User-Agent") == null) {
@@ -262,6 +266,8 @@ object Http {
 
     /** Raw bytes of a picture (for saving / sharing). */
     suspend fun bytes(url: String): ByteArray = withContext(Dispatchers.IO) {
+        // a downloaded page (Downloads.LOCAL)
+        if (url.startsWith("file:")) return@withContext File(url.removePrefix("file:")).readBytes()
         imageClient.newCall(request(url)).execute().use { r ->
             if (!r.isSuccessful) throw SourceException("HTTP ${r.code} for the picture")
             r.body!!.bytes()

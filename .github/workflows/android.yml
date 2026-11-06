@@ -1,0 +1,261 @@
+name: Android CI
+
+# What this workflow is for:
+#   * pull requests and pushes to main: lint, the offline unit tests, and a
+#     release-variant build of the "MangaCracker Dev" app (its own package id,
+#     signed with a throwaway key) kept as a downloadable artifact, so a change
+#     can be tried on a phone next to the real app without replacing it.
+#
+# It never publishes anything. Releases are built and signed on the owner's PC
+# and published by hand; the signing key never goes to GitHub, so nobody with
+# access to the repository (or to a leaked token) can sign an update that
+# installs over the real app. The in-app updater reads `releases/latest` and
+# checks the download is signed with the installed app's key.
+
+on:
+  push:
+    branches: [main]
+    # A README-only push does not need an APK.
+    paths-ignore:
+      - "**.md"
+      - ".gitignore"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push on the same ref wins. Pull requests are cancelled instead of
+# queued: three pushes should not leave three R8 builds running behind the one
+# that matters.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  APP_ID: com.yoruc.mangacracker.dev
+
+jobs:
+  # Advisory and separate from the build. Lint is not a gate: a lint finding
+  # must not paint a good change red. No signing key is needed because this job
+  # never packages an APK.
+  lint:
+    name: Android Lint (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          # `wrapper` keeps CI on gradle/wrapper/gradle-wrapper.properties.
+          # Not the newest Gradle on services.gradle.org: this project pins AGP
+          # 8.7.3, and Gradle 9.x removes APIs that AGP 8.7 still uses. A CI that
+          # resolved a different Gradle than a developer's wrapper would report
+          # on a different project.
+          gradle-version: wrapper
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Run lint
+        # abortOnError is not configured in app/build.gradle.kts, so this is
+        # advisory either way. `continue-on-error` keeps the report useful
+        # without painting the PR red for a warning.
+        continue-on-error: true
+        run: ./gradlew :app:lintRelease --console=plain --stacktrace
+
+      - name: Keep the lint report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-release.*
+          if-no-files-found: ignore
+
+  # The only real gate. Only the tests that do not need the network are run:
+  # many tests in this repository are live scrapers (LiveSourcesTest,
+  # NewSourcesTest, CoverSpeedTest, VideoSourcesTest, ...), and a third-party
+  # site being slow or blocking a CI IP is not a reason to fail a build. Those
+  # are still run by hand with `python _dev_tools/run_tests.py`.
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: wrapper
+
+      # Robolectric downloads its android-all jars through its own Maven
+      # resolver, not through Gradle, so they are not in the Gradle cache. The
+      # key follows app/build.gradle.kts because that is where the Robolectric
+      # version lives; a bump must miss the exact key.
+      - name: Cache Robolectric jars
+        uses: actions/cache@v6
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ runner.os }}-${{ hashFiles('app/build.gradle.kts') }}
+          restore-keys: |
+            robolectric-${{ runner.os }}-
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Run offline unit tests
+        run: |
+          ./gradlew :app:testDebugUnitTest \
+            --tests '*AppUpdateTest.versionOrder' \
+            --tests '*AiFilterTest.rules' \
+            --tests '*TagFilterTest.rules' \
+            --tests '*CutoutTest.rules' \
+            --tests '*CozyShotTest.seasonsRules' \
+            --tests '*BackupTest' \
+            --tests '*ReaderLogicTest' \
+            --tests '*SourceMoveTest' \
+            --tests '*DownloadLogicTest' \
+            --console=plain --stacktrace
+
+  build:
+    name: Build the Dev APK
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      # Generated for every run; never the release key.
+      MANGA_KEYSTORE: ${{ github.workspace }}/throwaway-key.jks
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: wrapper
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Make a throwaway signing key
+        run: |
+          set -euo pipefail
+          password="ci-throwaway"
+          keytool -genkeypair -v -keystore "$MANGA_KEYSTORE" \
+            -storepass "$password" -keypass "$password" -alias mangacracker \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=CI Throwaway Not The MangaCracker Release Key, O=MangaCracker CI, C=US"
+          {
+            echo "MANGA_STORE_PASSWORD=$password"
+            echo "MANGA_KEY_ALIAS=mangacracker"
+            echo "MANGA_KEY_PASSWORD=$password"
+          } >> "$GITHUB_ENV"
+
+      - name: Build the release variant as MangaCracker Dev
+        run: |
+          ./gradlew :app:assembleRelease -Pmangacracker.dev=true \
+            --console=plain --stacktrace
+
+      - name: Verify the APK
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$SDK" ]; then
+            echo "::error::ANDROID_SDK_ROOT / ANDROID_HOME is not set; cannot verify the APK."
+            exit 1
+          fi
+
+          APKSIGNER=$(find "$SDK/build-tools" -name apksigner -type f | sort -V | tail -1)
+          AAPT=$(find "$SDK/build-tools" -name aapt2 -type f | sort -V | tail -1)
+          if [ -z "$APKSIGNER" ] || [ -z "$AAPT" ]; then
+            echo "::error::apksigner or aapt2 was not found under $SDK/build-tools."
+            exit 1
+          fi
+
+          APK=$(find app/build/outputs/apk/release -name '*.apk' -type f | head -1 || true)
+          if [ -z "$APK" ]; then
+            echo "::error::assembleRelease produced no APK."
+            exit 1
+          fi
+
+          echo "::group::apksigner"
+          "$APKSIGNER" verify --verbose --print-certs --min-sdk-version 29 "$APK"
+          echo "::endgroup::"
+
+          BADGING=$("$AAPT" dump badging "$APK")
+          PACKAGE=$(printf '%s\n' "$BADGING" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+          NAME=$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p")
+          CODE=$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionCode='\([^']*\)'.*/\1/p")
+          echo "package=$PACKAGE versionName=$NAME versionCode=$CODE"
+
+          if [ "$PACKAGE" != "$APP_ID" ]; then
+            echo "::error::APK package is '$PACKAGE', expected '$APP_ID'."
+            exit 1
+          fi
+          if printf '%s\n' "$BADGING" | grep -q '^application-debuggable'; then
+            echo "::error::The release APK is debuggable."
+            exit 1
+          fi
+
+          mkdir -p ci-artifacts
+          cp "$APK" "ci-artifacts/MangaCracker-Dev-${NAME}-${GITHUB_SHA:0:8}.apk"
+
+          # Regression guard for the biggest bytes in the APK. With minSdk 29,
+          # AGP stores classes.dex uncompressed unless package.dex is set to the
+          # legacy mode; that made the 4.8 MB dex sit raw inside a 5.3 MB APK,
+          # so every in-app update downloaded about twice what it needed to.
+          # A future AGP/default change would silently restore the old size.
+          python3 - "$APK" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              dex = [i for i in apk.infolist() if i.filename.startswith("classes") and i.filename.endswith(".dex")]
+              if not dex:
+                  raise SystemExit("error: no classes*.dex in the APK")
+              for info in dex:
+                  if info.compress_type != zipfile.ZIP_DEFLATED:
+                      raise SystemExit(
+                          f"error: {info.filename} is stored uncompressed; "
+                          "packaging.dex.useLegacyPackaging was lost"
+                      )
+                  print(f"{info.filename}: {info.compress_size} / {info.file_size} bytes compressed")
+          PY
+
+          SIZE_BYTES=$(stat -c%s "$APK")
+          SIZE_MIB=$(awk -v b="$SIZE_BYTES" 'BEGIN { printf "%.2f", b / 1048576 }')
+          echo "APK size: ${SIZE_MIB} MiB (${SIZE_BYTES} bytes)"
+          {
+            echo "### APK size"
+            echo ""
+            echo "MangaCracker Dev ${NAME}: **${SIZE_MIB} MiB** (${SIZE_BYTES} bytes)"
+            echo ""
+            echo "Download it under **Artifacts** below. It installs next to the real app as \"MangaCracker Dev\"."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the Dev APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: mangacracker-dev-apk
+          path: ci-artifacts/*.apk
+          if-no-files-found: error

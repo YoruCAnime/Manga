@@ -277,8 +277,21 @@ object ComixSource : Source {
 
     override suspend fun latestChapters(ref: MangaRef): List<Chapter> = toChapters(chapterPage(ref.id, 1))
 
+    /**
+     * The title's path part. Since 2026-11 comix's reader needs "<hid>-<slug>" (the title's name in the address,
+     * "/title/zgk6j-unbeknownst-to-me.../11677446-chapter-43"); "/title/<hid>/..." is a 404 page.
+     */
+    private suspend fun titlePath(ref: MangaRef): String {
+        val m = try { titleData(ref.id).firstOrNull { key(it.first, "manga", "detail") }?.second }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
+        val slug = m?.str("slug").orEmpty().ifEmpty {
+            (m?.str("title").orEmpty().ifEmpty { ref.title }).lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+        }
+        return if (slug.isNotEmpty()) "${ref.id}-$slug" else ref.id
+    }
+
     override suspend fun pages(ref: MangaRef, chapter: Chapter): List<Page> {
-        val reader = "$baseUrl/title/${ref.id}/${chapter.id}-chapter-${chapter.number.let { if (it % 1f == 0f) it.toInt().toString() else it.toString() }}"
+        val reader = "$baseUrl/title/${titlePath(ref)}/${chapter.id}-chapter-${chapter.number.let { if (it % 1f == 0f) it.toInt().toString() else it.toString() }}"
         val out = ComixBridge.call("chapters,detail", reader, "window.__cxlib.chapter(${chapter.id})")
         val list = Http.json.parseToJsonElement(out)["pages"].arr
         if (list.isEmpty()) throw SourceException("No pages came back for this chapter")

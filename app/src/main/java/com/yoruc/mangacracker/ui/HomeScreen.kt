@@ -50,6 +50,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yoruc.mangacracker.core.HistoryEntry
 import com.yoruc.mangacracker.core.MangaRef
+import com.yoruc.mangacracker.core.ReadMarks
 import com.yoruc.mangacracker.core.Recommender
 import com.yoruc.mangacracker.core.Repo
 import com.yoruc.mangacracker.core.Safety
@@ -184,6 +185,8 @@ fun HomeScreen(nav: Nav) {
             }
             if (settings.disabledSources.isNotEmpty()) item { Spacer(Modifier.height(8.dp)) }
         }
+        // petals / leaves / snow / fireflies and night stars drifting over Home (Settings › Home screen)
+        SeasonLayer(Modifier.fillMaxSize())
     }
 }
 
@@ -195,8 +198,12 @@ private fun greeting(): String {
 @Composable
 fun CardRow(list: List<MangaRef>, nav: Nav, ratio: Float = 0.70f, showSource: Boolean = false) {
     val lib by Repo.library.collectAsState()
+    val settings by Repo.settings.collectAsState()
+    val marks by ReadMarks.state.collectAsState()
+    // Settings › "Hide titles I've finished" (discovery rows only: Library and History use their own lists)
+    val shown = remember(list, marks, settings.hideFinished) { if (settings.hideFinished) ReadMarks.dropFinished(list, marks) { it.key } else list }
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(list, key = { it.key }) { r ->
+        items(shown, key = { it.key }) { r ->
             MangaCard(r, Modifier.width(112.dp), ratio = ratio, inLibrary = r.key in lib, showSource = showSource) { nav.details(r) }
         }
     }

@@ -113,7 +113,7 @@ fun LibraryScreen(nav: Nav) {
                 Text("Library", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Mc.Text, modifier = Modifier.weight(1f))
                 IconButton(onClick = { searching = true }) { Icon(Icons.Rounded.Search, "Search library", tint = Mc.Text2) }
                 if (tab == 0) IconButton(onClick = { sortMenu = true }) { Icon(Icons.Rounded.Sort, "Sort", tint = Mc.Text2) }
-                if (tab == 2 && watch.isNotEmpty()) IconButton(onClick = { clearAsk = true }) { Icon(Icons.Rounded.DeleteSweep, "Clear watched", tint = Mc.Text2) }
+                if (tab == 2 && watch.isNotEmpty()) IconButton(onClick = { clearAsk = !clearAsk }) { Icon(Icons.Rounded.DeleteSweep, "Clear watched", tint = if (clearAsk) Mc.Pink else Mc.Text2) }
                 DropdownMenu(sortMenu, onDismissRequest = { sortMenu = false }, containerColor = Mc.Card2) {
                     SORTS.forEachIndexed { i, s ->
                         DropdownMenuItem(text = { Text(s, color = if (i == sort) Mc.Blue else Mc.Text) }, onClick = { sort = i; sortMenu = false })
@@ -136,7 +136,26 @@ fun LibraryScreen(nav: Nav) {
             }
         }
         if (tab == 1) { FavVideos(nav, favs.values.toList(), watch, query); return@Column }
-        if (tab == 2) { WatchedVideos(nav, watch, query); return@Column }
+        if (tab == 2) {
+            // in-window confirm (no pop-up): the sweep button opens this row
+            if (clearAsk && watch.isNotEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(12.dp)).background(Mc.Card).padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Clear watched videos?", color = Mc.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text("Removes the list and every resume point. Favourite videos stay.", color = Mc.Text3, fontSize = 12.sp)
+                    }
+                    Text("Keep", color = Mc.Text2, fontWeight = FontWeight.Bold, fontSize = 13.5.sp,
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { clearAsk = false }.padding(horizontal = 10.dp, vertical = 9.dp))
+                    Text("Clear", color = Mc.Pink, fontWeight = FontWeight.Bold, fontSize = 13.5.sp,
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { VideoRepo.clearWatched(); clearAsk = false; Notes.show("Watched videos cleared") }
+                            .padding(horizontal = 10.dp, vertical = 9.dp))
+                }
+            }
+            WatchedVideos(nav, watch, query); return@Column
+        }
         if (usedSources.size > 1) {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { FilterPill("All", sourceFilter.isEmpty()) { sourceFilter = "" } }
@@ -172,15 +191,6 @@ fun LibraryScreen(nav: Nav) {
         }
     }
 
-    if (clearAsk) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { clearAsk = false }, containerColor = Mc.Card,
-            title = { Text("Clear watched videos?", color = Mc.Text) },
-            text = { Text("Removes the list and every resume point. Favourite videos stay.", color = Mc.Text2) },
-            confirmButton = { androidx.compose.material3.TextButton(onClick = { VideoRepo.clearWatched(); clearAsk = false }) { Text("Clear", color = Mc.Pink) } },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { clearAsk = false }) { Text("Keep", color = Mc.Text2) } },
-        )
-    }
 }
 
 private fun matches(r: VideoRef, q: String) = q.isBlank() || r.title.contains(q, true) || r.series.contains(q, true)

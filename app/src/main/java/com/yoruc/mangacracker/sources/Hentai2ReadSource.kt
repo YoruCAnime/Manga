@@ -42,6 +42,15 @@ object Hentai2ReadSource : Source {
     /** Lolicon (6) and Shota (23): excluded in every list query and refused in details. */
     private val HIDDEN_IDS = setOf("6", "23")
     private const val GUARD = "6,23"
+    /** Ids of the tags Settings hides, looked up by name once ("" = the site has no such tag). */
+    private val optIds = ConcurrentHashMap<String, String>()
+
+    /** [GUARD] plus the tags Settings hides, for every list query's "without". */
+    private suspend fun without(): String {
+        val hide = (if (Safety.hideFuta) listOf("Futanari", "Dickgirl on Male") else emptyList()) + (if (Safety.hideFurry) listOf("Furry") else emptyList())
+        val ids = hide.map { n -> optIds[n] ?: (resolve("", n).orEmpty()).also { optIds[n] = it } }.filter { it.isNotEmpty() }
+        return (listOf(GUARD) + ids).joinToString(",")
+    }
 
     init {
         Http.referers["hentaicdn.com"] = "https://hentai2read.com/"
@@ -107,12 +116,12 @@ object Hentai2ReadSource : Source {
         else -> u
     }
 
-    override suspend fun popular(page: Int) = list("/search?without=$GUARD&sort=most-viewed&page=$page")
-    override suspend fun latest(page: Int) = list("/search?without=$GUARD&sort=latest&page=$page")
+    override suspend fun popular(page: Int) = list("/search?without=${without()}&sort=most-viewed&page=$page")
+    override suspend fun latest(page: Int) = list("/search?without=${without()}&sort=latest&page=$page")
 
     override suspend fun search(query: SearchQuery, page: Int): PageResult {
         val inc = mutableListOf<String>()
-        val exc = mutableListOf(GUARD)
+        val exc = mutableListOf(without())
         val words = mutableListOf<String>()
         if (query.text.isNotBlank()) words += query.text.trim()
         query.include.forEach { t -> resolve(t.id, t.label)?.let { inc += it } ?: run { words += t.label } }
@@ -279,7 +288,7 @@ object Hentai2ReadSource : Source {
         val p = book(ref.id)
         val aid = p["book"]["groups"].arr.firstOrNull { it.str("type") == "artist" }?.get("tags").arr
             .firstOrNull { it.str("name") != "Unknown" }?.str("id") ?: return emptyList()
-        return runCatching { list("/search?with=$aid&without=$GUARD&sort=most-viewed").items }.getOrDefault(emptyList())
+        return runCatching { list("/search?with=$aid&without=${without()}&sort=most-viewed").items }.getOrDefault(emptyList())
             .filter { it.id != ref.id }
     }
 

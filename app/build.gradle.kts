@@ -7,6 +7,24 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// Version numbers live in gradle.properties so a local build and CI report the
+// same thing. They are bumped by hand for each release (releases are built and
+// signed on the owner's PC; CI only builds and tests).
+fun stringProperty(name: String, fallback: String): String =
+    providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() } ?: fallback
+
+fun intProperty(name: String, fallback: Int): Int {
+    val raw = providers.gradleProperty(name).orNull ?: return fallback
+    return raw.toIntOrNull() ?: throw GradleException("$name must be an integer (got '$raw')")
+}
+
+val appVersionName = stringProperty("mangacracker.versionName", "1.9.3")
+val appVersionCode = intProperty("mangacracker.versionCode", 18)
+
+// -Pmangacracker.dev=true (CI builds): a separate "MangaCracker Dev" app that installs next to the real one,
+// so a test build never has to replace the real app (and its library). It never checks for app updates.
+val devBuild = providers.gradleProperty("mangacracker.dev").orNull == "true"
+
 android {
     namespace = "com.yoruc.mangacracker"
     compileSdk = 35
@@ -15,21 +33,46 @@ android {
         applicationId = "com.yoruc.mangacracker"
         minSdk = 29
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.5.1"
+        versionCode = appVersionCode
+        versionName = appVersionName
+        if (devBuild) applicationIdSuffix = ".dev"
+        manifestPlaceholders["appLabel"] = if (devBuild) "MangaCracker Dev" else "MangaCracker"
+        buildConfigField("boolean", "DEV", devBuild.toString())
+
+        // Every string in the app is English (the UI text is written in Compose),
+        // so the translations that AndroidX, Media3 and the other libraries ship
+        // are dead weight in resources.arsc. Keeping only English removes them
+        // without changing anything the app can display.
+        resConfigs("en")
+
+        // The character cutout runs ONNX models on the phone; only the 64-bit ARM library is packed (every phone the
+        // app targets), which keeps the other three CPU types' ~40 MB of native code out of the APK.
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     // A personal key kept next to the project (keystore/, git-ignored), so updates install over the old app.
-    // keystore/keystore.properties holds storePassword / keyAlias / keyPassword. Without it, builds use the debug key.
+    // keystore/keystore.properties holds storePassword / keyAlias / keyPassword. The real key never goes to
+    // GitHub: CI signs its builds with a throwaway key passed in through the MANGA_* environment variables.
     val keyProps = Properties()
     rootProject.file("keystore/keystore.properties").takeIf { it.exists() }?.inputStream()?.use { keyProps.load(it) }
-    val hasKey = keyProps.isNotEmpty() && rootProject.file("keystore/mangacracker.jks").exists()
+
+    fun secret(env: String, key: String): String? =
+        (System.getenv(env) ?: keyProps.getProperty(key))?.takeIf { it.isNotBlank() }
+
+    val keyStoreFile = System.getenv("MANGA_KEYSTORE")?.let { rootProject.file(it) }
+        ?: rootProject.file("keystore/mangacracker.jks")
+    val storePasswordValue = secret("MANGA_STORE_PASSWORD", "storePassword")
+    val keyAliasValue = secret("MANGA_KEY_ALIAS", "keyAlias")
+    val keyPasswordValue = secret("MANGA_KEY_PASSWORD", "keyPassword")
+    val hasKey = keyStoreFile.exists() &&
+        storePasswordValue != null && keyAliasValue != null && keyPasswordValue != null
+
     signingConfigs {
         if (hasKey) create("personal") {
-            storeFile = rootProject.file("keystore/mangacracker.jks")
-            storePassword = keyProps.getProperty("storePassword")
-            keyAlias = keyProps.getProperty("keyAlias")
-            keyPassword = keyProps.getProperty("keyPassword")
+            storeFile = keyStoreFile
+            storePassword = storePasswordValue
+            keyAlias = keyAliasValue
+            keyPassword = keyPasswordValue
         }
     }
 
@@ -50,11 +93,36 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
-    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+
+    packaging {
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+
+        // Never read at runtime: licence/readme files, build metadata, Kotlin
+        // reflection tables (this app has no kotlin-reflect) and the coroutine
+        // debug probe. Dropping them saves a little space and a lot of noise.
+        resources.excludes += setOf(
+            "/META-INF/*.md",
+            "/META-INF/version-control-info.textproto",
+            "/DebugProbesKt.bin",
+            "/kotlin/**",
+        )
+
+        // minSdk is 29, so AGP's default is to store classes.dex uncompressed
+        // ("If null, dex files will be uncompressed when minSdk >= 28"). That
+        // trades download size for install time: 4.8 MB of dex sat uncompressed
+        // in a 5.3 MB APK, so every update downloaded ~2x the bytes it needed to.
+        // This app is sideloaded and updates itself over GitHub, where the
+        // download is the cost a user actually notices, so use the legacy
+        // (compressed) packaging mode. Deflate brings the dex to ~2.4 MB.
+        dex { useLegacyPackaging = true }
+        // Same for the cutout's ONNX Runtime library (28 MB raw): compressed in the APK (about 9 MB) and unpacked
+        // once at install, so every app update stays a small download.
+        jniLibs { useLegacyPackaging = true }
+    }
     testOptions {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true
-        unitTests.all { it.systemProperty("robolectric.graphicsMode", "NATIVE"); it.systemProperty("roborazzi.test.record", "true"); it.maxHeapSize = "3g"; it.systemProperty("sources", (project.findProperty("sources") ?: "").toString()) }
+        unitTests.all { it.systemProperty("robolectric.graphicsMode", "NATIVE"); it.systemProperty("roborazzi.test.record", "true"); it.maxHeapSize = "3g"; it.systemProperty("sources", (project.findProperty("sources") ?: "").toString()); it.systemProperty("cutoutData", (project.findProperty("cutoutData") ?: "").toString()) }
     }
 }
 
@@ -79,6 +147,8 @@ dependencies {
     implementation("org.jsoup:jsoup:1.18.3")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // character cutout: anime-seg + MobileSAM run on the phone (models downloaded on first use)
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.28.0")
     // video player (MP4 / WebM / HLS with AES keys), subtitles, clip export for "Record"
     val media3 = "1.5.1"
     implementation("androidx.media3:media3-exoplayer:$media3")
@@ -89,6 +159,8 @@ dependencies {
     implementation("androidx.media3:media3-effect:$media3")
     implementation("androidx.media3:media3-common:$media3")
     testImplementation("junit:junit:4.13.2")
+    // the cutout test runs the real models on the PC (desktop build of the same ONNX Runtime)
+    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.28.0")
     testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("io.github.takahirom.roborazzi:roborazzi:1.32.2")
     testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.32.2")

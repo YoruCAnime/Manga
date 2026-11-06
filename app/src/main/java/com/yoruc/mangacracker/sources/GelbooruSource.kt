@@ -6,6 +6,7 @@ import com.yoruc.mangacracker.core.MangaDetails
 import com.yoruc.mangacracker.core.MangaRef
 import com.yoruc.mangacracker.core.Page
 import com.yoruc.mangacracker.core.PageResult
+import com.yoruc.mangacracker.core.Safety
 import com.yoruc.mangacracker.core.SearchQuery
 import com.yoruc.mangacracker.core.SelectDef
 import com.yoruc.mangacracker.core.Source
@@ -33,6 +34,8 @@ object GelbooruSource : Source {
 
     /** Always excluded in the query (Gelbooru has no tag limit), and filtered again in the app. */
     private const val GUARD = "-loli -shota -lolicon -shotacon -toddlercon -child -female_child -male_child -aged_down"
+    /** The tags Settings hides too (the site drops them, so pages stay full). */
+    private fun optGuard() = (if (Safety.hideFuta) " -futanari" else "") + (if (Safety.hideFurry) " -furry" else "")
 
     init {
         Http.referers["gelbooru.com"] = "https://gelbooru.com/"
@@ -51,7 +54,7 @@ object GelbooruSource : Source {
     private suspend fun list(tags: String, page: Int): PageResult {
         val pid = (page - 1) * PER_PAGE
         if (pid > 20000) return PageResult(emptyList(), false)
-        val doc = Http.getDoc("$baseUrl/index.php?page=post&s=list&tags=${"$tags $GUARD".trim().urlEncode()}&pid=$pid")
+        val doc = Http.getDoc("$baseUrl/index.php?page=post&s=list&tags=${"$tags $GUARD${optGuard()}".trim().urlEncode()}&pid=$pid")
         val items = doc.select("article.thumbnail-preview").mapNotNull { a ->
             val link = a.selectFirst("a[id^=p]") ?: return@mapNotNull null
             val pidStr = link.id().removePrefix("p")

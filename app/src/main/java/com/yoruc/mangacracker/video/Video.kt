@@ -23,11 +23,13 @@ data class VideoRef(
     val cover: String = "",
     val duration: String = "",
     val views: String = "",
-    /** "EN", "RAW", "ES", "PV" or "" */
+    /** "EN", "RAW", "ES", "PV", anime "SUB" / "DUB", or "" */
     val lang: String = "",
     val tags: List<String> = emptyList(),
     /** Other addresses of the same picture (another server / size), tried when [cover] is refused. */
     val altCovers: List<String> = emptyList(),
+    /** A whole show (anime sites' popular / search lists), not one episode: opens the show's episode list. */
+    val show: Boolean = false,
 ) {
     val key: String get() = "$source|$id"
     /** "Series · Episode 3" style second line. */
@@ -36,8 +38,17 @@ data class VideoRef(
 
 data class VideoSub(val url: String, val lang: String, val label: String)
 
-/** What the player needs. [kind]: "mp4", "webm" or "hls". */
-data class VideoStream(val url: String, val kind: String, val subs: List<VideoSub> = emptyList())
+/**
+ * What the player needs. [kind]: "mp4", "webm" or "hls". [local] = the video key when this is a download on the phone
+ * (see VideoDownloads); [streamKeys] = (group, index) of the HLS variant / audio that was downloaded.
+ */
+data class VideoStream(
+    val url: String,
+    val kind: String,
+    val subs: List<VideoSub> = emptyList(),
+    val local: String = "",
+    val streamKeys: List<Pair<Int, Int>> = emptyList(),
+)
 
 data class VideoDetails(
     val ref: VideoRef,
@@ -74,7 +85,7 @@ interface VideoSource {
 }
 
 object VideoSources {
-    val all: List<VideoSource> = listOf(HentaigasmSource, OppaiStreamSource, MuchoHentaiSource, HentaiMamaSource, NsfwR34Source, PorcoreSource, SfmCompileSource, Rule34VideoSource)
+    val all: List<VideoSource> = listOf(AnikotoSource, AnimeHeavenSource, HentaigasmSource, OppaiStreamSource, MuchoHentaiSource, HentaiMamaSource, NsfwR34Source, PorcoreSource, SfmCompileSource, Rule34VideoSource)
     fun byId(id: String) = all.firstOrNull { it.id == id }
 }
 
@@ -94,10 +105,15 @@ object VideoSafety {
 
     fun badText(s: String): Boolean = WORDS.containsMatchIn(s)
 
-    fun blocked(r: VideoRef): Boolean = badText(r.title) || badText(r.series) || r.tags.any { badTag(it) }
+    /** Settings "Hide futanari" / "Hide furry" (not the AI switch: that one is for reading only). */
+    private fun switched(r: VideoRef): Boolean =
+        Safety.optTitle(r.title, ai = false) || Safety.optTitle(r.series, ai = false) || r.tags.any { Safety.optTag(it, ai = false) }
+
+    fun blocked(r: VideoRef): Boolean = badText(r.title) || badText(r.series) || r.tags.any { badTag(it) } || switched(r)
 
     fun check(d: VideoDetails) {
-        if (blocked(d.ref) || d.tags.any { badTag(it) }) throw SourceException("This video is hidden")
+        if (badText(d.ref.title) || badText(d.ref.series) || (d.ref.tags + d.tags).any { badTag(it) }) throw SourceException("This video is hidden")
+        if (switched(d.ref) || d.tags.any { Safety.optTag(it, ai = false) }) throw SourceException("This video has a kind you've hidden in Settings (futanari / furry)")
     }
 }
 
@@ -140,8 +156,8 @@ fun episodeOf(title: String): String =
 
 fun episodeNumber(e: String): Float = e.toFloatOrNull() ?: Float.MAX_VALUE
 
-/** Series lists: by episode, then English, Raw, Spanish, preview. */
-val seriesOrder: Comparator<VideoRef> = compareBy({ episodeNumber(it.episode) }, { listOf("EN", "RAW", "ES", "PV", "").indexOf(it.lang).let { i -> if (i < 0) 9 else i } })
+/** Series lists: by episode, then English, Raw, Spanish, preview (anime: sub, then dub). */
+val seriesOrder: Comparator<VideoRef> = compareBy({ episodeNumber(it.episode) }, { listOf("EN", "SUB", "DUB", "RAW", "ES", "PV", "").indexOf(it.lang).let { i -> if (i < 0) 9 else i } })
 
 /** Language badge names in full. */
-fun langName(l: String) = when (l) { "EN" -> "English"; "RAW" -> "Raw"; "ES" -> "Español"; "PV" -> "Preview"; else -> l }
+fun langName(l: String) = when (l) { "EN" -> "English"; "RAW" -> "Raw"; "ES" -> "Español"; "PV" -> "Preview"; "SUB" -> "Sub"; "DUB" -> "Dub"; else -> l }
