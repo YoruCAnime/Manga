@@ -94,33 +94,32 @@ class GifSource(
     val input: List<String>, val width: Int, val height: Int, val fps: Double, val duration: Double, val title: String,
 )
 
-/** Tests: gets start frame, end frame and the picked end (0 = Start, 1 = End) after every change. */
-internal var gifRangeProbe: ((Int, Int, Int) -> Unit)? = null
+/** Tests: gets the shown frame after every change. */
+internal var gifHeadProbe: ((Int) -> Unit)? = null
 /** Tests: the frame list's kept frames, deleted frames and picked frames (window indices) after every change. */
 internal var gifFramesProbe: ((List<Int>, Set<Int>, Set<Int>) -> Unit)? = null
+/** Tests: the editor's delete and make actions, and the saved GIF. */
+internal var gifActionsProbe: (((Set<Int>) -> Unit, () -> Unit) -> Unit)? = null
+internal var gifDoneProbe: ((File) -> Unit)? = null
 
-private const val WINDOW_S = 36.0          // the filmstrip shows this much of the video (a 30 s GIF and some around it)
-private const val BEFORE_S = 6.0           // of which before the paused spot, so a full 30 s GIF fits after it
+private const val ROW_S = ClipRecorder.MAX_GIF_SECONDS   // the row: this much of the video from the paused frame
 private const val PREVIEW_LONG = 480       // preview frames' long side
 private const val FRAMES_BUDGET = 450_000_000L   // bytes of full-size frames for the GIF (long ones are read smaller)
 
 /**
- * The PC GIF maker: a small seeking strip of [WINDOW_S] seconds around where the video was (click / drag = jump the
- * frames there), every frame of it underneath one by one, numbered (Set Start / Set End at the shown frame, pick
- * frames with plain clicks or by numbers, delete any), a looping preview of exactly what the GIF will be, size / speed /
- * ping-pong, then the phone's GIF engine at full GIF size. Keys: ← → one frame (Shift 10), [ / ] Start / End at the
- * shown frame, Delete, Ctrl+Z, Space plays / pauses the preview, Enter makes the GIF, Esc closes.
+ * The PC GIF maker, like ScreenToGif: every frame from where the video was paused in a row of boxes, each with its
+ * number and time. Delete what you don't want (before, after, or anywhere in between); whatever is left is the GIF, shown
+ * looping in the preview. Then size / speed / ping-pong and the phone's GIF
+ * engine at full GIF size. Keys: ← → one frame (Shift 10), Delete, Ctrl+Z, Space plays / pauses, Enter makes the GIF, Esc closes.
  */
 @Composable
 fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
-    // always opens where the video is paused, never on an earlier GIF's part
-    var winStart by remember { mutableStateOf((at - BEFORE_S).coerceAtLeast(0.0)) }
+    // always opens on the paused frame (in the last seconds of a video: its last 3 s)
+    val winStart = remember { (if (src.duration > 0) minOf(at, src.duration - 3) else at).coerceAtLeast(0.0) }
     var frames by remember { mutableStateOf<FileFrames?>(null) }
     var loading by remember { mutableStateOf<Float?>(0f) }
     var error by remember { mutableStateOf<String?>(null) }
-    var a by remember { mutableIntStateOf(0) }           // start frame (in the window)
-    var b by remember { mutableIntStateOf(0) }           // end frame (inclusive)
     var head by remember { mutableIntStateOf(0) }        // preview frame (the shown one when paused)
     var playing by remember { mutableStateOf(true) }
     var size by remember { mutableStateOf(GifSize.SMALL) }
@@ -129,47 +128,37 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
     var gifFps by remember { mutableIntStateOf(0) }      // 0 = auto
     var making by remember { mutableStateOf<Pair<String, Float>?>(null) }
     var done by remember { mutableStateOf(savedDemo) }        // the saved GIF's box ([savedDemo]: tests open on it)
-    var thumbs by remember { mutableStateOf<List<ImageBitmap>>(emptyList()) }
     var shown by remember { mutableStateOf<ImageBitmap?>(null) }
     val keys = remember { FocusRequester() }
-    val maxFrames = { f: FileFrames -> (ClipRecorder.MAX_GIF_SECONDS * f.fps).toInt() }
-    // the frame list (ScreenToGif-style): window frames left out of the GIF, the picked ones, undo steps
+    // the frame list: frames left out of the GIF, the picked ones, undo steps
     var deleted by remember { mutableStateOf<Set<Int>>(emptySet()) }
-    var undo by remember { mutableStateOf<List<UndoStep>>(emptyList()) }
+    var undo by remember { mutableStateOf<List<Set<Int>>>(emptyList()) }
     var sel by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var typing by remember { mutableStateOf(false) }      // a From / To box has the keys
-    val kept = remember(a, b, deleted) { (a..b).filter { it !in deleted } }
+    // the GIF: every frame still in the row
+    val kept = remember(frames, deleted) { (0 until (frames?.count ?: 0)).filter { it !in deleted } }
 
     BackHandlerCompat(onClose)
-    SideEffect { gifRangeProbe?.invoke(a, b, head); gifFramesProbe?.invoke(kept, deleted, sel) }
+    SideEffect { gifHeadProbe?.invoke(head); gifFramesProbe?.invoke(kept, deleted, sel) }
 
-    /**
-     * Deletes [these] (any frames of the row, undo-able). Start / End then sit on the first / last frame still there;
-     * when the whole GIF part was deleted it moves to the frames just after (or before) the deleted ones, same length.
-     */
+    // what was done in the last editor, for when a GIF looks wrong (cache\gif\last_gif.log)
+    val logFile = remember { File(Desktop.ctx.cacheDir, "gif/last_gif.log").apply { parentFile?.mkdirs(); runCatching { writeText("paused at $at, row from $winStart\n") } } }
+    fun note(s: String) { runCatching { logFile.appendText(s + "\n") } }
+
+    /** Deletes [these] (any frames of the row, undo-able). */
     fun deleteFrames(these: Set<Int>) {
         val n = frames?.count ?: return
         val d = these - deleted
         if (d.isEmpty()) return
         val now = deleted + d
         if ((0 until n).all { it in now }) { Desktop.toast("That's every frame: keep at least one"); return }
-        val before = UndoStep(deleted, a, b, 0, 0); deleted = now; sel = sel - d
-        val left = (a..b).filter { it !in now }
-        if (left.isNotEmpty()) { a = left.first(); b = maxOf(left.last(), a) }
-        else {
-            val len = b - a
-            val s = (d.max() + 1 until n).firstOrNull { it !in now } ?: (d.min() - 1 downTo 0).firstOrNull { it !in now }?.let { maxOf(0, it - len) } ?: a
-            a = s; b = minOf(n - 1, s + len)
-        }
-        undo = undo + before.copy(a2 = a, b2 = b)
+        undo = undo + listOf(deleted); deleted = now; sel = sel - d
         if (head in now) head = (head + 1 until n).firstOrNull { it !in now } ?: (head downTo 0).firstOrNull { it !in now } ?: head
-        Desktop.toast("Deleted ${d.size} frame${if (d.size == 1) "" else "s"} · GIF is #${a + 1} – #${b + 1}")
+        note("deleted ${d.size} (#${d.min() + 1}-#${d.max() + 1}), shown #${head + 1}, left #${(0 until n).first { it !in now } + 1}-#${(0 until n).last { it !in now } + 1}")
     }
     fun undoDelete() {
         val u = undo.lastOrNull() ?: return
-        deleted = u.deleted; undo = undo.dropLast(1)
-        // Start / End go back too, unless they were moved by hand since the delete
-        if (a == u.a2 && b == u.b2) { a = u.a; b = u.b }
+        deleted = u; undo = undo.dropLast(1)
     }
     /** The shown frame [step] frames on (deleted ones skipped). */
     fun stepShown(step: Int) {
@@ -180,28 +169,13 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
     }
     DisposableEffect(Unit) { onDispose { frames?.close() } }
 
-    // the window's frames (small), then the handles: 3 s from where the video was paused
-    LaunchedEffect(winStart) {
-        frames?.close(); frames = null; thumbs = emptyList(); error = null; loading = 0f
-        deleted = emptySet(); undo = emptyList(); sel = emptySet(); typing = false   // other frames now
-        val end = (winStart + WINDOW_S).let { if (src.duration > 0) it.coerceAtMost(src.duration) else it }
+    // the row's frames (small)
+    LaunchedEffect(Unit) {
+        val end = (winStart + ROW_S).let { if (src.duration > 0) it.coerceAtMost(src.duration) else it }
         runCatching {
             ClipRecorder.frames(src.input, winStart, end, src.width, src.height, src.fps, PREVIEW_LONG, "preview") { loading = it }
         }.onSuccess { f ->
             frames = f
-            val n = f.count
-            val atFrame = ((at - winStart) * f.fps).roundToInt().coerceIn(0, n - 1)
-            if (b == 0 || b >= n) {
-                val len = (3 * f.fps).toInt()
-                a = atFrame.coerceAtMost(maxOf(0, n - 1 - len))   // paused in the last 3 s: still a 3 s part
-                b = a + len
-            }
-            a = a.coerceIn(0, n - 1); b = b.coerceIn(a, n - 1)
-            head = a
-            thumbs = withContext(Dispatchers.Default) {
-                val k = 14
-                runCatching { (0 until k).map { i -> f.frame((i * (n - 1) / (k - 1).coerceAtLeast(1))) }.map { Pixels.image(it.withAlpha(), f.width, f.height) } }.getOrDefault(emptyList())
-            }
             loading = null
             runCatching { keys.requestFocus() }
         }.onFailure { error = it.message ?: "Couldn't read the video"; loading = null }
@@ -210,7 +184,7 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
     // the looping preview: speed and ping-pong as the GIF will have them, deleted frames skipped
     LaunchedEffect(frames, kept, speed, pingPong, playing) {
         val f = frames ?: return@LaunchedEffect
-        val list = kept.ifEmpty { listOf(a) }
+        val list = kept.ifEmpty { return@LaunchedEffect }
         var dir = 1
         var k = list.indexOf(head)
         // paused: the shown frame stays where it is, even outside the part (it was picked in the frame list)
@@ -232,25 +206,14 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
     }
 
     fun secs(i: Int) = winStart + i / (frames?.fps ?: 24.0)
-    /** [jump] = false while dragging: the moved end stops at the other one instead of taking the whole part along. */
-    fun move(handle: Int, to: Int, jump: Boolean = true) {
-        val f = frames ?: return
-        val n = f.count
-        if (n < 2) return
-        val len = b - a
-        // the start put past the end (or the end before the start): the whole part goes there, keeping its length
-        if (jump && handle == 0 && to >= b) { a = to.coerceIn(0, n - 2); b = (a + len).coerceIn(a + 1, n - 1); head = a; return }
-        if (jump && handle == 1 && to <= a) { b = to.coerceIn(1, n - 1); a = (b - len).coerceIn(0, b - 1); head = b; return }
-        if (handle == 0) { a = to.coerceIn(0, b - 1).coerceAtLeast(b - maxFrames(f)); head = a }
-        else { b = to.coerceIn(a + 1, n - 1).coerceAtMost(a + maxFrames(f)); head = b }
-    }
-
     fun make() {
         if (making != null) return
         val f = frames ?: return
-        if (kept.isEmpty()) { Desktop.toast("Every frame of the GIF's part is deleted: Undo, or set Start / End on frames still there"); return }
-        val from = secs(a); val to = secs(b) + 1 / f.fps
-        val cut = deleted.filter { it in a..b }.toSet(); val ws = winStart; val wfps = f.fps
+        if (kept.isEmpty()) return
+        val first = kept.first(); val last = kept.last()
+        val from = secs(first); val to = secs(last) + 1 / f.fps
+        val cut = deleted.filter { it in first..last }.toSet(); val ws = winStart; val wfps = f.fps
+        note("make: kept ${kept.size}, #${first + 1}-#${last + 1}, $from to $to, fps $wfps, ${cut.size} cut inside")
         val out =Desktop.freeFile(Desktop.clips, Desktop.clean("${src.title} ${clockS(from)}-${clockS(to)}".replace(':', '.')), "gif")
         making = "Getting the frames" to 0f
         scope.launch {
@@ -271,13 +234,15 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
                     val picked = if (keepIdx == null) big else PickedFrames(big, keepIdx)
                     ClipRecorder.gif(picked, GifOptions(speed, pingPong, size, gifFps), out) { what, p -> making = what to 0.3f + 0.7f * p }
                 } finally { big.close() }
-            }.onSuccess { done = it; playing = false }.onFailure {
+            }.onSuccess { done = it; playing = false; gifDoneProbe?.invoke(it) }.onFailure {
                 // the editor closed while making: no message on the screen it left
                 if (it !is kotlinx.coroutines.CancellationException && it !is com.yoruc.mangacracker.gif.GifCancelled) Desktop.toast("Couldn't make the GIF: ${it.message}")
             }
             making = null
         }
     }
+
+    SideEffect { gifActionsProbe?.invoke(::deleteFrames, ::make) }
 
     Box(Modifier.fillMaxSize()) {
         Column(
@@ -292,8 +257,6 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
                         Key.Z -> if (e.isCtrlPressed) undoDelete() else return@onPreviewKeyEvent false
                         Key.DirectionLeft -> stepShown(-step)
                         Key.DirectionRight -> stepShown(step)
-                        Key.LeftBracket -> { move(0, head); playing = false }
-                        Key.RightBracket -> { move(1, head); playing = false }
                         Key.Spacebar -> playing = !playing
                         Key.Enter -> make()
                         else -> return@onPreviewKeyEvent false
@@ -315,41 +278,28 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
             }
             val f = frames
             Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                // times
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // a click shows that end's frame (paused there)
-                    TimeTag("Start", if (f != null) clockS(secs(a)) else "–", f != null && head == a) { head = a; playing = false }
-                    Spacer(Modifier.width(8.dp))
-                    TimeTag("End", if (f != null) clockS(secs(b)) else "–", f != null && head == b) { head = b; playing = false }
-                    Spacer(Modifier.width(12.dp))
-                    Text(if (f != null) "%.1f s · %d frames".format(java.util.Locale.US, kept.size / f.fps / speed, kept.size) +
-                        (if (kept.size < b - a + 1) " (${b - a + 1 - kept.size} deleted)" else "") else "", color = Mc.Text2, fontSize = 13.sp)
-                    // where the preview is in the whole video
-                    if (f != null) Text("   ▶ #${head + 1} · ${clockS(secs(head))}" + (if (src.duration > 0) " of ${clockS(src.duration).substringBefore('.')}" else ""),
-                        color = Color(0xFFFF5C8A), fontSize = 13.sp)
+                // what the GIF is right now, and the frame on show
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SmallBtn(if (playing) "⏸ Pause" else "▶ Play", enabled = f != null) { playing = !playing; runCatching { keys.requestFocus() } }
+                    if (f != null) {
+                        Text("Your GIF: ${kept.firstOrNull()?.let { clockS(secs(it)) }.orEmpty()} to ${kept.lastOrNull()?.let { clockS(secs(it)) }.orEmpty()} · " +
+                            "%.1f s · %d frames".format(java.util.Locale.US, kept.size / f.fps / speed, kept.size),
+                            color = Mc.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        if (deleted.isNotEmpty()) Text("${deleted.size} deleted", color = Mc.Text3, fontSize = 13.sp)
+                        Text("▶ #${head + 1} · ${clockS(secs(head))}" + (if (src.duration > 0) " of ${clockS(src.duration).substringBefore('.')}" else ""),
+                            color = Color(0xFFFF5C8A), fontSize = 13.sp)
+                    }
                     Spacer(Modifier.weight(1f))
-                    Text("Strip: jump there · ← → one frame (Shift 10) · [ ] Start / End · Del delete · Space play", color = Mc.Text3, fontSize = 11.5.sp)
+                    Text("Delete what you don't want: what's left in the row is your GIF", color = Mc.Text3, fontSize = 11.5.sp)
                 }
-                // the small seeking strip: a click or drag jumps the frames below (and the preview) there
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    SmallBtn("◀ Earlier", enabled = loading == null && winStart > 0) { winStart = (winStart - WINDOW_S / 2).coerceAtLeast(0.0); a = 0; b = 0 }
-                    Filmstrip(thumbs, f?.count ?: 0, a, b, head, winStart, f?.fps ?: 24.0, deleted, Modifier.weight(1f).height(52.dp).padding(horizontal = 8.dp),
-                        onPick = { i, _ ->
-                            playing = false; runCatching { keys.requestFocus() }
-                            head = (i downTo 0).firstOrNull { it !in deleted } ?: (i until (f?.count ?: 0)).firstOrNull { it !in deleted } ?: i
-                        })
-                    SmallBtn("Later ▶", enabled = loading == null && (src.duration <= 0 || winStart + WINDOW_S < src.duration)) { winStart += WINDOW_S / 2; a = 0; b = 0 }
-                }
-                // every frame one by one: the cropping happens here
+                // every frame one by one: all the editing happens here
                 if (f != null) FramesPanel(
-                    f, deleted, a, b, sel, head, playing, { i -> clockC(secs(i)) }, undo.isNotEmpty(), deleted.isNotEmpty(),
+                    f, deleted, sel, head, playing, { i -> clockC(secs(i)) }, undo.isNotEmpty(), deleted.isNotEmpty(),
                     // every click in the list gives the keys (Delete, Ctrl+Z, arrows) back to the editor
                     onSelect = { sel = it; runCatching { keys.requestFocus() } }, onShow = { i -> playing = false; head = i },
-                    onSetStart = { move(0, head); playing = false; runCatching { keys.requestFocus() } },
-                    onSetEnd = { move(1, head); playing = false; runCatching { keys.requestFocus() } },
                     onDelete = { deleteFrames(it); runCatching { keys.requestFocus() } },
                     onUndo = { undoDelete(); runCatching { keys.requestFocus() } },
-                    onRestore = { undo = undo + UndoStep(deleted, a, b, a, b); deleted = emptySet(); runCatching { keys.requestFocus() } },
+                    onRestore = { undo = undo + listOf(deleted); deleted = emptySet(); runCatching { keys.requestFocus() } },
                     onTyping = { typing = it }, modifier = Modifier.fillMaxWidth())
                 // options + make
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -418,97 +368,6 @@ private fun SavedBox(f: File, onDelete: () -> Unit, onAnother: () -> Unit, onClo
 }
 
 /**
- * The seeking strip: thumbnails, the picked part lit with its Start / End marks, deleted frames red, the shown frame, a
- * ruler of video times along the bottom ([start] = the strip's first frame in the video, s) and the time under the
- * mouse. Pressing or dragging anywhere jumps there ([onPick]: the frame, and whether the mouse is moving while held);
- * the Start / End themselves are set in the frame list.
- */
-@Composable
-private fun Filmstrip(
-    thumbs: List<ImageBitmap>, n: Int, a: Int, b: Int, head: Int, start: Double, fps: Double, cut: Set<Int>,
-    modifier: Modifier, onPick: (Int, Boolean) -> Unit,
-) {
-    val pick by rememberUpdatedState(onPick)
-    var hover by remember { mutableStateOf<Float?>(null) }
-    val text = rememberTextMeasurer()
-    Canvas(modifier.clip(RoundedCornerShape(8.dp)).background(Mc.Card)
-        .pointerInput(Unit) {
-            awaitPointerEventScope {
-                while (true) {
-                    val e = awaitPointerEvent()
-                    hover = if (e.type == PointerEventType.Exit) null else e.changes.firstOrNull()?.position?.x
-                }
-            }
-        }
-        // keyed on the frame count only: a key that changes as the handles move restarted the gesture mid-drag
-        .pointerInput(n) {
-            fun idx(x: Float) = if (n <= 1) 0 else (x / size.width * (n - 1)).roundToInt().coerceIn(0, n - 1)
-            awaitEachGesture {
-                val down = awaitFirstDown()
-                down.consume()
-                pick(idx(down.position.x), false)
-                var last = idx(down.position.x)
-                while (true) {
-                    val c = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
-                    if (!c.pressed) break
-                    val i = idx(c.position.x)
-                    if (i != last) { last = i; pick(i, true) }
-                    c.consume()
-                }
-            }
-        }
-    ) {
-        val w = size.width; val h = size.height
-        if (thumbs.isNotEmpty()) {
-            val tw = w / thumbs.size
-            thumbs.forEachIndexed { i, t ->
-                drawImage(t, srcOffset = IntOffset.Zero, srcSize = IntSize(t.width, t.height),
-                    dstOffset = IntOffset((i * tw).roundToInt(), 0), dstSize = IntSize(tw.roundToInt() + 1, h.roundToInt()))
-            }
-        }
-        if (n > 1) {
-            val xa = a.toFloat() / (n - 1) * w; val xb = b.toFloat() / (n - 1) * w
-            drawRect(Color(0xAA0B1622), Offset.Zero, Size(xa, h))
-            drawRect(Color(0xAA0B1622), Offset(xb, 0f), Size(w - xb, h))
-            drawRect(Color(0xFF3DB4F2), Offset(xa, 0f), Size(xb - xa, h), style = Stroke(3f))
-            listOf(xa to 0, xb to 1).forEach { (x, which) ->
-                drawRect(if (which == 0) Color(0xFF3DB4F2) else Color.White, Offset(x - 3f, 0f), Size(6f, h))
-            }
-            // frames deleted in the frame list: red bars
-            val fw = maxOf(2f, w / (n - 1))
-            for (i in cut) drawRect(Color(0x99FF3B3B), Offset(i.toFloat() / (n - 1) * w - fw / 2, 0f), Size(fw, h))
-            val xh = head.toFloat() / (n - 1) * w
-            drawLine(Color(0xFFFF5C8A), Offset(xh, 0f), Offset(xh, h), strokeWidth = 2f)
-            // the ruler: a mark every 1 / 2 / 5 / 10 ... s, as far apart as fits
-            val band = 16.dp.toPx()
-            drawRect(Color(0xCC0B1622), Offset(0f, h - band), Size(w, band))
-            val pxPerS = w / ((n - 1) / fps).toFloat()
-            val every = listOf(1, 2, 5, 10, 15, 30, 60).firstOrNull { it * pxPerS >= 56.dp.toPx() } ?: 120
-            var t = Math.ceil(start / every) * every
-            val style = TextStyle(color = Color(0xFFB8C4D2), fontSize = 10.sp)
-            while (true) {
-                val x = ((t - start) * pxPerS).toFloat()
-                if (x > w) break
-                drawLine(Color(0xFFB8C4D2), Offset(x, h - band), Offset(x, h - band + 5f), strokeWidth = 1.5f)
-                val label = text.measure(clockM(t), style)
-                if (x + 3f + label.size.width <= w) drawText(label, topLeft = Offset(x + 3f, h - band + (band - label.size.height) / 2))
-                t += every
-            }
-            // the time under the mouse
-            hover?.let { hx ->
-                val x = hx.coerceIn(0f, w)
-                val i = (x / w * (n - 1)).roundToInt()
-                drawLine(Color.White.copy(alpha = 0.8f), Offset(x, 0f), Offset(x, h - band), strokeWidth = 1f)
-                val label = text.measure(clockS(start + i / fps), TextStyle(color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold))
-                val lx = (x - label.size.width / 2f).coerceIn(2f, w - label.size.width - 2f)
-                drawRect(Color(0xE60B1622), Offset(lx - 4f, 2f), Size(label.size.width + 8f, label.size.height + 2f))
-                drawText(label, topLeft = Offset(lx, 3f))
-            }
-        }
-    }
-}
-
-/**
  * Plays a GIF file in a loop at its own timing (Skia decodes one frame at a time onto the last, so even a long GIF
  * holds only one picture). [onInfo] gets "W×H · N frames · S s".
  */
@@ -548,20 +407,6 @@ private fun GifPlayer(file: File, maxHeight: Dp, modifier: Modifier, onInfo: (St
     }
 }
 
-/** m:ss for the ruler. */
-private fun clockM(s: Double): String {
-    val t = s.roundToInt().coerceAtLeast(0)
-    return "%d:%02d".format(t / 60, t % 60)
-}
-
-@Composable
-private fun TimeTag(label: String, value: String, on: Boolean, onClick: () -> Unit) {
-    Row(Modifier.clip(RoundedCornerShape(8.dp)).background(if (on) Mc.Blue else Mc.Card2).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 5.dp)) {
-        Text("$label  ", color = if (on) Mc.Bg else Mc.Text3, fontSize = 12.sp)
-        Text(value, color = if (on) Mc.Bg else Mc.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
 @Composable
 private fun Chip(label: String, on: Boolean, onClick: () -> Unit) {
     Box(Modifier.clip(RoundedCornerShape(50)).background(if (on) Mc.Blue else Mc.Card2).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 5.dp)) {
@@ -598,4 +443,4 @@ private fun copyFile(f: File) {
 }
 
 /** One undo step: the deleted frames and Start / End before ([a], [b]) and right after ([a2], [b2]) the change. */
-private data class UndoStep(val deleted: Set<Int>, val a: Int, val b: Int, val a2: Int, val b2: Int)
+

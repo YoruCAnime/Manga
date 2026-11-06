@@ -17,6 +17,9 @@ import java.util.concurrent.Executors
  * every piece, key and sub-playlist also comes through here; [maxHeight] drops variants taller than the chosen quality.
  */
 object StreamProxy {
+    private const val TS_SYNC: Byte = 0x47
+    /** What sites name their video pieces to look like something else (Anikoto: .jpg, .html, .js ...). */
+    private val FALSE_NAMES = setOf("jpg", "jpeg", "png", "webp", "gif", "ico", "svg", "html", "htm", "js", "css", "txt", "woff", "woff2")
     private var server: HttpServer? = null
     private var port = 0
     @Volatile var maxHeight = 0
@@ -83,7 +86,12 @@ object StreamProxy {
                 ex.responseBody.use { it.write(bytes) }
                 return
             }
-            listOf("Content-Type", "Content-Range").forEach { h -> r.header(h)?.let { ex.responseHeaders.add(h, it) } }
+            // MPEG-TS pieces under a false name and type (Anikoto: .jpg as image/jpeg, .html, .js): ffmpeg believes the
+            // type, reads them as that and finds no video, so say what they are (a TS sync byte every 188 bytes)
+            val src2 = body.source()
+            val isTs = r.isSuccessful && src2.request(189) && src2.buffer[0] == TS_SYNC && src2.buffer[188] == TS_SYNC
+            if (isTs) ex.responseHeaders.add("Content-Type", "video/mp2t")
+            listOf("Content-Type", "Content-Range").filter { !isTs || it != "Content-Type" }.forEach { h -> r.header(h)?.let { ex.responseHeaders.add(h, it) } }
             // say seeking works (the relay passes Range on): without it ffmpeg reads a whole file from the start to
             // reach a point in it (a 5 s clip at 20 s fetched all 159 MB of the video)
             ex.responseHeaders.add("Accept-Ranges", r.header("Accept-Ranges") ?: "bytes")
@@ -115,7 +123,10 @@ object StreamProxy {
             out.append(
                 when {
                     l.startsWith("#") && "URI=\"" in l -> Regex("URI=\"([^\"]+)\"").replace(l) { m -> "URI=\"" + url(sourceId, VideoDownloads.resolve(base, m.groupValues[1])) + "\"" }
-                    l.isNotBlank() && !l.startsWith("#") -> url(sourceId, VideoDownloads.resolve(base, l.trim()))
+                    l.isNotBlank() && !l.startsWith("#") -> VideoDownloads.resolve(base, l.trim()).let { u ->
+                        // ffmpeg goes by the end of the URL too (.jpg = the image reader): such a piece's ends in .ts
+                        url(sourceId, u) + if (u.substringBefore('?').substringAfterLast('.').lowercase() in FALSE_NAMES) "&x=.ts" else ""
+                    }
                     else -> l
                 }
             ).append('\n')

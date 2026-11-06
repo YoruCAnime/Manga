@@ -25,25 +25,6 @@ class GifEditorShotTest {
         }
     }
 
-    /** With a real video (build/rife_test/clip.mp4, skipped when missing): the time ruler, and the time under the mouse. */
-    @Test fun ruler() {
-        val clip = File("build/rife_test/clip.mp4")
-        org.junit.Assume.assumeTrue(clip.isFile)
-        val scene = ImageComposeScene(1280, 560, Density(1f)) {
-            GifEditor(GifSource(listOf("-i", clip.absolutePath), 640, 360, 24.0, 30.0, "test"), 20.0) {}
-        }
-        var t = 0L
-        // reading the frames takes a few seconds
-        repeat(200) { scene.render(t); t += 50_000_000L; Thread.sleep(50) }
-        // the mouse over the strip, a third of the way along
-        scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, androidx.compose.ui.geometry.Offset(700f, 370f))
-        repeat(5) { scene.render(t); t += 50_000_000L; Thread.sleep(30) }
-        File("build/shots").mkdirs()
-        File("build/shots/gif_editor_ruler.png").writeBytes(scene.render(t).encodeToData(EncodedImageFormat.PNG)!!.bytes)
-        scene.close()
-        println("[shot] gif_editor_ruler")
-    }
-
     /** The "GIF saved" box with the GIF playing (build/rife_test/slow_hg_action_auto_rife.gif, from RifeTest), two moments. */
     @Test fun savedBox() {
         val clip = File("build/rife_test/clip.mp4")

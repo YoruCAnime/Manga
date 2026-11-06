@@ -13,6 +13,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -66,7 +68,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Window frames numbered [from]..[to] (every frame keeps its own number, #1 = the strip's first frame, so deleting
+ * Row frames numbered [from]..[to] (every frame keeps its own number, #1 = the row's first frame, so deleting
  * doesn't renumber the rest), minus the ones in [gone]. Either order; a range running past an end stops there, one wholly outside picks nothing.
  */
 internal fun framesByNumber(count: Int, gone: Set<Int>, from: Int, to: Int): Set<Int> {
@@ -96,16 +98,17 @@ internal fun clockC(s: Double): String {
 }
 
 /**
- * Every frame around the picked part one by one (like ScreenToGif's frame list), each with its number and time; the
- * GIF's part (Start..End) is bright with START / END marks, the rest dimmed. Plain clicks only: a click shows the
- * frame and picks / unpicks it. Buttons: Set Start / Set End (at the shown frame), From .. to numbers (Pick them, or
- * Delete them straight away), Select between (first to last picked), All (the part), None, Delete, Undo, Restore all.
+ * The row of frame boxes (like ScreenToGif's frame list), each with its number and time. A click shows the frame and
+ * picks / unpicks it, sliding across boxes picks that run, the ✕ on a box deletes it. Buttons: Delete all before, Delete,
+ * Delete all after (from the frame clicked last), Select between (first to last picked), None, Delete frames by
+ * number, Undo, Restore all. Deleted frames leave the row.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun FramesPanel(
-    frames: FrameSource, gone: Set<Int>, a: Int, b: Int, sel: Set<Int>, head: Int, playing: Boolean, timeOf: (Int) -> String,
+    frames: FrameSource, gone: Set<Int>, sel: Set<Int>, head: Int, playing: Boolean, timeOf: (Int) -> String,
     canUndo: Boolean, anyDeleted: Boolean,
-    onSelect: (Set<Int>) -> Unit, onShow: (Int) -> Unit, onSetStart: () -> Unit, onSetEnd: () -> Unit,
+    onSelect: (Set<Int>) -> Unit, onShow: (Int) -> Unit,
     onDelete: (Set<Int>) -> Unit, onUndo: () -> Unit, onRestore: () -> Unit, onTyping: (Boolean) -> Unit, modifier: Modifier = Modifier,
 ) {
     val list = rememberLazyListState()
@@ -123,10 +126,8 @@ internal fun FramesPanel(
         return framesByNumber(frames.count, gone, from, toText.toIntOrNull() ?: from)
     }
     fun outside() = com.yoruc.mangacracker.platform.Desktop.toast("No frames there: this row has #1 – #${frames.count}")
-    fun pickTyped() { typed()?.let { s -> if (s.isEmpty()) outside() else { onSelect(s); s.minOrNull()?.let(onShow) } } }
-    // opening (or Earlier / Later): the row starts just before the part
-    LaunchedEffect(frames) { shownFrames.indexOfFirst { it >= a }.takeIf { it >= 0 }?.let { list.scrollToItem((it - 2).coerceAtLeast(0)) } }
-    // the shown frame (a click on the strip, the arrows, Start / End) is brought into view when it's off the row
+    fun deleteTyped() { typed()?.let { s -> if (s.isEmpty()) outside() else onDelete(s) } }
+    // the shown frame (the arrows) is brought into view when it's off the row
     LaunchedEffect(head, playing, shownFrames) {
         if (playing) return@LaunchedEffect
         val k = shownFrames.indexOf(head)
@@ -134,46 +135,32 @@ internal fun FramesPanel(
     }
 
     Column(modifier.clip(RoundedCornerShape(8.dp)).background(Mc.Card).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        // the frame the "before / after" buttons go from: the first / last picked one, or the one shown
-        val fromFrame = if (sel.isEmpty()) head else sel.min()
-        val toFrame = if (sel.isEmpty()) head else sel.max()
-        val before = (0 until fromFrame).filter { it !in gone }
-        val after = (toFrame + 1 until frames.count).filter { it !in gone }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            PanelBtn("Set Start", color = Mc.Blue, onClick = onSetStart)
-            PanelBtn("Set End", color = Mc.Blue, onClick = onSetEnd)
-            Group {
-                // while the preview plays the shown frame keeps changing: these wait for a frame to be clicked
-                val still = !playing || sel.isNotEmpty()
-                PanelBtn(if (still) "Delete all before #${fromFrame + 1}" else "Delete all before", enabled = still && before.isNotEmpty(),
-                    color = Mc.Orange, icon = Icons.Rounded.KeyboardDoubleArrowLeft) { onDelete(before.toSet()) }
-                PanelBtn(if (still) "Delete all after #${toFrame + 1}" else "Delete all after", enabled = still && after.isNotEmpty(),
-                    color = Mc.Orange, iconAfter = Icons.Rounded.KeyboardDoubleArrowRight) { onDelete(after.toSet()) }
-            }
-            Spacer(Modifier.weight(1f))
-            PanelBtn("Undo", enabled = canUndo, onClick = onUndo)
-            PanelBtn("Restore all", enabled = anyDeleted, onClick = onRestore)
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            // reads as a sentence: "Delete frames [first #] to [last #] → Delete" (the numbers under the squares)
+        // "before / after" go from the frame clicked last (the one on show), whatever else is picked: boxes clicked just to
+        // look at them must not move the cut
+        val before = (0 until head).filter { it !in gone }
+        val after = (head + 1 until frames.count).filter { it !in gone }
+        // while the preview plays the shown frame keeps changing: these wait for a frame to be clicked
+        val still = !playing
+        val these = if (sel.isNotEmpty()) sel else setOf(head)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            PanelBtn(if (still) "Delete all before #${head + 1}" else "Delete all before", enabled = still && before.isNotEmpty(),
+                color = Mc.Orange, icon = Icons.Rounded.KeyboardDoubleArrowLeft) { onDelete(before.toSet()); onSelect(emptySet()) }
+            PanelBtn(if (sel.size > 1) "Delete ${sel.size} picked" else if (sel.isEmpty() && !still) "Delete" else "Delete #${these.first() + 1}", enabled = still || sel.isNotEmpty(),
+                color = Mc.Orange) { onDelete(these) }
+            PanelBtn(if (still) "Delete all after #${head + 1}" else "Delete all after", enabled = still && after.isNotEmpty(),
+                color = Mc.Orange, iconAfter = Icons.Rounded.KeyboardDoubleArrowRight) { onDelete(after.toSet()); onSelect(emptySet()) }
+            PanelBtn("Select between", enabled = sel.size >= 2) { onSelect(fillBetween(sel, gone)) }
+            PanelBtn("None", enabled = sel.isNotEmpty()) { onSelect(emptySet()) }
+            // reads as a sentence: "Delete frames [first #] to [last #] → Delete" (the numbers under the boxes)
             Group {
                 Text("Delete frames", color = Mc.Text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                NumberField(fromText, "first #", { fromText = it }, onTyping, ::pickTyped)
+                NumberField(fromText, "first #", { fromText = it }, onTyping, ::deleteTyped)
                 Text("to", color = Mc.Text2, fontSize = 12.sp)
-                NumberField(toText, "last #", { toText = it }, onTyping, ::pickTyped)
-                PanelBtn("Delete", enabled = fromText.isNotEmpty(), color = Mc.Orange) { typed()?.let { s -> if (s.isEmpty()) outside() else onDelete(s) } }
-                PanelBtn("Pick only", enabled = fromText.isNotEmpty(), onClick = ::pickTyped)
+                NumberField(toText, "last #", { toText = it }, onTyping, ::deleteTyped)
+                PanelBtn("Delete", enabled = fromText.isNotEmpty(), color = Mc.Orange, onClick = ::deleteTyped)
             }
-            // the frames clicked in the row
-            Group {
-                // fixed width: the buttons after it must not move as the count changes
-                Text(if (sel.isEmpty()) "Click or drag across squares" else "Picked: ${sel.size} frame${if (sel.size == 1) "" else "s"}",
-                    color = Mc.Text2, fontSize = 12.sp, maxLines = 1, modifier = Modifier.width(172.dp))
-                PanelBtn("Select between", enabled = sel.size >= 2) { onSelect(fillBetween(sel, gone)) }
-                PanelBtn("All", enabled = a < b) { onSelect((a..b).filter { it !in gone }.toSet()) }
-                PanelBtn("None", enabled = sel.isNotEmpty()) { onSelect(emptySet()) }
-                PanelBtn("Delete picked", enabled = sel.isNotEmpty(), color = Mc.Orange) { onDelete(sel) }
-            }
+            PanelBtn("Undo", enabled = canUndo, onClick = onUndo)
+            PanelBtn("Restore all", enabled = anyDeleted, onClick = onRestore)
         }
         val selNow by rememberUpdatedState(sel)
         val framesNow by rememberUpdatedState(shownFrames)
@@ -217,8 +204,7 @@ internal fun FramesPanel(
             }) {
             items(shownFrames.size, key = { shownFrames[it] }) { k ->
                 val i = shownFrames[k]
-                FrameCard(frames, i, timeOf(i), inPart = i in a..b, mark = if (i == a) "START" else if (i == b) "END" else null,
-                    picked = i in sel, shown = i == head, cache = cache, onDeleteOne = { onDelete(setOf(i)) })
+                FrameCard(frames, i, timeOf(i), picked = i in sel, shown = i == head, cache = cache, onDeleteOne = { onDelete(setOf(i)) })
             }
         }
         HorizontalScrollbar(rememberScrollbarAdapter(list), Modifier.fillMaxWidth(), style = ScrollbarStyle(
@@ -229,7 +215,7 @@ internal fun FramesPanel(
 
 @Composable
 private fun FrameCard(
-    f: FrameSource, i: Int, time: String, inPart: Boolean, mark: String?, picked: Boolean, shown: Boolean,
+    f: FrameSource, i: Int, time: String, picked: Boolean, shown: Boolean,
     cache: MutableMap<Int, ImageBitmap>, onDeleteOne: () -> Unit,
 ) {
     var pic by remember(f, i) { mutableStateOf(synchronized(cache) { cache[i] }) }
@@ -246,17 +232,13 @@ private fun FrameCard(
     }
     val shape = RoundedCornerShape(6.dp)
     Column(
-        Modifier.width(112.dp).alpha(if (inPart || picked || shown) 1f else 0.45f).clip(shape)
+        Modifier.width(112.dp).clip(shape)
             .background(if (picked) Color(0x553DB4F2) else Mc.Card2)
             .border(2.dp, if (picked) Mc.Blue else if (shown) Color(0xFFFF5C8A) else Color.Transparent, shape)
             .padding(4.dp),
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(f.width.toFloat() / f.height.coerceAtLeast(1)).background(Color.Black)) {
             pic?.let { Image(it, "Frame ${i + 1}", Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
-            mark?.let { m ->
-                Text(m, color = Mc.Bg, fontSize = 9.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.TopStart).background(Mc.Blue).padding(horizontal = 4.dp, vertical = 1.dp))
-            }
             // one click deletes just this frame
             Box(Modifier.align(Alignment.TopEnd).padding(2.dp).size(20.dp).clip(RoundedCornerShape(10.dp))
                 .background(Color(0xCC0B1622)).clickable(onClick = onDeleteOne), contentAlignment = Alignment.Center) {
