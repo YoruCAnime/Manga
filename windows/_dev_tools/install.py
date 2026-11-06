@@ -13,6 +13,11 @@ dst = args[0] if args else os.path.join(root, 'MangaCracker App')
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 if not os.path.isfile(os.path.join(src, 'MangaCracker.exe')):
     raise SystemExit('build first: gradlew createDistributable')
+# a build older than the code would be installed under a new name with the old code still in it
+built = min(os.path.getmtime(os.path.join(src, 'app', n)) for n in os.listdir(os.path.join(src, 'app')) if n.startswith('MangaCracker Windows-'))
+code = [os.path.join(root, 'build.gradle.kts')] + [os.path.join(d, n) for d, _, names in os.walk(os.path.join(root, 'src', 'main')) for n in names]
+if max(os.path.getmtime(p) for p in code) > built:
+    raise SystemExit('the build is older than the code: run gradlew createDistributable first')
 os.makedirs(dst, exist_ok=True)
 
 stamp = time.strftime('v%Y%m%d-%H%M%S')

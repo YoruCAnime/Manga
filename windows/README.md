@@ -16,7 +16,7 @@ version is just unzipped over the old folder.
 
 ## Using it
 
-Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.0.1).
+Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.0.5).
 
 - **Left rail**: Home, Library, Browse, Videos, Updates, More (the phone's bottom bar).
 - **Going back**: Esc, Alt+←, the mouse's back button, or the ← arrows. **F11** = full screen.
@@ -43,22 +43,20 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
 - **Record**: press to start, press again to stop; the stretch is saved as an MP4 (graphics card encoder) in the
   recordings folder (Settings › Videos: recordings and snapshots folders, default Videos\MangaCracker and
   Pictures\MangaCracker\Snapshots).
-- **GIF**: opens the GIF editor in place of the video (GIFs up to 30 s). A small seeking strip of the 36 s around
-  where you were (video times along it, the time under the mouse; a click or drag jumps there, ◀ Earlier / Later ▶
-  move along the video), and under it **every frame one by one** (ScreenToGif-style), each with its own number (#) and
-  time, the GIF's part bright with START / END marks, the rest dimmed, a scrollbar (the mouse wheel scrolls it too).
-  A click shows the frame and picks / unpicks it, sliding across squares picks the run, the ✕ on a square deletes it;
-  ← → step the shown frame (Shift 10). Buttons: **Set Start / Set End** (at the shown frame; keys [ ]), **« Delete all
-  before #N / Delete all after #N »** (from the picked or shown frame), **Delete frames [first #] to [last #]** →
-  Delete / Pick only, Select between, All, None, **Delete picked**, Undo (Ctrl+Z, also brings Start / End back),
-  Restore all; the Delete key deletes the picked frames, or the shown one (again = the next). Any range can go: when
-  the whole GIF part is deleted it moves to the frames left just after, same length. Numbers never change when frames go;
-  deleted frames are skipped in the preview, red on the strip, and the GIF never blends across where they were. A looping
-  preview of exactly the GIF, size (Tiny 2 MB / Small 5 MB / Big 10 MB), speed (0.25× to 2×), ping-pong, FPS (Auto /
+- **GIF**: opens the GIF editor in place of the video, like ScreenToGif: **every frame from where you paused, in a row of
+  boxes**, each with its own number (#) and time. **Delete what you don't want; whatever is left is your GIF**,
+  and the preview above loops exactly that. No start or end to set. A click shows a frame and picks / unpicks it,
+  sliding across boxes picks the run, the ✕ on a box deletes it; ← → step the shown frame (Shift 10). Buttons:
+  **« Delete all before #N**, **Delete**, **Delete all after #N »** (from the frame you clicked last), **Select between**
+  (click two frames, this picks all between them), None, **Delete frames [first #] to [last #]**, Undo (Ctrl+Z), Restore
+  all; the Delete key deletes the picked frames, or the shown one (again = the next). You can delete anywhere, also in
+  the middle: the rest stay in order and the GIF never blends across where they were. Numbers never change when frames
+  go. The row is the 30 s from where you paused; for other frames, close it, go to that spot in the video and press GIF.
+  Size (Tiny 2 MB / Small 5 MB / Big 10 MB), speed (0.25× to 2×), ping-pong, FPS (Auto /
   24 / 30 / 50: 50 makes smooth in-between frames), then the phone's GIF engine. The finished GIF then plays in a
   box (at most its own size, with its size / frames / length): Show in folder, Copy (paste into Discord, a chat,
-  Explorer), **Delete** (not happy with it: the file goes and you're back in the editor on the same part), Make
-  another, Done. The editor always opens where you paused: the GIF's part is the 3 s from that frame.
+  Explorer), **Delete** (not happy with it: the file goes and you're back in the editor with the same frames), Make
+  another, Done.
   Slow motion and 50 fps get their in-between frames from **RIFE** (rife-ncnn-vulkan, rife-v4.6 model, on the
   graphics card; the same as the ScreenToGif AnimeGif presets): one run per GIF draws every pair of drawings' in-betweens.
   Scene cuts are never blended. Shipped in `appResources/windows/rife` (not in git; copy `rife-ncnn-vulkan.exe`,
