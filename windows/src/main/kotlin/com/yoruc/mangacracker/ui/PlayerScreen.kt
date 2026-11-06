@@ -318,7 +318,7 @@ fun PlayerScreen(nav: Nav, key: String) {
         val w = (p.getDouble("width") ?: 0.0).toInt(); val h = (p.getDouble("height") ?: 0.0).toInt()
         if (w <= 0 || h <= 0) { Desktop.toast("Wait until the video plays"); return }
         p.set("pause", "yes")
-        gifSrc = GifSource(input, w, h, p.getDouble("container-fps") ?: 24.0, dur, d.ref.title, d.ref.key)
+        gifSrc = GifSource(input, w, h, p.getDouble("container-fps") ?: 24.0, dur, d.ref.title)
         gifAt = pos
     }
     /** Record: first press marks the start, the second cuts start..now into an MP4 (Videos\MangaCracker). */

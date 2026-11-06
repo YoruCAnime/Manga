@@ -105,6 +105,8 @@ class GifFramesTest {
             frames(200, 50)
             shot("gif_frames_open")
             println("[frames] open: ${kept.size} kept, first ${kept.firstOrNull()}")
+            // paused at 0:20 with the strip from 0:14: the GIF's part is the 3 s from there
+            check(a == 144 && b == 216) { "opened on $a..$b" }
             if (File("build/layout_only").exists()) return
             // layout (gif_frames_boxes.png): row 1 at y 435 - Set Start 53, Set End 120, Delete all before 238, Delete all
             // after 394, Undo 1154, Restore all 1220; row 2 at y 476 - first # 144, last # 232, Delete 296, Pick only 361,
@@ -155,10 +157,10 @@ class GifFramesTest {
             click(top(1154f))
             assertEquals(a0, a); assertTrue(deleted.isEmpty())
 
-            // Delete frames 1 to 600: all 600 go, the GIF moves to what's left after them
-            click(btn(144f)); typeText("1"); click(btn(232f)); typeText("600"); click(btn(296f))
-            println("[frames] Delete frames 1 to 600: ${deleted.size} deleted (${deleted.min() + 1}-${deleted.max() + 1}), GIF now #${a + 1}-#${b + 1}")
-            assertEquals((0..599).toSet(), deleted); assertEquals(600, a); assertEquals(600 + (b0 - a0), b)
+            // Delete frames 1 to 300: all 300 go, the GIF moves to what's left after them
+            click(btn(144f)); typeText("1"); click(btn(232f)); typeText("300"); click(btn(296f))
+            println("[frames] Delete frames 1 to 300: ${deleted.size} deleted (${deleted.min() + 1}-${deleted.max() + 1}), GIF now #${a + 1}-#${b + 1}")
+            assertEquals((0..299).toSet(), deleted); assertEquals(300, a); assertEquals(300 + (b0 - a0), b)
             shot("gif_frames_deleted")
             key(java.awt.event.KeyEvent.VK_Z, ctrl = true)
             assertTrue("Ctrl+Z", deleted.isEmpty()); assertEquals(a0, a); assertEquals(b0, b)
@@ -206,7 +208,7 @@ class GifFramesTest {
             val sa = a; val sb = b
             click(Offset(85f + (1202f - 85f) * 0.8f, 376f))
             println("[frames] strip click at 80 %: shown #${head + 1}, start ${a + 1} end ${b + 1}")
-            assertEquals(sa, a); assertEquals(sb, b); assertTrue("jumped far along", head > 500)
+            assertEquals(sa, a); assertEquals(sb, b); assertTrue("jumped far along", head > 250)
             frames(10)
             shot("gif_frames_final")
 
