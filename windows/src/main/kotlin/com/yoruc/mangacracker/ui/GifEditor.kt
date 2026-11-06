@@ -89,29 +89,10 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.roundToInt
 
-/** What the editor needs from the player. [key] = the video's (where its last GIF was is remembered by it). */
+/** What the editor needs from the player. */
 class GifSource(
     val input: List<String>, val width: Int, val height: Int, val fps: Double, val duration: Double, val title: String,
-    val key: String = "",
 )
-
-/** Start / end (s) of the last GIF made of each video, so the next GIF of it opens there. */
-private object GifSpots {
-    private val file get() = File(Desktop.ctx.filesDir, "data/gif_spots.properties")
-    private val props by lazy { java.util.Properties().apply { runCatching { file.inputStream().use { load(it) } } } }
-
-    @Synchronized fun get(key: String): Pair<Double, Double>? {
-        if (key.isEmpty()) return null
-        val v = props.getProperty(key)?.split(' ')?.mapNotNull { it.toDoubleOrNull() } ?: return null
-        return if (v.size == 2 && v[1] > v[0]) v[0] to v[1] else null
-    }
-
-    @Synchronized fun put(key: String, from: Double, to: Double) {
-        if (key.isEmpty()) return
-        props.setProperty(key, "%.3f %.3f".format(java.util.Locale.US, from, to))
-        runCatching { file.parentFile.mkdirs(); file.outputStream().use { props.store(it, null) } }
-    }
-}
 
 /** Tests: gets start frame, end frame and the picked end (0 = Start, 1 = End) after every change. */
 internal var gifRangeProbe: ((Int, Int, Int) -> Unit)? = null
@@ -119,6 +100,7 @@ internal var gifRangeProbe: ((Int, Int, Int) -> Unit)? = null
 internal var gifFramesProbe: ((List<Int>, Set<Int>, Set<Int>) -> Unit)? = null
 
 private const val WINDOW_S = 36.0          // the filmstrip shows this much of the video (a 30 s GIF and some around it)
+private const val BEFORE_S = 6.0           // of which before the paused spot, so a full 30 s GIF fits after it
 private const val PREVIEW_LONG = 480       // preview frames' long side
 private const val FRAMES_BUDGET = 450_000_000L   // bytes of full-size frames for the GIF (long ones are read smaller)
 
@@ -132,12 +114,8 @@ private const val FRAMES_BUDGET = 450_000_000L   // bytes of full-size frames fo
 @Composable
 fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
-    // a GIF of this video made before: open on that part again (the strip centred on it)
-    var resume by remember { mutableStateOf(GifSpots.get(src.key)) }
-    var winStart by remember {
-        mutableStateOf(resume?.let { (f, t) -> (f - (WINDOW_S - (t - f)) / 2).coerceAtLeast(0.0) } ?: (at - WINDOW_S * 2 / 3).coerceAtLeast(0.0))
-    }
-    val resumed = remember { resume != null }
+    // always opens where the video is paused, never on an earlier GIF's part
+    var winStart by remember { mutableStateOf((at - BEFORE_S).coerceAtLeast(0.0)) }
     var frames by remember { mutableStateOf<FileFrames?>(null) }
     var loading by remember { mutableStateOf<Float?>(0f) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -202,7 +180,7 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
     }
     DisposableEffect(Unit) { onDispose { frames?.close() } }
 
-    // the window's frames (small), then the handles: the last 3 s before where the video was
+    // the window's frames (small), then the handles: 3 s from where the video was paused
     LaunchedEffect(winStart) {
         frames?.close(); frames = null; thumbs = emptyList(); error = null; loading = 0f
         deleted = emptySet(); undo = emptyList(); sel = emptySet(); typing = false   // other frames now
@@ -213,12 +191,11 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
             frames = f
             val n = f.count
             val atFrame = ((at - winStart) * f.fps).roundToInt().coerceIn(0, n - 1)
-            val r = resume
-            if (r != null) {
-                resume = null
-                a = ((r.first - winStart) * f.fps).roundToInt().coerceIn(0, maxOf(0, n - 2))
-                b = ((r.second - winStart) * f.fps).roundToInt() - 1
-            } else if (b == 0 || b >= n) { b = atFrame.coerceAtLeast(1); a = (b - (3 * f.fps).toInt()).coerceAtLeast(0) }
+            if (b == 0 || b >= n) {
+                val len = (3 * f.fps).toInt()
+                a = atFrame.coerceAtMost(maxOf(0, n - 1 - len))   // paused in the last 3 s: still a 3 s part
+                b = a + len
+            }
             a = a.coerceIn(0, n - 1); b = b.coerceIn(a, n - 1)
             head = a
             thumbs = withContext(Dispatchers.Default) {
@@ -273,7 +250,6 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
         val f = frames ?: return
         if (kept.isEmpty()) { Desktop.toast("Every frame of the GIF's part is deleted: Undo, or set Start / End on frames still there"); return }
         val from = secs(a); val to = secs(b) + 1 / f.fps
-        GifSpots.put(src.key, from, to)
         val cut = deleted.filter { it in a..b }.toSet(); val ws = winStart; val wfps = f.fps
         val out =Desktop.freeFile(Desktop.clips, Desktop.clean("${src.title} ${clockS(from)}-${clockS(to)}".replace(':', '.')), "gif")
         making = "Getting the frames" to 0f
@@ -375,16 +351,6 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
                     onUndo = { undoDelete(); runCatching { keys.requestFocus() } },
                     onRestore = { undo = undo + UndoStep(deleted, a, b, a, b); deleted = emptySet(); runCatching { keys.requestFocus() } },
                     onTyping = { typing = it }, modifier = Modifier.fillMaxWidth())
-                // opened on the last GIF's part: one click back to where the video is
-                if (resumed) Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Opened where your last GIF of this video was", color = Mc.Text3, fontSize = 11.5.sp)
-                    Spacer(Modifier.width(8.dp))
-                    SmallBtn("Go to where the video is", enabled = loading == null) {
-                        a = 0; b = 0
-                        val w = (at - WINDOW_S * 2 / 3).coerceAtLeast(0.0)
-                        if (w == winStart) winStart = w + 1e-6 else winStart = w
-                    }
-                }
                 // options + make
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Size", color = Mc.Text2, fontSize = 13.sp)

@@ -58,8 +58,7 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
   24 / 30 / 50: 50 makes smooth in-between frames), then the phone's GIF engine. The finished GIF then plays in a
   box (at most its own size, with its size / frames / length): Show in folder, Copy (paste into Discord, a chat,
   Explorer), **Delete** (not happy with it: the file goes and you're back in the editor on the same part), Make
-  another, Done. A video you made a GIF of before opens on that GIF's part again
-  ("Go to where the video is" goes back to where you are watching).
+  another, Done. The editor always opens where you paused: the GIF's part is the 3 s from that frame.
   Slow motion and 50 fps get their in-between frames from **RIFE** (rife-ncnn-vulkan, rife-v4.6 model, on the
   graphics card; the same as the ScreenToGif AnimeGif presets): one run per GIF draws every pair of drawings' in-betweens.
   Scene cuts are never blended. Shipped in `appResources/windows/rife` (not in git; copy `rife-ncnn-vulkan.exe`,

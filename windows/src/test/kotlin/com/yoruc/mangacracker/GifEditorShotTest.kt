@@ -29,13 +29,8 @@ class GifEditorShotTest {
     @Test fun ruler() {
         val clip = File("build/rife_test/clip.mp4")
         org.junit.Assume.assumeTrue(clip.isFile)
-        // a GIF of 0:12-0:15 made before (in the test copy's data): the editor opens there, not at 0:20
-        val spots = File(com.yoruc.mangacracker.platform.Desktop.ctx.filesDir, "data/gif_spots.properties")
-        spots.parentFile.mkdirs()
-        val before = spots.takeIf { it.isFile }?.readBytes()
-        spots.writeText("test|clip=12.000 15.000\n")
         val scene = ImageComposeScene(1280, 560, Density(1f)) {
-            GifEditor(GifSource(listOf("-i", clip.absolutePath), 640, 360, 24.0, 30.0, "test", "test|clip"), 20.0) {}
+            GifEditor(GifSource(listOf("-i", clip.absolutePath), 640, 360, 24.0, 30.0, "test"), 20.0) {}
         }
         var t = 0L
         // reading the frames takes a few seconds
@@ -46,7 +41,6 @@ class GifEditorShotTest {
         File("build/shots").mkdirs()
         File("build/shots/gif_editor_ruler.png").writeBytes(scene.render(t).encodeToData(EncodedImageFormat.PNG)!!.bytes)
         scene.close()
-        if (before != null) spots.writeBytes(before) else spots.delete()
         println("[shot] gif_editor_ruler")
     }
 
