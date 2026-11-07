@@ -21,6 +21,7 @@ class App : Application(), ImageLoaderFactory {
         Repo.init(this)
         AppUpdate.init(this)
         com.yoruc.mangacracker.video.VideoRepo.init(this)
+        com.yoruc.mangacracker.core.Stats.init(this)
         com.yoruc.mangacracker.sources.ComixBridge.init(this)
         com.yoruc.mangacracker.core.Downloads.init(this)
         getSystemService(NotificationManager::class.java).createNotificationChannels(listOf(

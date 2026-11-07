@@ -107,6 +107,13 @@ below.
   **Change** to try other settings. The GIF always fits the size you picked: if it would be bigger the app makes it
   a bit smaller or lowers the frame rate (a frame rate you picked is kept), keeping it as sharp as it can. Long GIFs
   come out smaller in picture size, so pick a short part for big, sharp slow motion.
+- **My GIFs & clips** (More): every GIF, snapshot and recording you made in the player, newest first, with All / GIFs /
+  Snapshots / Clips filters. Tap one to see it full screen (GIFs play) and swipe for the next one; **Share**, **Open**
+  (clips play in your video player) and **Delete** (tap twice). Only what the app saved itself is listed.
+- **Your stats** (More): your streak (days in a row you read or watched something), the last 7 days (chapters,
+  reading time, videos, watching time, compared with the week before, and a bar for each day), an activity calendar,
+  favourite manga and video genres, the titles you read most this month, and all-time totals. Reading time counts
+  from the day you first open this version; the days before come from your history.
 - **Updates**: new chapters grouped by day; checked in the background (every 6 h by default, Settings) with a
   notification.
 - **Settings**: app updates (check now, install, what's new, automatic check on / off), update interval, covers per

@@ -361,6 +361,7 @@ object Repo {
         val old = _progress.value[k]
         val done = (old?.read == true) || (pages > 0 && page >= pages - 1)
         val st = ReadState(page, pages, offset, done, now)
+        Stats.reading(k, done && old?.read != true)
         _progress.update { it + (k to st) }
         val count = chapterCount.takeIf { it > 0 } ?: _history.value[ref.key]?.chapterCount ?: 0
         _history.update { it + (ref.key to HistoryEntry(refs[ref.key] ?: ref, chapter, st.copy(read = page >= pages - 1 && pages > 0), now, count)) }
