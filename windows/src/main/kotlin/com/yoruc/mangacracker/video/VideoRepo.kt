@@ -130,6 +130,7 @@ object VideoRepo {
     fun save(ref: VideoRef, positionMs: Long, durationMs: Long) {
         if (durationMs <= 0) return
         _watch.update { it + (ref.key to WatchState(withTags(ref), positionMs, durationMs, System.currentTimeMillis())) }
+        com.yoruc.mangacracker.core.Stats.watching(ref.key, positionMs)
         persist()
     }
 

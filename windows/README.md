@@ -16,7 +16,7 @@ version is just unzipped over the old folder.
 
 ## Using it
 
-Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.0.5).
+Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.0.6).
 
 - **Left rail**: Home, Library, Browse, Videos, Updates, More (the phone's bottom bar).
 - **Going back**: Esc, Alt+←, the mouse's back button, or the ← arrows. **F11** = full screen.
@@ -61,6 +61,19 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
   graphics card; the same as the ScreenToGif AnimeGif presets): one run per GIF draws every pair of drawings' in-betweens.
   Scene cuts are never blended. Shipped in `appResources/windows/rife` (not in git; copy `rife-ncnn-vulkan.exe`,
   `vcomp140.dll` and `rife-v4.6\` there); without it the built-in in-betweens are used.
+- **Seek bar pictures**: point the mouse at the player's seek bar and a small picture of that moment shows above it,
+  with its time, so you can find a scene without jumping around. Pictures come from the video's smallest size (quick:
+  well under a second a picture on the sites, at once for downloads) and the ones already seen show straight away.
+- **My GIFs & clips** (More): every GIF, snapshot and recording the player made, newest first, from the recordings and
+  snapshots folders (Settings › Videos). Filters: All / GIFs / Snapshots / Clips, with the space they use. A GIF plays
+  while the mouse is over it; the buttons on a picture copy it (paste into Discord, a chat or a folder), show it in
+  Explorer or delete it (to the Recycle Bin). Click one to see it big: ← → (or the arrows on screen) go to the
+  previous / next one, Delete deletes it, Esc goes back; clips play in Windows' own player.
+- **Your stats** (More): your streak (days in a row you read or watched something), the last 7 days (chapters,
+  reading time, videos, watching time, compared with the week before, and a bar for each day), an activity calendar
+  of the last months, favourite manga and video genres, the titles you read most this month, and all-time totals.
+  Reading time counts from the day you first open this version; the days before come from your history (chapters
+  finished, videos watched).
 - **Sounds while reading**: the 🎧 button in the reader (or Settings › Reader) plays a quiet loop under the pages:
   rain, café, fireplace, night crickets, five lo-fi tracks, or your own audio file. It fades out when you leave the
   reader and holds while the window is minimised; its own volume slider.

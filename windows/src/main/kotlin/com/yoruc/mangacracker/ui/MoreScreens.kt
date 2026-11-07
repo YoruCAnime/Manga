@@ -34,6 +34,8 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.DownloadForOffline
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.Refresh
@@ -163,6 +165,8 @@ fun MoreScreen(nav: Nav) {
             }
         }
         item { MoreRow(Icons.Rounded.History, "History", "Everything you've read") { nav.history() } }
+        item { MoreRow(Icons.Rounded.Insights, "Your stats", "Streak, the last 7 days, favourite genres, most read") { nav.stats() } }
+        item { MoreRow(Icons.Rounded.PhotoLibrary, "My GIFs & clips", "Every GIF, snapshot and recording you've made") { nav.gallery() } }
         item {
             val q by Downloads.queue.tasks.collectAsState()
             val t by Downloads.titles.collectAsState()

@@ -39,6 +39,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -131,6 +133,14 @@ class PlayerVM(startKey: String) : ViewModel() {
 
 private val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
 
+/** The seek bar's hover picture: the frame reader of the video on show and the small window. */
+private class HoverState {
+    var key = ""
+    var preview: com.yoruc.mangacracker.platform.SeekPreview? = null
+    var win: com.yoruc.mangacracker.platform.HoverWindow? = null
+    @Volatile var bucket = -1
+}
+
 private fun clock(ms: Long): String {
     val s = (ms / 1000).coerceAtLeast(0)
     return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) else "%d:%02d".format(s / 60, s % 60)
@@ -185,6 +195,10 @@ fun PlayerScreen(nav: Nav, key: String) {
         }
     }
     var subsJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    // the seek bar's place in the window (px) and its hover picture (made on the first hover, one per video)
+    var barBox by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    val hover = remember { HoverState() }
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
 
     if (!Mpv.available) {
         Column(Modifier.fillMaxSize().background(Mc.Bg).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -207,6 +221,7 @@ fun PlayerScreen(nav: Nav, key: String) {
             vm.details?.let { d -> if (dur > 0 && loadedKey == d.ref.key) VideoRepo.save(d.ref, (pos * 1000).toLong(), (dur * 1000).toLong()) }
             Repo.updateSettings { it.copy(videoVolume = volume, videoMuted = muted, videoQuality = quality, videoSubtitles = subsOn) }
             Desktop.scope.launch(Dispatchers.IO) { p?.destroy() }
+            hover.preview?.close(); hover.win?.dispose()
             com.yoruc.mangacracker.platform.MemoryKeeper.release()
         }
     }
@@ -310,6 +325,31 @@ fun PlayerScreen(nav: Nav, key: String) {
         val s = d.stream
         return if (s.url.startsWith("file:")) listOf("-i", File(java.net.URI(s.url)).path) else StreamProxy.ffmpegInput(d.ref.source, s.url, s.kind)
     }
+    /** The mouse over the seek bar: the picture at that spot above it (null = gone). */
+    fun hoverAt(frac: Float?, xPx: Float) {
+        val box = barBox
+        val d = vm.details
+        val owner = javax.swing.SwingUtilities.getWindowAncestor(canvas)
+        if (frac == null || box == null || d == null || owner == null || dur <= 0 || gifAt != null) { hover.win?.hide(); hover.bucket = -1; return }
+        val id = d.ref.key + "|" + d.stream.url
+        if (hover.key != id) {
+            hover.preview?.close()
+            hover.preview = d.stream.let { s -> com.yoruc.mangacracker.platform.SeekPreview({ com.yoruc.mangacracker.platform.SeekPreview.smallest(d.ref.source, s.url, s.kind) }, dur, com.yoruc.mangacracker.platform.HoverWindow.GRAB_WIDTH) }
+            hover.key = id
+        }
+        val sp = hover.preview ?: return
+        val win = hover.win ?: com.yoruc.mangacracker.platform.HoverWindow(owner).also { hover.win = it }
+        val root = (owner as? javax.swing.RootPaneContainer)?.contentPane ?: owner
+        val o = runCatching { root.locationOnScreen }.getOrNull() ?: return
+        val sec = frac * dur
+        val b = sp.bucket(sec)
+        val c = sp.cached(b)
+        hover.bucket = b
+        sp.onFrame = { n, img -> if (n == hover.bucket) win.update(img, true) }
+        win.show(o.x + ((box.left + xPx) / density).toInt(), o.y + (box.top / density).toInt(), o.x + (box.left / density).toInt(),
+            o.x + (box.right / density).toInt(), c?.first, c?.second == true, clock((sec * 1000).toLong()))
+        if (c?.second != true) sp.want(b)
+    }
     /** GIF: pauses the video and opens the GIF editor around the current spot. */
     fun gif() {
         val d = vm.details ?: return
@@ -347,6 +387,25 @@ fun PlayerScreen(nav: Nav, key: String) {
     if (System.getenv("MC_DEMO_GIF") == "1") LaunchedEffect(player) {
         while (dur <= 0 || pos < 8) delay(500)
         gif()
+    }
+    // test runs: MC_DEMO_HOVER=<0..1> points at that spot of the seek bar once the video plays; what the hover window
+    // shows and where it stands go to cache\hover_test.png / .txt
+    System.getenv("MC_DEMO_HOVER")?.toFloatOrNull()?.let { f ->
+        LaunchedEffect(player) {
+            while (dur <= 0 || pos < 4 || barBox == null) delay(500)
+            val t0 = System.currentTimeMillis()
+            hoverAt(f, barBox!!.width * f)
+            var waited = 0
+            while (hover.preview?.cached(hover.bucket)?.second != true && waited++ < 100) delay(100)
+            delay(300)
+            val w = hover.win ?: return@LaunchedEffect
+            val dir = Desktop.ctx.cacheDir
+            javax.imageio.ImageIO.write(w.snapshot(), "png", File(dir, "hover_test.png"))
+            File(dir, "hover_test.txt").writeText("picture after ${System.currentTimeMillis() - t0} ms; window ${w.bounds()}; bar ${barBox}; " +
+                "app content at ${runCatching { (javax.swing.SwingUtilities.getWindowAncestor(canvas) as javax.swing.RootPaneContainer).contentPane.locationOnScreen }.getOrNull()}; density $density")
+            delay(1500)
+            hoverAt(null, 0f)
+        }
     }
     Column(
         Modifier.fillMaxSize().background(Color.Black).focusRequester(keys).focusable()
@@ -412,8 +471,9 @@ fun PlayerScreen(nav: Nav, key: String) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(clock((pos * 1000).toLong()), color = Mc.Text2, fontSize = 12.sp, modifier = Modifier.width(56.dp))
                 SeekBar(
-                    (pos * 1000).toLong(), (dur * 1000).toLong(), ((pos + cached) * 1000).toLong(), Modifier.weight(1f),
-                    onDrag = { scrubbing = it }, onScrub = { pos = it / 1000.0 },
+                    (pos * 1000).toLong(), (dur * 1000).toLong(), ((pos + cached) * 1000).toLong(),
+                    Modifier.weight(1f).onGloballyPositioned { barBox = it.boundsInWindow() },
+                    onDrag = { scrubbing = it }, onScrub = { pos = it / 1000.0 }, onHover = { f, x -> hoverAt(f, x) },
                     onSeek = { ms -> player?.cmd("seek", (ms / 1000.0).toString(), "absolute+exact"); pos = ms / 1000.0 },
                 )
                 Text(clock((dur * 1000).toLong()), color = Mc.Text2, fontSize = 12.sp, modifier = Modifier.width(56.dp).padding(start = 8.dp))
