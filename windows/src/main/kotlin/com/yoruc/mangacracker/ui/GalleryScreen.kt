@@ -87,23 +87,70 @@ import java.security.MessageDigest
 /** What the player made: GIFs, snapshots and recordings, read from their folders (newest first). */
 object Gallery {
     enum class Kind(val label: String, val plural: String) { GIF("GIF", "GIFs"), SNAP("Snapshot", "Snapshots"), CLIP("Clip", "Clips") }
-    data class Item(val file: File, val kind: Kind, val time: Long, val size: Long)
+    /** [from] = the name of the linked folder it is in ("old"), empty for the save folders themselves. */
+    data class Item(val file: File, val kind: Kind, val time: Long, val size: Long, val from: String = "")
 
     private val PICS = setOf("png", "jpg", "jpeg", "webp")
     private val MOVIES = setOf("mp4", "mkv", "webm", "mov")
 
+    private fun key(f: File) = runCatching { f.canonicalPath }.getOrDefault(f.absolutePath).lowercase()
+
     /** The folders Settings names now, and the defaults (things made before a folder was changed). */
     private fun folders(): List<File> = listOf(Desktop.clips, Desktop.videos, Desktop.snapshots, File(Desktop.pictures, "Snapshots"), File(Desktop.pictures, "GIFs"))
-        .filter { it.isDirectory }.distinctBy { runCatching { it.canonicalPath }.getOrDefault(it.absolutePath).lowercase() }
+        .filter { it.isDirectory }.distinctBy(::key)
 
-    fun list(): List<Item> = folders().flatMap { d ->
-        d.listFiles().orEmpty().mapNotNull { f ->
-            if (!f.isFile || f.name.contains(".part.")) return@mapNotNull null
-            val ext = f.extension.lowercase()
-            val kind = when { ext == "gif" -> Kind.GIF; ext in PICS -> Kind.SNAP; ext in MOVIES -> Kind.CLIP; else -> null } ?: return@mapNotNull null
-            Item(f, kind, f.lastModified(), f.length())
-        }
-    }.distinctBy { it.file.absolutePath.lowercase() }.sortedByDescending { it.time }
+    /**
+     * Folders linked from the save folders by a Windows shortcut (e.g. "old - Shortcut" -> a folder of older GIFs moved
+     * elsewhere): their GIFs and clips are listed too.
+     */
+    private fun linked(base: List<File>): List<File> {
+        val seen = base.map(::key).toHashSet()
+        return base.flatMap { d -> d.listFiles { f -> f.isFile && f.extension.equals("lnk", true) }.orEmpty().mapNotNull(::lnkTarget) }
+            .filter { seen.add(key(it)) }
+    }
+
+    /** The folders the save folders link to (where the finished-GIF box offers "Move to"). */
+    fun linkedFolders(): List<File> = runCatching { linked(folders()) }.getOrDefault(emptyList())
+
+    /** Moves [f] into [dir] (" (2)" when the name is taken there); the new file, or null when it can't be moved. */
+    fun moveTo(f: File, dir: File): File? = runCatching {
+        val to = Desktop.freeFile(dir, f.nameWithoutExtension, f.extension)
+        java.nio.file.Files.move(f.toPath(), to.toPath())   // also across drives (copied, then the original goes)
+        to
+    }.getOrNull()
+
+    /** The folder a Windows shortcut (.lnk) points to (its local path), or null for anything else. */
+    internal fun lnkTarget(f: File): File? {
+        return runCatching {
+            val b = f.readBytes()
+            val bb = java.nio.ByteBuffer.wrap(b).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            if (b.size < 0x4C || bb.getInt(0) != 0x4C) return null
+            val flags = bb.getInt(0x14)
+            var p = 0x4C
+            if (flags and 1 != 0) p += 2 + (bb.getShort(p).toInt() and 0xFFFF)   // the item ID list
+            if (flags and 2 == 0) return null                                      // no link info: not a local path
+            val headerSize = bb.getInt(p + 4)
+            if (bb.getInt(p + 8) and 1 == 0) return null                           // no volume + local base path
+            fun ansi(at: Int): String { var e = at; while (e < b.size && b[e] != 0.toByte()) e++; return String(b, at, e - at, charset(System.getProperty("sun.jnu.encoding") ?: "windows-1252")) }
+            fun wide(at: Int): String { var e = at; while (e + 1 < b.size && (b[e] != 0.toByte() || b[e + 1] != 0.toByte())) e += 2; return String(b, at, e - at, Charsets.UTF_16LE) }
+            val base = if (headerSize >= 0x24 && bb.getInt(p + 0x1C) > 0) wide(p + bb.getInt(p + 0x1C)) else ansi(p + bb.getInt(p + 0x10))
+            val suffix = if (headerSize >= 0x24 && bb.getInt(p + 0x20) > 0) wide(p + bb.getInt(p + 0x20)) else ansi(p + bb.getInt(p + 0x18))
+            File(base + suffix).takeIf { it.isDirectory }
+        }.getOrNull()
+    }
+
+    fun list(): List<Item> {
+        val base = folders()
+        val extra = linked(base)
+        return (base.map { it to "" } + extra.map { it to it.name }).flatMap { (d, from) ->
+            d.listFiles().orEmpty().mapNotNull { f ->
+                if (!f.isFile || f.name.contains(".part.")) return@mapNotNull null
+                val ext = f.extension.lowercase()
+                val kind = when { ext == "gif" -> Kind.GIF; ext in PICS -> Kind.SNAP; ext in MOVIES -> Kind.CLIP; else -> null } ?: return@mapNotNull null
+                Item(f, kind, f.lastModified(), f.length(), from)
+            }
+        }.distinctBy { it.file.absolutePath.lowercase() }.sortedByDescending { it.time }
+    }
 
     // thumbnails: 320 px wide, kept on disk (cache\gallery) and the last 60 in memory
     private val mem = object : LinkedHashMap<String, Pair<ImageBitmap, Long>>(64, 0.75f, true) {
@@ -197,7 +244,14 @@ fun GalleryScreen(nav: Nav) {
     var tick by remember { mutableIntStateOf(0) }
     var filter by remember { mutableStateOf<Gallery.Kind?>(null) }
     var open by remember { mutableStateOf<Int?>(galleryStartItem.also { galleryStartItem = null }) }
-    LaunchedEffect(tick) { all = withContext(Dispatchers.IO) { Gallery.list() } }
+    LaunchedEffect(tick) {
+        all = withContext(Dispatchers.IO) { Gallery.list() }
+        // test runs: what was found, by kind and folder (no names), in cache\gallery_test.txt
+        if (System.getenv("MC_OFFSCREEN") == "1") runCatching {
+            val counts = all.orEmpty().groupingBy { g -> "${g.kind.label} in ${g.from.ifEmpty { g.file.parentFile?.path.orEmpty() }}" }.eachCount()
+            File(Desktop.ctx.cacheDir, "gallery_test.txt").writeText(counts.entries.joinToString(System.lineSeparator()) { e -> "${e.key}: ${e.value}" })
+        }
+    }
     val shown = remember(all, filter) { all.orEmpty().filter { filter == null || it.kind == filter } }
     LaunchedEffect(shown, open) { galleryProbe?.invoke(shown, open) }
     val scope = rememberCoroutineScope()
@@ -271,7 +325,7 @@ private fun Tile(it: Gallery.Item, onOpen: () -> Unit, onDelete: () -> Unit) {
             }
         }
         Text(it.file.nameWithoutExtension, color = Mc.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
-        Text("${timeAgo(it.time)} · ${mb(it.size)}", color = Mc.Text3, fontSize = 11.5.sp)
+        Text("${timeAgo(it.time)} · ${mb(it.size)}" + if (it.from.isNotEmpty()) " · ${it.from}" else "", color = Mc.Text3, fontSize = 11.5.sp, maxLines = 1)
     }
 }
 
@@ -306,7 +360,7 @@ internal fun GalleryViewer(list: List<Gallery.Item>, index: Int, onIndex: (Int) 
             IconButton(onClick = onClose) { Icon(Icons.Rounded.Close, "Close", tint = Mc.Text2) }
             Column(Modifier.weight(1f)) {
                 Text(it.file.nameWithoutExtension, color = Mc.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${it.kind.label} · ${timeAgo(it.time)} · ${mb(it.size)}" + (thumb?.second?.takeIf { it > 0 }?.let { " · ${len(it)}" } ?: "") +
+                Text("${it.kind.label} · ${timeAgo(it.time)} · ${mb(it.size)}" + (if (it.from.isNotEmpty()) " · in ${it.from}" else "") + (thumb?.second?.takeIf { it > 0 }?.let { " · ${len(it)}" } ?: "") +
                     " · ${index + 1} of ${list.size}", color = Mc.Text3, fontSize = 12.sp)
             }
         }

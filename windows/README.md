@@ -16,7 +16,7 @@ version is just unzipped over the old folder.
 
 ## Using it
 
-Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.0.6).
+Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.0.7).
 
 - **Left rail**: Home, Library, Browse, Videos, Updates, More (the phone's bottom bar).
 - **Going back**: Esc, Alt+←, the mouse's back button, or the ← arrows. **F11** = full screen.
@@ -55,7 +55,8 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
   Size (Tiny 2 MB / Small 5 MB / Big 10 MB), speed (0.25× to 2×), ping-pong, FPS (Auto /
   24 / 30 / 50: 50 makes smooth in-between frames), then the phone's GIF engine. The finished GIF then plays in a
   box (at most its own size, with its size / frames / length): Show in folder, Copy (paste into Discord, a chat,
-  Explorer), **Delete** (not happy with it: the file goes and you're back in the editor with the same frames), Make
+  Explorer), **Move to <folder>** (a folder the recordings folder links to with a Windows shortcut, e.g. "old": the
+  GIF moves there and the other buttons follow it), **Delete** (not happy with it: the file goes and you're back in the editor with the same frames), Make
   another, Done.
   Slow motion and 50 fps get their in-between frames from **RIFE** (rife-ncnn-vulkan, rife-v4.6 model, on the
   graphics card; the same as the ScreenToGif AnimeGif presets): one run per GIF draws every pair of drawings' in-betweens.
@@ -65,7 +66,8 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
   with its time, so you can find a scene without jumping around. Pictures come from the video's smallest size (quick:
   well under a second a picture on the sites, at once for downloads) and the ones already seen show straight away.
 - **My GIFs & clips** (More): every GIF, snapshot and recording the player made, newest first, from the recordings and
-  snapshots folders (Settings › Videos). Filters: All / GIFs / Snapshots / Clips, with the space they use. A GIF plays
+  snapshots folders (Settings › Videos), and from folders those folders link to with a Windows shortcut (e.g. an
+  "old - Shortcut" to where you keep older GIFs; those show the folder's name). Filters: All / GIFs / Snapshots / Clips, with the space they use. A GIF plays
   while the mouse is over it; the buttons on a picture copy it (paste into Discord, a chat or a folder), show it in
   Explorer or delete it (to the Recycle Bin). Click one to see it big: ← → (or the arrows on screen) go to the
   previous / next one, Delete deletes it, Esc goes back; clips play in Windows' own player.
