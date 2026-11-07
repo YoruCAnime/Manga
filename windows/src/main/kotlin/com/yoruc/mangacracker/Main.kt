@@ -70,6 +70,7 @@ private fun startUp() {
     Runtime.getRuntime().addShutdownHook(Thread { runCatching { Edge.close() } })
     Repo.init(ctx)
     VideoRepo.init(ctx)
+    com.yoruc.mangacracker.core.Stats.init(ctx)
     Downloads.init(ctx)
     if (Downloads.queue.hasWaiting()) Downloads.kick(ctx)
     UpdateWorker.schedule(ctx)

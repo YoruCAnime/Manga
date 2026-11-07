@@ -102,6 +102,8 @@ class Nav(val c: NavHostController) {
     fun otherSites(key: String) = c.navigate("othersites/${Uri.encode(key)}") { launchSingleTop = true }
     fun downloads() = c.navigate("downloads") { launchSingleTop = true }
     fun history() = c.navigate("history")
+    fun gallery() = c.navigate("gallery")
+    fun stats() = c.navigate("stats")
     fun settings() = c.navigate("settings")
     fun sourceTest() = c.navigate("sourcetest")
     fun exLogin() = c.navigate("exlogin") { launchSingleTop = true }
@@ -145,6 +147,11 @@ fun AppRoot(open: String?) {
                 if (what == "series") nav.videoSeries(v) else nav.player(v)
                 return@LaunchedEffect
             }
+            if (what == "gallery" || what == "stats") {
+                if (what == "gallery") galleryStartItem = srcId.toIntOrNull()
+                nav.tab("more"); if (what == "gallery") nav.gallery() else nav.stats()
+                return@LaunchedEffect
+            }
             if (what == "settings") {
                 settingsStartItem = srcId.toIntOrNull() ?: 0
                 nav.settings()
@@ -182,7 +189,7 @@ fun AppRoot(open: String?) {
             tab != null -> nav.tab(tab)
             h.route == "details/{key}" && h.key.isNotEmpty() -> c.navigate("details/${Uri.encode(h.key)}")
             h.route == "vseries/{key}" && h.key.isNotEmpty() -> { nav.tab("videos"); c.navigate("vseries/${Uri.encode(h.key)}") }
-            h.route in setOf("history", "settings", "downloads") -> { nav.tab("more"); c.navigate(h.route) }
+            h.route in setOf("history", "settings", "downloads", "gallery", "stats") -> { nav.tab("more"); c.navigate(h.route) }
             h.route.startsWith("browse/") -> nav.tab("sources")
         }
     }
@@ -230,6 +237,8 @@ fun AppRoot(open: String?) {
                 composable("updates") { UpdatesScreen(nav) }
                 composable("more") { MoreScreen(nav) }
                 composable("history") { HistoryScreen(nav) }
+                composable("gallery") { GalleryScreen(nav) }
+                composable("stats") { StatsScreen(onBack = { nav.back() }, onOpen = { nav.details(it) }) }
                 composable("settings") { SettingsScreen(nav) }
                 composable("sourcetest") { SourceTestScreen(nav) }
                 composable("exlogin") { ExLoginScreen(nav) }

@@ -27,6 +27,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -41,14 +42,16 @@ import com.yoruc.mangacracker.video.clock
  * The player's seek bar: a 48 dp touch strip around a slim track. Touch anywhere on it = jump there and keep dragging;
  * while dragging the track and thumb grow and a time bubble rides above the finger. [onScrub] fires while dragging
  * (the player shows key frames on the way), [onSeek] once on release (exact), [onDrag] when dragging starts / stops.
+ * [onHover] gets the spot under the mouse (0..1) and its x in px on the bar, or null when the mouse leaves it.
  */
 private val INSET = 11.dp
 
 @Composable
 fun SeekBar(
     pos: Long, dur: Long, buffered: Long, modifier: Modifier = Modifier,
-    onDrag: (Boolean) -> Unit = {}, onScrub: (Long) -> Unit = {}, onSeek: (Long) -> Unit,
+    onDrag: (Boolean) -> Unit = {}, onScrub: (Long) -> Unit = {}, onHover: (Float?, Float) -> Unit = { _, _ -> }, onSeek: (Long) -> Unit,
 ) {
+    val hov by rememberUpdatedState(onHover)
     var drag by remember { mutableStateOf<Float?>(null) }
     val d by rememberUpdatedState(dur)
     val scrub by rememberUpdatedState(onScrub)
@@ -59,6 +62,18 @@ fun SeekBar(
     val track by animateDpAsState(if (drag != null) 7.dp else 4.dp, label = "track")
     BoxWithConstraints(
         modifier.height(48.dp).semantics { contentDescription = "Seek bar" }.pointerInput(Unit) {
+            // the mouse over the bar (also while dragging): where it points
+            awaitPointerEventScope {
+                while (true) {
+                    val e = awaitPointerEvent()
+                    val p = e.changes.firstOrNull() ?: continue
+                    val inset = INSET.toPx()
+                    val inside = p.position.x in 0f..size.width.toFloat() && p.position.y in 0f..size.height.toFloat()
+                    if (e.type == PointerEventType.Exit || !inside) hov(null, 0f)
+                    else hov(((p.position.x - inset) / (size.width - 2 * inset)).coerceIn(0f, 1f), p.position.x)
+                }
+            }
+        }.pointerInput(Unit) {
             awaitEachGesture {
                 val down = awaitFirstDown()
                 val inset = INSET.toPx()
