@@ -332,20 +332,25 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
                 }
             }
         }
-        done?.let { f -> SavedBox(f, onDelete = {
+        // folders the save folder links to with a Windows shortcut ("old - Shortcut"): a Move to button for each
+        val moveTo by androidx.compose.runtime.produceState(emptyList<File>()) { value = withContext(Dispatchers.IO) { Gallery.linkedFolders() } }
+        done?.let { f -> SavedBox(f, moveTo, onDelete = {
             if (f.delete() || !f.exists()) Desktop.toast("GIF deleted") else Desktop.toast("Couldn't delete the GIF (is it open somewhere?)")
             done = null; playing = true
+        }, onMove = { dir ->
+            Gallery.moveTo(f, dir)?.let { done = it; Desktop.toast("Moved to ${dir.name}") } ?: Desktop.toast("Couldn't move the GIF (is it open somewhere?)")
         }, onAnother = { done = null; playing = true }, onClose = onClose) }
     }
 }
 
 /**
  * Over the whole editor once a GIF is made: the GIF playing (as big as the window allows), its size, and Show in
- * folder / Copy / Delete (not happy with it: the file goes, the editor stays on the same part to change and make
- * again) / Make another / Done. Clicks don't reach the editor under it.
+ * folder / Copy / Move to <linked folder> (once moved, the other buttons work on the moved file) / Delete (not happy
+ * with it: the file goes, the editor stays on the same part to change and make again) / Make another / Done. Clicks
+ * don't reach the editor under it.
  */
 @Composable
-private fun SavedBox(f: File, onDelete: () -> Unit, onAnother: () -> Unit, onClose: () -> Unit) {
+private fun SavedBox(f: File, moveTo: List<File>, onDelete: () -> Unit, onMove: (File) -> Unit, onAnother: () -> Unit, onClose: () -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xCC060B12)).pointerInput(Unit) { detectTapGestures { } },
         contentAlignment = Alignment.Center) {
         val previewH = (maxHeight - 170.dp).coerceIn(80.dp, 340.dp)
@@ -359,6 +364,13 @@ private fun SavedBox(f: File, onDelete: () -> Unit, onAnother: () -> Unit, onClo
                 Button(onClick = { Desktop.reveal(f) }, colors = ButtonDefaults.buttonColors(containerColor = Mc.Blue, contentColor = Mc.Bg)) { Text("Show in folder") }
                 Button(onClick = { copyFile(f); Desktop.toast("GIF copied: paste it in Discord, a chat or a folder") },
                     colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text)) { Text("Copy") }
+                moveTo.take(2).forEach { dir ->
+                    val there = runCatching { f.parentFile?.canonicalFile == dir.canonicalFile }.getOrDefault(false)
+                    Button(onClick = { onMove(dir) }, enabled = !there,
+                        colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text, disabledContainerColor = Mc.Card2, disabledContentColor = Mc.Green)) {
+                        Text(if (there) "In ${dir.name} ✓" else "Move to ${dir.name}")
+                    }
+                }
                 Button(onClick = onDelete, colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Orange)) { Text("Delete") }
                 Button(onClick = onAnother, colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text)) { Text("Make another") }
                 Button(onClick = onClose, colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text)) { Text("Done") }

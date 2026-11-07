@@ -156,6 +156,28 @@ class StatsPreviewTest {
         scene.close()
     }
 
+    /** Windows shortcuts in the save folders lead to more folders: a folder (also with an accent), never a file. */
+    @Test fun shortcutTargetsAndMove() {
+        val dir = File("build/gallery_test")   // shortcuts made there by hand (PowerShell's WScript.Shell)
+        assumeTrue(File(dir, "old - Shortcut.lnk").isFile)
+        val g = com.yoruc.mangacracker.ui.Gallery
+        assertEquals(File(dir, "linked old").canonicalFile, g.lnkTarget(File(dir, "old - Shortcut.lnk"))?.canonicalFile)
+        assertEquals(File(dir, "café gifs").canonicalFile, g.lnkTarget(File(dir, "cafe - Shortcut.lnk"))?.canonicalFile)
+        assertNull("a shortcut to a file", g.lnkTarget(File(dir, "file - Shortcut.lnk")))
+        assertNull("not a shortcut", g.lnkTarget(File(dir, "Test GIF 0.gif")))
+        // Move to: the file goes there, a name already taken gets " (2)", nothing is overwritten
+        val to = File(dir, "linked old")
+        val a = File(dir, "move me.gif").apply { writeBytes(File(dir, "Test GIF 0.gif").readBytes()) }
+        val m1 = g.moveTo(a, to)!!
+        assertTrue(m1.isFile && !a.exists() && m1.parentFile.canonicalFile == to.canonicalFile)
+        val b = File(dir, "move me.gif").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        val m2 = g.moveTo(b, to)!!
+        assertEquals("move me (2).gif", m2.name)
+        assertEquals(1440557L, m1.length())
+        println("[gallery] shortcuts read; moved to ${m1.name}, then ${m2.name}")
+        m1.delete(); m2.delete()
+    }
+
     /** The bar says where the mouse is (0..1 between its insets), and null when it leaves. */
     @Test fun seekBarHover() {
         var got: Float? = -1f
