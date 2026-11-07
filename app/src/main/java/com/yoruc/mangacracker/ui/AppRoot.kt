@@ -89,6 +89,8 @@ class Nav(val c: NavHostController) {
     fun otherSites(key: String) = c.navigate("othersites/${Uri.encode(key)}") { launchSingleTop = true }
     fun downloads() = c.navigate("downloads") { launchSingleTop = true }
     fun history() = c.navigate("history")
+    fun gallery() = c.navigate("gallery")
+    fun stats() = c.navigate("stats")
     fun settings() = c.navigate("settings")
     fun sourceTest() = c.navigate("sourcetest")
     fun exLogin() = c.navigate("exlogin") { launchSingleTop = true }
@@ -176,6 +178,8 @@ fun AppRoot(open: String?) {
                 composable("updates") { UpdatesScreen(nav) }
                 composable("more") { MoreScreen(nav) }
                 composable("history") { HistoryScreen(nav) }
+                composable("gallery") { GalleryScreen(nav) }
+                composable("stats") { StatsScreen(onBack = { nav.back() }, onOpen = { nav.details(it) }) }
                 composable("settings") { SettingsScreen(nav) }
                 composable("sourcetest") { SourceTestScreen(nav) }
                 composable("exlogin") { ExLoginScreen(nav) }
