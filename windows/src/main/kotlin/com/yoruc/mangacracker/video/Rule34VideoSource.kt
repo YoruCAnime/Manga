@@ -31,8 +31,12 @@ object Rule34VideoSource : VideoSource {
     private suspend fun page(url: String): Document {
         pages[url]?.let { return it }
         val doc = pace.run { Http.getDoc(url) }
-        if (doc.select("script[src*=ageverif]").isNotEmpty() || doc.select("[class*=ageverif], #ageverif").isNotEmpty())
-            throw SourceException("Rule34Video asks for an age check in your country. Turn your VPN on and pull to refresh.")
+        if (doc.select("script[src*=ageverif]").isNotEmpty() || doc.select("[class*=ageverif], #ageverif").isNotEmpty()) {
+            // connections made before the VPN came on keep going around it: the next try starts fresh ones
+            runCatching { Http.client.connectionPool.evictAll() }
+            throw SourceException("Rule34Video asks for an age check in your country. Turn your VPN on and refresh. " +
+                "If your VPN only covers some apps (split tunnelling), connect it first, then close and reopen MangaCracker.")
+        }
         if (pages.size > 40) pages.clear()
         pages[url] = doc
         return doc

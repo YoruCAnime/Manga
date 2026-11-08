@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.yoruc.mangacracker"
-version = "1.0.7"
+version = "1.0.10"
 
 kotlin { jvmToolchain(21) }
 
@@ -40,12 +40,15 @@ compose.desktop {
         // small thread stacks and code cache. Pictures are decoded at the size they are shown (48 MB picture cache).
         jvmArgs += listOf("-Xms16m", "-Xmx200m", "-XX:+UseSerialGC", "-Xss256k", "-XX:MaxMetaspaceSize=128m",
             "-XX:ReservedCodeCacheSize=32m", "-XX:TieredStopAtLevel=1", "-XX:CICompilerCount=1",
-            "-XX:MinHeapFreeRatio=5", "-XX:MaxHeapFreeRatio=15", "-Dsun.java2d.d3d=false", "-Dfile.encoding=UTF-8")
+            "-XX:MinHeapFreeRatio=5", "-XX:MaxHeapFreeRatio=15", "-Dsun.java2d.d3d=false", "-Dfile.encoding=UTF-8",
+            // plain IPv4 sockets: a VPN that tunnels only some apps (Proton split tunnelling) ties their connections to its
+            // IPv4 address, which Java's default dual IPv6 / IPv4 sockets refuse ("Cannot assign requested address")
+            "-Djava.net.preferIPv4Stack=true")
         nativeDistributions {
             appResourcesRootDir.set(project.layout.projectDirectory.dir("appResources"))
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "MangaCracker"
-            packageVersion = "1.0.7"
+            packageVersion = "1.0.10"
             windows { menu = true; shortcut = true; perUserInstall = true; dirChooser = true; iconFile.set(project.file("appIcon/icon.ico")) }
             modules("java.net.http", "java.sql", "jdk.unsupported", "java.naming", "java.management", "jdk.management", "jdk.httpserver")
         }
