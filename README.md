@@ -88,7 +88,7 @@ below.
   auto-rotate locked; Rotate switches to portrait and back), controls hide after 3 s, tap to show them. All the
   big play / pause sits in the middle of the picture between −1s / +1s and previous / next episode; the seek bar
   runs along the bottom with the app's own **volume** above it on the left (separate from the phone's volume, it is
-  remembered; tap the speaker to mute) and Snapshot, Record, GIF, speed and Rotate on the right (all clear of the
+  remembered; tap the speaker to mute) and Snapshot, Record, GIF, speed, **Loop** (blue while on: the video starts again at its end instead of Up next) and Rotate on the right (all clear of the
   camera notch). The seek bar is easy to hit: touch anywhere on it to jump there and keep sliding; while you slide
   the dot grows, a time bubble rides above your finger and the picture follows (it plays on from there when you
   let go). Double-tap the left / right side to step 1 s (taps stack), double-tap the middle to pause, hold

@@ -142,6 +142,19 @@ class GifScreensTest {
         shot("58_player_portrait")
     }
 
+    /** Loop: the button turns the player's repeat-one on and off, and says so. */
+    @Test fun loopButton() {
+        openPlayer()
+        desc("Loop").performClick(); pump(600)
+        org.junit.Assert.assertEquals("repeat one", androidx.media3.common.Player.REPEAT_MODE_ONE, com.yoruc.mangacracker.ui.PlayerTestHooks.repeatMode)
+        desc("Loop on").assertExists()
+        shot("58b_player_loop_on")
+        desc("Loop on").performClick(); pump(600)
+        org.junit.Assert.assertEquals("repeat off", androidx.media3.common.Player.REPEAT_MODE_OFF, com.yoruc.mangacracker.ui.PlayerTestHooks.repeatMode)
+        desc("Loop").assertExists()
+        println("[loop] phone: Loop on = repeat one, off again = repeat off")
+    }
+
     /** Middle play / skip buttons, the app's own volume (mute + slider, saved) and the quality menu (Best by default). */
     @Test fun volumeAndQuality() {
         Repo.updateSettings { it.copy(videoQuality = -1, videoVolume = 1f, videoMuted = false) }

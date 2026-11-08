@@ -55,6 +55,8 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.ScreenRotation
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.RepeatOn
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Stop
@@ -197,6 +199,8 @@ internal object PlayerTestHooks {
     /** position, duration, buffered (ms) */
     var clock: (() -> LongArray)? = null
     var gifJob: (suspend (GifRequest, (String, Float) -> Unit) -> GifDone)? = null
+    /** The player's repeat mode after the Loop button (tests read it back). */
+    @Volatile var repeatMode = -1
 }
 
 @OptIn(UnstableApi::class)
@@ -249,6 +253,8 @@ fun PlayerScreen(nav: Nav, key: String) {
     var volume by remember { mutableFloatStateOf(Repo.settings.value.videoVolume) }
     var muted by remember { mutableStateOf(Repo.settings.value.videoMuted) }
     var landscape by remember { mutableStateOf(true) }
+    /** Loop: the video starts again at its end (no Up next); stays on for the next videos until switched off */
+    var looping by remember { mutableStateOf(false) }
     var seekBadge by remember { mutableStateOf<Pair<Int, Int>?>(null) } // side, seconds
     var seekTick by remember { mutableIntStateOf(0) }
     var scrubbing by remember { mutableStateOf(false) }
@@ -684,6 +690,16 @@ fun PlayerScreen(nav: Nav, key: String) {
                             val capturing = gifStart != null
                             BarBtn(Icons.Rounded.GifBox, if (capturing) "Stop GIF" else "GIF", tint = if (capturing) Color(0xFFFF4D4D) else Color.White, labels = labels) { gifButton() }
                             Pill(speedLabel(speed), Modifier.padding(horizontal = 4.dp).clickable { showSpeeds = !showSpeeds; showQuality = false; show() }, if (speed != 1f) Mc.Blue else Color(0xCC1C2838))
+                            BarBtn(if (looping) Icons.Rounded.RepeatOn else Icons.Rounded.Repeat, if (looping) "Loop on" else "Loop",
+                                tint = if (looping) Mc.Blue else Color.White, labels = labels) {
+                                looping = !looping
+                                player.repeatMode = if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                                PlayerTestHooks.repeatMode = player.repeatMode
+                                // switched on at the very end: plays again from the start at once
+                                if (looping && ended) { upNext = -1; player.seekTo(0); player.play() }
+                                toast(if (looping) "Loop on: this video plays again from the start when it ends" else "Loop off")
+                                show()
+                            }
                             BarBtn(Icons.Rounded.ScreenRotation, "Rotate", labels = labels) { landscape = !landscape; show() }
                         }
                     }
