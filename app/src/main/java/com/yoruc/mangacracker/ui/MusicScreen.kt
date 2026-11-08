@@ -27,6 +27,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.VolumeDown
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Pause
@@ -92,17 +95,37 @@ internal var musicOpenFirst = false
  * or its soundtrack albums; or the LISTEN.moe radio for anime songs from anywhere. Audio only; it keeps playing on
  * other tabs and with the app in the background ([MusicBar] controls it).
  */
+/**
+ * What the Music tab shows, kept while the app runs: switching to another tab and back finds the same search, anime,
+ * album and choices (the screen itself is dropped when another tab opens).
+ */
+private object MusicUi {
+    var query by mutableStateOf("")
+    /** The search [results] belong to (back from another tab: not searched again). */
+    var searched = ""
+    var results by mutableStateOf<List<MusicAnime>?>(null)
+    var open by mutableStateOf<MusicAnime?>(null)
+    /** The anime the album / filter below belong to. */
+    var pageOf = -1
+    var album by mutableStateOf<Album?>(null)
+    var filter by mutableStateOf("All")
+    var allSeasons by mutableStateOf(false)
+}
+
 @Composable
 fun MusicScreen() {
-    var query by rememberSaveable { mutableStateOf(musicStartQuery.also { musicStartQuery = "" }) }
-    var results by remember { mutableStateOf<List<MusicAnime>?>(null) }
+    if (musicStartQuery.isNotEmpty()) { MusicUi.query = musicStartQuery; musicStartQuery = "" }
+    var query by MusicUi::query
+    var results by MusicUi::results
     var searching by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var open by remember { mutableStateOf<MusicAnime?>(null) }
+    var open by MusicUi::open
     LaunchedEffect(query) {
         val q = query.trim()
-        if (q.length < 2) { results = null; error = null; return@LaunchedEffect }
+        if (q.length < 2) { results = null; error = null; MusicUi.searched = ""; return@LaunchedEffect }
+        if (q == MusicUi.searched && results != null && !musicOpenFirst) return@LaunchedEffect   // back from another tab: as it was
         delay(300)
+        MusicUi.searched = q
         searching = results == null; error = null
         results = runCatching { Music.searchAnime(q) }.onFailure { error = "Couldn't search: ${it.message}" }.getOrNull()
         searching = false
@@ -183,9 +206,11 @@ private fun AnimeMusic(a: MusicAnime, onBack: () -> Unit) {
     var every by remember(a.id) { mutableStateOf<List<Track>?>(null) }
     var albums by remember(a.id) { mutableStateOf<List<Album>?>(null) }
     var error by remember(a.id) { mutableStateOf<String?>(null) }
-    var allSeasons by rememberSaveable(a.id) { mutableStateOf(false) }
-    var filter by rememberSaveable(a.id) { mutableStateOf("All") }
-    var album by remember(a.id) { mutableStateOf<Album?>(null) }
+    // another anime: its own album / filter (This season / All seasons stays as last chosen)
+    if (MusicUi.pageOf != a.id) { MusicUi.pageOf = a.id; MusicUi.album = null; MusicUi.filter = "All" }
+    var allSeasons by MusicUi::allSeasons
+    var filter by MusicUi::filter
+    var album by MusicUi::album
     var gathering by remember(a.id) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(a.id) {
@@ -385,6 +410,19 @@ fun MusicBar(modifier: Modifier = Modifier) {
             Box(Modifier.fillMaxWidth().height(3.dp).background(Mc.Line))
             Box(Modifier.fillMaxWidth(frac).height(3.dp).background(Mc.Blue))
         }
+        val s by com.yoruc.mangacracker.core.Repo.settings.collectAsState()
+        var showVolume by remember { mutableStateOf(false) }
+        val volIcon = when { s.musicVolume == 0f -> Icons.AutoMirrored.Rounded.VolumeOff; s.musicVolume < 0.5f -> Icons.AutoMirrored.Rounded.VolumeDown; else -> Icons.AutoMirrored.Rounded.VolumeUp }
+        @Composable fun VolumeSlider(m: Modifier) = androidx.compose.material3.Slider(
+            s.musicVolume, { v -> p.setVolume(v) }, m, valueRange = 0f..1f,
+            colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = Mc.Blue, activeTrackColor = Mc.Blue, inactiveTrackColor = Mc.Card2),
+        )
+        // wide (PC): the volume sits in the bar next to the buttons; narrow (phone): the speaker opens it under the bar
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val wide = maxWidth >= 640.dp
+        // a phone's bar: smaller buttons, so the song's name has room
+        val btn = if (wide) Modifier else Modifier.size(38.dp)
+        Column {
         Row(Modifier.fillMaxWidth().padding(start = 10.dp, end = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(42.dp).clip(RoundedCornerShape(6.dp)).background(Mc.Card2), contentAlignment = Alignment.Center) {
                 if (shown.cover.isNotEmpty()) Cover(shown.cover, Modifier.fillMaxSize()) else Icon(if (t.live) Icons.Rounded.Radio else Icons.Rounded.Album, null, tint = Mc.Blue)
@@ -396,20 +434,45 @@ fun MusicBar(modifier: Modifier = Modifier) {
                     (if (t.live) " · radio" else if (dur > 0) " · ${clockMs(pos)} / ${clockMs(dur)}" else "")),
                     color = if (hint != null) Mc.Blue else Mc.Text3, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (!t.live) IconButton(onClick = { p.previous() }) { Icon(Icons.Rounded.SkipPrevious, "Previous", tint = Mc.Text2) }
-            IconButton(onClick = { p.toggle() }) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Play", tint = Mc.Text, modifier = Modifier.size(30.dp)) }
-            if (!t.live) IconButton(onClick = { p.next() }, enabled = queue.size > 1) { Icon(Icons.Rounded.SkipNext, "Next", tint = if (queue.size > 1) Mc.Text2 else Mc.Text3) }
-            // loop: the whole list (default) -> this one track -> no loop
-            if (!t.live) IconButton(onClick = {
-                val m = when (rep) { REPEAT_ALL -> REPEAT_ONE; REPEAT_ONE -> REPEAT_OFF; else -> REPEAT_ALL }
-                p.setRepeat(m)
-                hint = when (m) { REPEAT_ONE -> "Loop: this song again and again"; REPEAT_OFF -> "No loop: stops after the last one"; else -> "Loop: the whole list starts over at the end" }
-            }) {
-                Icon(if (rep == REPEAT_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
-                    when (rep) { REPEAT_ONE -> "Loop this song"; REPEAT_OFF -> "No loop"; else -> "Loop the list" },
-                    tint = if (rep == REPEAT_OFF) Mc.Text3 else Mc.Blue)
+            if (!t.live) IconButton(onClick = { p.previous() }, modifier = btn) { Icon(Icons.Rounded.SkipPrevious, "Previous", tint = Mc.Text2) }
+            IconButton(onClick = { p.toggle() }, modifier = btn) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Play", tint = Mc.Text, modifier = Modifier.size(30.dp)) }
+            if (!t.live) IconButton(onClick = { p.next() }, enabled = queue.size > 1, modifier = btn) { Icon(Icons.Rounded.SkipNext, "Next", tint = if (queue.size > 1) Mc.Text2 else Mc.Text3) }
+            // loop: the whole list (default; with all seasons: every season, back to season 1's first song after the
+            // last) -> this one song -> no loop. Wide bars say which in words.
+            if (!t.live) {
+                val seasons = queue.map { it.season }.filter { it.isNotEmpty() }.distinct().size
+                val allLabel = if (seasons > 1) "Loop all seasons" else "Loop all"
+                val label = when (rep) { REPEAT_ONE -> "Loop 1 song"; REPEAT_OFF -> "No loop"; else -> allLabel }
+                val cycle = {
+                    val m = when (rep) { REPEAT_ALL -> REPEAT_ONE; REPEAT_ONE -> REPEAT_OFF; else -> REPEAT_ALL }
+                    p.setRepeat(m)
+                    hint = when (m) {
+                        REPEAT_ONE -> "Loop: this song again and again"
+                        REPEAT_OFF -> "No loop: stops after the last one"
+                        else -> if (seasons > 1) "Loop: all $seasons seasons' songs, back to the first after the last" else "Loop: the whole list starts over at the end"
+                    }
+                }
+                val icon = if (rep == REPEAT_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat
+                val tint = if (rep == REPEAT_OFF) Mc.Text3 else Mc.Blue
+                if (wide) Row(Modifier.clip(RoundedCornerShape(50)).clickable(onClick = cycle).padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(label, color = tint, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                } else IconButton(onClick = cycle, modifier = btn) { Icon(icon, label, tint = tint) }
             }
-            IconButton(onClick = { p.stop() }) { Icon(Icons.Rounded.Close, "Stop the music", tint = Mc.Text3) }
+            if (wide) {
+                Icon(volIcon, null, tint = Mc.Text3, modifier = Modifier.padding(start = 6.dp).size(20.dp))
+                VolumeSlider(Modifier.width(120.dp).padding(horizontal = 6.dp))
+            } else IconButton(onClick = { showVolume = !showVolume }, modifier = btn) { Icon(volIcon, "Music volume", tint = if (showVolume) Mc.Blue else Mc.Text2) }
+            IconButton(onClick = { p.stop() }, modifier = btn) { Icon(Icons.Rounded.Close, "Stop the music", tint = Mc.Text3) }
+        }
+        if (!wide && showVolume) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(volIcon, null, tint = Mc.Text3, modifier = Modifier.size(20.dp))
+            VolumeSlider(Modifier.weight(1f).padding(horizontal = 10.dp))
+            Text("${(s.musicVolume * 100).toInt()}%", color = Mc.Text2, fontSize = 12.sp, modifier = Modifier.width(40.dp))
+        }
+        }
         }
     }
 }

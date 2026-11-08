@@ -103,8 +103,9 @@ below.
   **Soundtracks & albums**: official soundtracks and character-song albums from YouTube Music, and uploads from
   archive.org (FLAC or MP3, the quality on each track); open one or **Play all albums**. **Random anime songs**: the
   LISTEN.moe radio (Opus 192 kbps) with what's on now. A bar at the bottom (every screen but the reader and the video
-  player) shows what plays, with previous / play-pause / next, stop, a line to jump in the song, and **Loop**: the whole
-  list starts over after the last song (default), or this song again and again, or no loop. It keeps playing on other
+  player) shows what plays, with previous / play-pause / next, stop, a line to jump in the song, **Loop** ("Loop all seasons" /
+  "Loop all": after the last song back to the first, the default; "Loop 1 song"; "No loop") and the music **volume**
+  (the speaker button opens a slider). Switching tabs and coming back keeps the anime or album you had open. It keeps playing on other
   tabs and with the app in the background and with the screen off (play / pause / next in the notification and on the lock screen); a video pauses it. Its own volume in Settings › Music.
 - **GIF maker** (the GIF button in the player): tap GIF to start capturing (red dot + timer, up to 30 s), tap again
   to stop. A panel opens at the bottom of the player (no pop-up): drag the two handles to pick the part you want

@@ -208,8 +208,15 @@ object Music {
     suspend fun allSongs(a: MusicAnime): List<Track> =
         seasons(a).flatMap { s -> runCatching { songs(s) }.getOrDefault(emptyList()) }.distinctBy { songKey(it) }   // a film's ED that is also the arc's: once
 
-    /** The same song wherever it's listed: its name (the romaji part) and first singer, letters and digits only. */
-    fun songKey(t: Track) = (t.title.substringBefore(" (") + "|" + t.artist.substringBefore(",").substringBefore(" (")).lowercase().filter { it.isLetterOrDigit() || it == '|' }
+    /**
+     * The same song wherever it's listed: its name (the romaji part) and the words of its first singer in any order
+     * (MyAnimeList writes "Yui Horie" on one season and "Horie Yui" on the next), letters and digits only.
+     */
+    fun songKey(t: Track): String {
+        val name = t.title.substringBefore(" (").lowercase().filter { it.isLetterOrDigit() }
+        val singer = t.artist.substringBefore(",").substringBefore(" (").lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }.sorted().joinToString("")
+        return "$name|$singer"
+    }
 
     // ---------------- YouTube: the full song, found when it plays ----------------
 
@@ -273,7 +280,8 @@ object Music {
         "collection", "special", "edition", "series", "anime", "tv", "no", "wa", "ga", "to", "of", "zero", "one", "with", "from")
 
     /**
-     * Whether an album title is this anime's: a telling word of its romaji name ("tsukaima"), its Japanese title
+     * Whether an album title is this anime's: its romaji name's telling word ("tsukaima"; two of them when it has more, so "Rumble
+     * Fish" isn't School Rumble's), its Japanese title
      * (ゼロの使い魔), or ALL the telling words of its English name ("attack" + "titan"; one English word alone, like
      * "familiar", also names other shows).
      */
@@ -285,7 +293,7 @@ object Music {
         val nativeCore = native.replace(Regex("[\\s　:：!！?？]"), "").take(6)
         return { t ->
             val low = " " + t.lowercase().replace(Regex("['’`]"), "").replace(Regex("[^\\p{L}\\p{N}]+"), " ") + " "
-            romaji.any { " $it " in low } || (eng.size >= 2 && eng.all { " $it " in low }) ||
+            (if (romaji.size <= 1) romaji.any { " $it " in low } else romaji.count { " $it " in low } >= 2) || (eng.size >= 2 && eng.all { " $it " in low }) ||
                 (nativeCore.length >= 2 && nativeCore in t.replace(Regex("[\\s　:：!！?？]"), ""))
         }
     }
