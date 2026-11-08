@@ -16,7 +16,7 @@ version is just unzipped over the old folder.
 
 ## Using it
 
-Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.0.7).
+Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.0.10).
 
 - **Left rail**: Home, Library, Browse, Videos, Updates, More (the phone's bottom bar).
 - **Going back**: Esc, Alt+←, the mouse's back button, or the ← arrows. **F11** = full screen.
@@ -28,7 +28,7 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
   cutout of this character*, Copy image (to the clipboard).
 - **Videos** play in mpv inside the window, with the controls under the picture: volume on the left (the app's own,
   remembered for every video); previous / −1s / play / +1s / next in the middle; speed, quality (Best = the highest the
-  video has, 1080p on these sites, or one of the sizes it really has), Picture (saturation / contrast, remembered), snapshot, Record, GIF, subtitles and full
+  video has, 1080p on these sites, or one of the sizes it really has), Picture (saturation / contrast, remembered), snapshot, Record, GIF, **Loop** (blue while on: the video starts again at its end instead of going to the next episode; stays on until you switch it off), subtitles and full
   screen on the right. The title opens every episode of the show (so does the name on a Continue watching card; its
   picture plays). Keys: Space / K play-pause, ← → 1 s (keeps playing), [ ] one frame back / forward, J / L 10 s, ↑ ↓ volume, M mute, F full
   screen, N / P next / previous episode, R record, G GIF.
@@ -82,6 +82,11 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
 - **Sign-ins and Cloudflare checks** open a small Microsoft Edge window with the app's own profile (never your own
   Edge or Brave). Sign in there; the app picks the login up by itself. A login in your normal browser doesn't reach
   the app.
+- **VPN with split tunnelling** (for sites that ask for an age check in your country, e.g. Rule34Video): add
+  `MangaCracker App\app\MangaCracker.exe` to the VPN's list of apps (the place stays the same through updates),
+  connect the VPN, then close and reopen MangaCracker (an app that was open before the VPN connected keeps going
+  around it). The app uses plain IPv4 connections, which such VPNs need (else every list says "Cannot assign
+  requested address").
 - **Saved files**: pages and cutouts in Pictures\MangaCracker\<title>, snapshots in Pictures\MangaCracker\Snapshots,
   backups in Downloads\MangaCracker. The app's own data (library, downloads, cookies, crash.log) is in
   %LOCALAPPDATA%\MangaCracker.
@@ -113,11 +118,15 @@ Measured (Task Manager working set): Home ~250 MB, Browse ~270 MB, reading ~300 
 
 ## Building
 
-- `Build and install.bat`: builds and installs to `MangaCracker App\v<date-time>\` (the Desktop shortcut points at it)
-  **while the app may be open**: `current.txt` names the newest copy, and a running copy switches to it by itself at a
-  quiet moment (minimized, or in front and untouched for 3 minutes on a calm screen; never while reading, watching,
-  making a GIF or downloading), on the same tab and in the same place, or at once from its "Update ready · Switch now"
-  bar (`platform/SelfUpdate.kt`). Old copies are deleted once nothing in them is in use.
+- `Build and install.bat`: builds and installs to ONE fixed place, `MangaCracker App\app\MangaCracker.exe` (the
+  Desktop shortcut, a VPN's app list or a firewall rule keep working after updates), **also while the app is open**:
+  then the new build waits in `MangaCracker App
+ext` (`current.txt` says so) and the running copy switches by itself
+  at a quiet moment (minimized, or in front and untouched for 3 minutes on a calm screen; never while reading,
+  watching, making a GIF or downloading), or at once from its "Update ready · Switch now" bar: it closes, a small
+  hidden helper (`switch.ps1`, log in `switch.log`) swaps `next` in as `app` and starts it, on the same tab and in
+  the same place (`platform/SelfUpdate.kt`). If the swap can't be done the copy in `next` starts instead, and moves
+  into `app` at its next quiet moment.
 - Needs JDK 21 (Gradle uses it) and Python (the copy step). Not in git, put them in `appResources\windows\` first:
   `libmpv-2.dll` (mpv's Windows build, 120 MB) and `rife\` (from the
   [rife-ncnn-vulkan release](https://github.com/nihui/rife-ncnn-vulkan/releases): `rife-ncnn-vulkan.exe`,

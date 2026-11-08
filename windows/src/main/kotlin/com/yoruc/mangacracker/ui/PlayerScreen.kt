@@ -27,6 +27,8 @@ import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.RepeatOn
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
@@ -168,6 +170,8 @@ fun PlayerScreen(nav: Nav, key: String) {
     // no Auto (it took whatever stream the site listed first): Best = the highest there is, or a size picked
     var quality by remember { mutableStateOf(Repo.settings.value.videoQuality.let { if (it == 0) -1 else it }) }
     var subsOn by remember { mutableStateOf(Repo.settings.value.videoSubtitles) }
+    /** Loop: the video starts again at its end (no next episode); stays on for the next videos until switched off */
+    var looping by remember { mutableStateOf(false) }
     var loadedKey by remember { mutableStateOf<String?>(null) }
     var scrubbing by remember { mutableStateOf(false) }
     var fav by remember(vm.ref?.key) { mutableStateOf(vm.ref?.let { VideoRepo.isFav(it.key) } ?: false) }
@@ -303,6 +307,14 @@ fun PlayerScreen(nav: Nav, key: String) {
     LaunchedEffect(Unit) { runCatching { keys.requestFocus() } }
 
     fun seekBy(s: Double) { player?.cmd("seek", s.toString(), "relative+exact") }
+    /** Loop on / off (mpv's loop-file); switched on at the very end, it plays again from the start at once. */
+    fun toggleLoop() {
+        looping = !looping
+        val p = player ?: return
+        p.set("loop-file", if (looping) "inf" else "no")
+        if (looping && p.getString("eof-reached") == "yes") { p.cmd("seek", "0", "absolute"); p.set("pause", "no") }
+        Desktop.toast(if (looping) "Loop on: this video plays again from the start when it ends" else "Loop off")
+    }
     fun togglePause() { player?.cmd("cycle", "pause") }
     /** The app's own volume / mute, kept for every video and the next start of the app. */
     fun keepVolume() = Repo.updateSettings { it.copy(videoVolume = volume, videoMuted = muted) }
@@ -387,6 +399,20 @@ fun PlayerScreen(nav: Nav, key: String) {
     if (System.getenv("MC_DEMO_GIF") == "1") LaunchedEffect(player) {
         while (dur <= 0 || pos < 8) delay(500)
         gif()
+    }
+    // test runs: MC_DEMO_LOOP=1 turns Loop on, jumps to 3 s before the end and notes whether the same video starts again
+    // (cache\loop_test.txt)
+    if (System.getenv("MC_DEMO_LOOP") == "1") LaunchedEffect(player) {
+        while (dur <= 0 || pos < 4) delay(500)
+        val key = vm.details?.ref?.key
+        toggleLoop()
+        player?.cmd("seek", (dur - 3).toString(), "absolute")
+        delay(1500)
+        val before = pos
+        var lowest = pos
+        repeat(40) { delay(250); if (pos < lowest) lowest = pos }
+        File(Desktop.ctx.cacheDir, "loop_test.txt").writeText("duration $dur; at ${"%.1f".format(before)} before the end; lowest after ${"%.1f".format(lowest)}; " +
+            "now ${"%.1f".format(pos)}; same video ${vm.details?.ref?.key == key}; loop-file ${player?.getString("loop-file")}")
     }
     // test runs: MC_DEMO_HOVER=<0..1> points at that spot of the seek bar once the video plays; what the hover window
     // shows and where it stands go to cache\hover_test.png / .txt
@@ -529,6 +555,9 @@ fun PlayerScreen(nav: Nav, key: String) {
                     }
                     Box(Modifier.padding(horizontal = 2.dp).clip(RoundedCornerShape(50)).background(Mc.Card2).clickable { gif() }.padding(horizontal = 10.dp, vertical = 6.dp)) {
                         Text("GIF", color = Mc.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    IconButton(onClick = { toggleLoop() }) {
+                        Icon(if (looping) Icons.Rounded.RepeatOn else Icons.Rounded.Repeat, if (looping) "Loop on" else "Loop", tint = if (looping) Mc.Blue else Mc.Text2)
                     }
                     IconButton(onClick = { subsOn = !subsOn; player?.set("sub-visibility", if (subsOn) "yes" else "no") }) {
                         Icon(if (subsOn) Icons.Rounded.ClosedCaption else Icons.Rounded.ClosedCaptionDisabled, "Subtitles", tint = Mc.Text2)
