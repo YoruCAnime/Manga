@@ -95,15 +95,17 @@ below.
   anywhere for 2×, speeds 0.25× to 3×, previous / next episode of the same series (and "Up next" at the end),
   subtitles on / off, quality for streams with several sizes (**Best** = the highest there is, 1080p on these sites, or at most 1080p / 720p / 480p; your pick is remembered), **Snapshot** (the current frame to Pictures/MangaCracker/Snapshots) and
   **Record** (tap to start, tap to stop: that part is saved as an MP4 clip to Movies/MangaCracker).
-- **Music** (own tab): search an anime and play its **full** openings, endings and other songs (inserts, character /
-  image songs; never TV size) from kara.moe (320 kbps MP3s, or full music videos played as sound only), all of them or
-  only Openings / Endings / Other songs, in order or **Shuffle**; and its **soundtrack albums** from archive.org (per
-  track the best file there is: FLAC, else the highest MP3, the quality shown on each track). **Random anime songs**:
-  the LISTEN.moe radio (Opus 192 kbps) with what's on now. Covers from AniList. A bar at the bottom (every screen but
-  the reader and the video player) shows what plays, with previous / play-pause / next, stop, a line to jump in the
-  song, and **Loop**: the whole list starts over after the last song (default), or this song again and again, or no
-  loop. It keeps playing on other tabs and with the app in the background and with the screen off (play / pause / next in the notification and on the lock screen); a video pauses it. Its own volume
-  in Settings › Music. Not every song has a full version there (e.g. Frieren: 3 full songs).
+- **Music** (own tab): type an anime and pick it from the suggestions (AniList, as you type: covers, format, year).
+  Its page plays **every opening and ending in full**: **This season** or **All seasons** (the whole show in one
+  list, season after season, each song once), all of them or only Openings / Endings, in order or **Shuffle**. The
+  song list is MyAnimeList's (every OP / ED with its singer); each song plays in full from YouTube (YouTube Music's
+  official audio first; covers, remixes and TV-size cuts are passed over), Opus 160 kbps, found when it starts. Below:
+  **Soundtracks & albums**: official soundtracks and character-song albums from YouTube Music, and uploads from
+  archive.org (FLAC or MP3, the quality on each track); open one or **Play all albums**. **Random anime songs**: the
+  LISTEN.moe radio (Opus 192 kbps) with what's on now. A bar at the bottom (every screen but the reader and the video
+  player) shows what plays, with previous / play-pause / next, stop, a line to jump in the song, and **Loop**: the whole
+  list starts over after the last song (default), or this song again and again, or no loop. It keeps playing on other
+  tabs and with the app in the background and with the screen off (play / pause / next in the notification and on the lock screen); a video pauses it. Its own volume in Settings › Music.
 - **GIF maker** (the GIF button in the player): tap GIF to start capturing (red dot + timer, up to 30 s), tap again
   to stop. A panel opens at the bottom of the player (no pop-up): drag the two handles to pick the part you want
   (up to 30 s; the video behind shows the frame under the handle, small pictures show the start and the end), pick
@@ -243,3 +245,8 @@ The release notes show in the app's pop-up ("**bold**", "- " lists are fine).
 Windows releases are tagged `windows-v<version>` and must be made with `--latest=false`: the phone app updates from
 the release marked Latest, so a Windows release must never take that place. The Windows app's code is in `windows/`
 (built on its own, see [windows/README.md](windows/README.md)).
+
+## License
+
+GPL-3.0 (see LICENSE). The Music tab uses [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor)
+(GPL-3.0) for YouTube.
