@@ -58,7 +58,7 @@ class MusicScreensTest {
         pump(3000)   // covers
         shot("music_search")
         text("The Familiar of Zero")[0].performClick()
-        assertTrue("its openings / endings", waitFor("openings"))
+        assertTrue("its openings / endings", waitFor("opening"))
         text("All seasons")[0].performClick()
         assertTrue("every season", waitFor("4 seasons", 60_000))
         pump(2000)
@@ -73,15 +73,24 @@ class MusicScreensTest {
         shot("music_playing")
         // the loop button: the list (default) -> this song -> no loop -> the list
         assertEquals(REPEAT_ALL, PhoneMusic.repeat.value)
-        desc("Loop the list").performClick(); pump(400); assertEquals(REPEAT_ONE, PhoneMusic.repeat.value)
+        desc("Loop all seasons").performClick(); pump(400); assertEquals(REPEAT_ONE, PhoneMusic.repeat.value)
         shot("music_loop_one")
-        desc("Loop this song").performClick(); pump(400); assertEquals(REPEAT_OFF, PhoneMusic.repeat.value)
+        desc("Loop 1 song").performClick(); pump(400); assertEquals(REPEAT_OFF, PhoneMusic.repeat.value)
         desc("No loop").performClick(); pump(400); assertEquals(REPEAT_ALL, PhoneMusic.repeat.value)
         assertEquals(androidx.media3.common.Player.REPEAT_MODE_ALL, PhoneMusic.player().repeatMode)
         // Next / Previous move through the queue
         desc("Next").performClick(); pump(600)
         println("[music] after Next: ${PhoneMusic.now.value?.title} (index ${PhoneMusic.index.value})")
         assertEquals(1, PhoneMusic.index.value)
-        println("[music] phone: search, songs, play, loop modes, next all work")
+        // another tab and back: the anime's page is still open (not the search)
+        desc("Home").performClick(); pump(1500)
+        desc("Music").performClick(); pump(1500)
+        assertTrue("still on the anime's page", shown("All seasons"))
+        shot("music_back_from_home")
+        // the volume opens under the bar on a phone
+        desc("Music volume").performClick(); pump(500)
+        assertTrue(shown("%"))
+        shot("music_volume")
+        println("[music] phone: search, songs, play, loop modes, next, tab memory, volume all work")
     }
 }
