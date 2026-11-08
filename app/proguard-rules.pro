@@ -17,3 +17,12 @@
 
 # ONNX Runtime is reached from its native library by name
 -keep class ai.onnxruntime.** { *; }
+
+# NewPipe Extractor (the Music tab's YouTube songs): its JavaScript engine (Rhino) and its parsers are reached by name
+-keep class org.schabi.newpipe.extractor.** { *; }
+-keep class org.mozilla.javascript.** { *; }
+-keep class org.mozilla.classfile.** { *; }
+-dontwarn org.mozilla.javascript.**
+-dontwarn javax.script.**
+-dontwarn java.beans.**
+-dontwarn jdk.dynalink.**

@@ -160,6 +160,8 @@ dependencies {
     implementation("androidx.media3:media3-common:$media3")
     // the Music tab: a media session (notification / lock-screen controls, playing in the background)
     implementation("androidx.media3:media3-session:$media3")
+    // the Music tab's full songs: YouTube Music search + audio streams (GPL-3, like this app)
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
     testImplementation("junit:junit:4.13.2")
     // the cutout test runs the real models on the PC (desktop build of the same ONNX Runtime)
     testImplementation("com.microsoft.onnxruntime:onnxruntime:1.28.0")

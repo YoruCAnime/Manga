@@ -82,10 +82,16 @@ import kotlinx.coroutines.launch
  * songs) or its soundtrack albums, in order or shuffled; or the LISTEN.moe radio for anime songs from anywhere.
  * Audio only; it keeps playing on other tabs and with the app in the background ([MusicBar] controls it).
  */
-/** Test runs: the search the Music tab opens with; [musicOpenFirst] = then open the anime with the most songs. */
+/** Test runs: the search the Music tab opens with; [musicOpenFirst] = then open the first suggestion. */
 internal var musicStartQuery = ""
 internal var musicOpenFirst = false
 
+/**
+ * The Music tab (the same file in both apps): type an anime and pick it from the suggestions (AniList, as you type),
+ * then play its openings and endings in full (this season or all seasons, all or only OP / ED, in order or shuffled)
+ * or its soundtrack albums; or the LISTEN.moe radio for anime songs from anywhere. Audio only; it keeps playing on
+ * other tabs and with the app in the background ([MusicBar] controls it).
+ */
 @Composable
 fun MusicScreen() {
     var query by rememberSaveable { mutableStateOf(musicStartQuery.also { musicStartQuery = "" }) }
@@ -96,11 +102,11 @@ fun MusicScreen() {
     LaunchedEffect(query) {
         val q = query.trim()
         if (q.length < 2) { results = null; error = null; return@LaunchedEffect }
-        delay(450)
-        searching = true; error = null
+        delay(300)
+        searching = results == null; error = null
         results = runCatching { Music.searchAnime(q) }.onFailure { error = "Couldn't search: ${it.message}" }.getOrNull()
         searching = false
-        if (musicOpenFirst) { musicOpenFirst = false; results?.maxByOrNull { it.songs }?.let { open = it } }
+        if (musicOpenFirst) { musicOpenFirst = false; results?.firstOrNull()?.let { open = it } }
     }
     val o = open
     if (o != null) { AnimeMusic(o) { open = null }; return }
@@ -109,7 +115,7 @@ fun MusicScreen() {
             modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars).padding(start = 16.dp, top = 10.dp, bottom = 6.dp))
         OutlinedTextField(
             query, { query = it }, Modifier.fillMaxWidth().widthIn(max = 900.dp).padding(horizontal = 16.dp),
-            placeholder = { Text("Search an anime (e.g. Frieren)", color = Mc.Text3) },
+            placeholder = { Text("Type an anime (e.g. zero no)", color = Mc.Text3) },
             leadingIcon = { Icon(Icons.Rounded.Search, null, tint = Mc.Text3) },
             trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, "Clear", tint = Mc.Text3) } },
             singleLine = true, shape = RoundedCornerShape(12.dp),
@@ -124,18 +130,19 @@ fun MusicScreen() {
             val list = results
             if (list != null && !searching && list.isEmpty()) item { EmptyBox("Nothing found", "Try the Japanese or the English name, or a shorter part of it.", height = 180.dp) }
             if (list != null) items(list, key = { it.id }) { a ->
-                Row(Modifier.fillMaxWidth().clickable { open = a }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(width = 50.dp, height = 70.dp).clip(RoundedCornerShape(6.dp)).background(Mc.Card2)) { if (a.cover.isNotEmpty()) Cover(a.cover, Modifier.fillMaxSize()) }
+                Row(Modifier.fillMaxWidth().clickable { open = a }.padding(horizontal = 16.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(width = 46.dp, height = 64.dp).clip(RoundedCornerShape(6.dp)).background(Mc.Card2)) { if (a.cover.isNotEmpty()) Cover(a.cover, Modifier.fillMaxSize()) }
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(a.english, color = Mc.Text, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        if (a.name != a.english) Text(a.name, color = Mc.Text3, fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(a.title, color = Mc.Text, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(listOfNotNull(a.name.takeIf { it != a.title && it.isNotEmpty() }, a.format.ifEmpty { null }, a.year?.toString()).joinToString(" · "),
+                            color = Mc.Text3, fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
             if (results == null && !searching) item {
-                Text("Search an anime for its full openings, endings and other songs (no TV size), and its soundtrack albums. " +
-                    "Everything plays as sound only and keeps playing on other tabs and with the app in the background.",
+                Text("Type an anime and pick it: play all its openings and endings in full (this season or every season in one " +
+                    "list), or its soundtrack albums. Everything plays as sound only and keeps playing on other tabs and with the app in the background.",
                     color = Mc.Text3, fontSize = 12.5.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
             }
         }
@@ -167,31 +174,43 @@ private fun RadioCard() {
     }
 }
 
-/** One anime: its full songs (filters: all, OP, ED, other songs) and soundtrack albums. */
+/** One anime: its openings and endings (this season or all seasons), and soundtrack albums. */
 @Composable
 private fun AnimeMusic(a: MusicAnime, onBack: () -> Unit) {
     androidx.activity.compose.BackHandler(onBack = onBack)
-    var songs by remember(a.id) { mutableStateOf<List<Track>?>(null) }
+    var seasons by remember(a.id) { mutableStateOf<List<MusicAnime>?>(null) }
+    var own by remember(a.id) { mutableStateOf<List<Track>?>(null) }
+    var every by remember(a.id) { mutableStateOf<List<Track>?>(null) }
     var albums by remember(a.id) { mutableStateOf<List<Album>?>(null) }
     var error by remember(a.id) { mutableStateOf<String?>(null) }
+    var allSeasons by rememberSaveable(a.id) { mutableStateOf(false) }
     var filter by rememberSaveable(a.id) { mutableStateOf("All") }
     var album by remember(a.id) { mutableStateOf<Album?>(null) }
+    var gathering by remember(a.id) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(a.id) {
         coroutineScope {
-            val s = async { runCatching { Music.songs(a) } }
-            val al = async { runCatching { Music.albums(a.english, a.name) }.getOrDefault(emptyList()) }
-            songs = s.await().onFailure { error = "Couldn't load the songs: ${it.message}" }.getOrDefault(emptyList())
-            albums = al.await()
+            launch { own = runCatching { Music.songs(a) }.onFailure { error = "Couldn't load the songs: ${it.message}" }.getOrDefault(emptyList()) }
+            launch { albums = runCatching { Music.albums(a.english, a.name, a.native) }.getOrDefault(emptyList()) }
+            launch {
+                val s = runCatching { Music.seasons(a) }.getOrDefault(listOf(a))
+                seasons = s
+                // every season's songs, filled in season by season
+                val acc = ArrayList<Track>()
+                for (x in s) { acc += runCatching { Music.songs(x) }.getOrDefault(emptyList()); every = acc.distinctBy { Music.songKey(it) } }
+                every = acc.distinctBy { Music.songKey(it) }
+            }
         }
     }
     val al = album
     if (al != null) { AlbumPage(al, a) { album = null }; return }
-    val all = songs.orEmpty()
-    val shown = when (filter) { "OP" -> all.filter { it.kind == "OP" }; "ED" -> all.filter { it.kind == "ED" }; "Other" -> all.filter { it.kind == "Song" }; else -> all }
+    val base = (if (allSeasons) every else own).orEmpty()
+    val shown = when (filter) { "OP" -> base.filter { it.kind == "OP" }; "ED" -> base.filter { it.kind == "ED" }; else -> base }
+    val loading = if (allSeasons) every == null || (seasons?.size ?: 0) > shown.map { it.season }.distinct().size && every?.size != base.size else own == null
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(top = 6.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = Mc.Text2) }
-            Text(a.english, color = Mc.Text, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text(a.title, color = Mc.Text, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
@@ -199,13 +218,14 @@ private fun AnimeMusic(a: MusicAnime, onBack: () -> Unit) {
                     Box(Modifier.size(width = 84.dp, height = 118.dp).clip(RoundedCornerShape(8.dp)).background(Mc.Card2)) { if (a.cover.isNotEmpty()) Cover(a.cover, Modifier.fillMaxSize()) }
                     Spacer(Modifier.width(14.dp))
                     Column {
-                        if (a.name != a.english) Text(a.name, color = Mc.Text3, fontSize = 13.sp, maxLines = 2)
+                        Text(listOfNotNull(a.name.takeIf { it != a.title && it.isNotEmpty() }, a.format.ifEmpty { null }, a.year?.toString()).joinToString(" · "),
+                            color = Mc.Text3, fontSize = 13.sp, maxLines = 2)
                         Text(when {
-                            songs == null -> "Looking for full songs…"
-                            all.isEmpty() -> "No full songs found"
-                            else -> "${all.size} full song${if (all.size == 1) "" else "s"}"
-                        } + (albums?.let { if (it.isNotEmpty()) " · ${it.size} soundtrack album${if (it.size == 1) "" else "s"}" else "" } ?: ""),
-                            color = Mc.Text2, fontSize = 13.sp)
+                            base.isEmpty() && loading -> "Looking for its songs…"
+                            base.isEmpty() -> "No openings or endings listed"
+                            else -> base.count { it.kind == "OP" }.let { "$it opening" + if (it == 1) "" else "s" } + " · " + base.count { it.kind == "ED" }.let { "$it ending" + if (it == 1) "" else "s" } +
+                                if (allSeasons) " · ${seasons?.size ?: 1} seasons" else ""
+                        }, color = Mc.Text2, fontSize = 13.sp)
                         Spacer(Modifier.height(10.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Pill("Play", Icons.Rounded.PlayArrow, enabled = shown.isNotEmpty()) { Music.player.play(shown) }
@@ -214,31 +234,57 @@ private fun AnimeMusic(a: MusicAnime, onBack: () -> Unit) {
                     }
                 }
             }
-            if (all.isNotEmpty()) item {
-                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(listOf("All" to all.size, "OP" to all.count { it.kind == "OP" }, "ED" to all.count { it.kind == "ED" }, "Other" to all.count { it.kind == "Song" }).filter { it.second > 0 || it.first == "All" }) { (f, n) ->
-                        Chip(when (f) { "All" -> "All songs · $n"; "OP" -> "Openings · $n"; "ED" -> "Endings · $n"; else -> "Other songs · $n" }, filter == f) { filter = f }
+            item {
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item { Chip("This season", !allSeasons) { allSeasons = false } }
+                    item { Chip("All seasons" + (seasons?.let { " · ${it.size}" } ?: ""), allSeasons) { allSeasons = true } }
+                }
+            }
+            if (base.isNotEmpty()) item {
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(listOf("All" to base.size, "OP" to base.count { it.kind == "OP" }, "ED" to base.count { it.kind == "ED" }).filter { it.second > 0 || it.first == "All" }) { (f, n) ->
+                        Chip(when (f) { "All" -> "Openings & endings · $n"; "OP" -> "Openings · $n"; else -> "Endings · $n" }, filter == f) { filter = f }
                     }
                 }
             }
-            if (songs == null) item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Mc.Blue) } }
             error?.let { e -> item { Text(e, color = Mc.Orange, modifier = Modifier.padding(16.dp)) } }
-            itemsIndexed(shown, key = { _, t -> t.id }) { i, t -> TrackRow(t) { Music.player.play(shown, i) } }
+            var lastSeason = ""
+            shown.forEachIndexed { i, t ->
+                if (allSeasons && t.season != lastSeason) {
+                    lastSeason = t.season
+                    item(key = "s:" + t.season + i) { Text(t.season, color = Mc.Text, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 2.dp)) }
+                }
+                item(key = t.id) { TrackRow(t) { Music.player.play(shown, i) } }
+            }
+            if (loading) item { Box(Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Mc.Blue, modifier = Modifier.size(28.dp)) } }
             val als = albums.orEmpty()
             if (als.isNotEmpty()) {
-                item { Text("Soundtrack albums (archive.org)", color = Mc.Text, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, top = 18.dp, bottom = 4.dp)) }
+                item {
+                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Soundtracks & albums · ${als.size}", color = Mc.Text, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        // every album's tracks in one list (up to 12 albums)
+                        Pill(if (gathering) "Loading…" else "Play all albums", Icons.Rounded.PlayArrow, enabled = !gathering) {
+                            gathering = true
+                            scope.launch {
+                                val all = ArrayList<Track>()
+                                for (x in als.take(12)) all += runCatching { Music.albumTracks(x, a.title, a.cover) }.getOrDefault(emptyList())
+                                gathering = false
+                                if (all.isNotEmpty()) Music.player.play(all)
+                            }
+                        }
+                    }
+                }
                 items(als, key = { "al:" + it.id }) { b ->
                     Row(Modifier.fillMaxWidth().clickable { album = b }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.Album, null, tint = Mc.Blue)
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(b.title, color = Mc.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text("${b.downloads} plays on archive.org", color = Mc.Text3, fontSize = 12.sp)
+                            Text(if (b.source == "youtube") "YouTube Music" + (if (b.artist.isNotEmpty()) " · ${b.artist}" else "") else "archive.org · ${b.downloads} plays",
+                                color = Mc.Text3, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
-            } else if (albums != null && songs != null) item {
-                Text("No soundtrack albums found for it on archive.org.", color = Mc.Text3, fontSize = 12.5.sp, modifier = Modifier.padding(16.dp))
             }
         }
     }
@@ -249,7 +295,7 @@ private fun AlbumPage(b: Album, a: MusicAnime, onBack: () -> Unit) {
     androidx.activity.compose.BackHandler(onBack = onBack)
     var tracks by remember(b.id) { mutableStateOf<List<Track>?>(null) }
     var error by remember(b.id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(b.id) { tracks = runCatching { Music.albumTracks(b, a.english.ifEmpty { a.name }, a.cover) }.onFailure { error = "Couldn't open the album: ${it.message}" }.getOrDefault(emptyList()) }
+    LaunchedEffect(b.id) { tracks = runCatching { Music.albumTracks(b, a.title, a.cover) }.onFailure { error = "Couldn't open the album: ${it.message}" }.getOrDefault(emptyList()) }
     val list = tracks.orEmpty()
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(top = 6.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -259,7 +305,7 @@ private fun AlbumPage(b: Album, a: MusicAnime, onBack: () -> Unit) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Pill("Play", Icons.Rounded.PlayArrow, enabled = list.isNotEmpty()) { Music.player.play(list) }
             Pill("Shuffle", Icons.Rounded.Shuffle, enabled = list.size > 1) { Music.player.play(list, list.indices.random(), shuffled = true) }
-            if (list.isNotEmpty()) Text("${list.size} tracks · ${list.groupingBy { it.quality.substringBefore(' ') }.eachCount().entries.joinToString { "${it.value} ${it.key}" }}",
+            if (list.isNotEmpty()) Text("${list.size} tracks · " + if (b.source == "youtube") "YouTube Music, full tracks" else list.groupingBy { it.quality.substringBefore(' ') }.eachCount().entries.joinToString { "${it.value} ${it.key}" },
                 color = Mc.Text3, fontSize = 12.sp)
         }
         when {
@@ -286,7 +332,7 @@ private fun TrackRow(t: Track, onClick: () -> Unit) {
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(t.title, color = if (on) Mc.Blue else Mc.Text, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(listOfNotNull(t.artist.ifEmpty { null }, t.quality.ifEmpty { null }).joinToString(" · "), color = Mc.Text3, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(listOfNotNull(t.artist.ifEmpty { null }, (if (on) now?.quality else null)?.ifEmpty { null } ?: t.quality.ifEmpty { null } ?: if (t.url.isEmpty() && !t.live) "full song · YouTube" else null).joinToString(" · "), color = Mc.Text3, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (t.durationS > 0) Text("%d:%02d".format(t.durationS / 60, t.durationS % 60), color = Mc.Text3, fontSize = 12.sp)
     }

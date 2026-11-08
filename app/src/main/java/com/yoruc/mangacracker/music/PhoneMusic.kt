@@ -12,7 +12,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.common.PlaybackException
+import android.widget.Toast
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
@@ -23,8 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * The Music tab's player on the phone: one ExoPlayer for the app (audio only: kara.moe's music videos play as sound,
- * their picture is never decoded), its queue = the list, Android's shuffle / repeat. [MusicService] puts it in a media
+ * The Music tab's player on the phone: one ExoPlayer for the app (audio only), its queue = the list, Android's shuffle / repeat. [MusicService] puts it in a media
  * session, so it keeps playing in the background and with the screen off, with play / pause / next in the
  * notification and on the lock screen; it pauses for calls and other apps' sound (audio focus) and when headphones
  * come out.
@@ -54,9 +56,30 @@ object PhoneMusic : MusicPlayer {
 
     fun init(context: Context) { app = context.applicationContext }
 
+    /** Its own plain client: YouTube's, archive.org's and the radio's audio need none of the app's site rules. */
+    private val net = okhttp3.OkHttpClient.Builder().build()
+    /** Songs in a row that couldn't be played: past the whole queue it stops skipping. */
+    private var failures = 0
+
+    /**
+     * Songs from YouTube go in as "music://song/<id>": the player asks for the real address just before it streams the
+     * song ([Music.resolve], on its loading thread), so addresses never go stale in a long queue.
+     */
+    private val sources = ResolvingDataSource.Factory(OkHttpDataSource.Factory(net)) { spec ->
+        if (spec.uri.scheme != "music") return@Factory spec
+        val id = Uri.decode(spec.uri.lastPathSegment.orEmpty())
+        val t = Music.known[id] ?: _queue.value.firstOrNull { it.id == id } ?: throw java.io.IOException("Unknown song")
+        val r = Music.resolve(t)
+        main.post {
+            if (_now.value?.id == r.id) _now.value = r.copy(url = "")
+            _queue.value = _queue.value.map { if (it.id == r.id) it.copy(quality = r.quality, durationS = r.durationS) else it }
+        }
+        spec.withUri(Uri.parse(r.url))
+    }
+
     /** The player (made on first use, on the main thread). */
     fun player(): ExoPlayer = exo ?: ExoPlayer.Builder(app)
-        .setMediaSourceFactory(DefaultMediaSourceFactory(OkHttpDataSource.Factory(Http.client)))
+        .setMediaSourceFactory(DefaultMediaSourceFactory(sources))
         .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
         .setHandleAudioBecomingNoisy(true)
         .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -68,8 +91,19 @@ object PhoneMusic : MusicPlayer {
                 override fun onIsPlayingChanged(isPlaying: Boolean) { _playing.value = isPlaying || (p.playWhenReady && p.playbackState == Player.STATE_BUFFERING) }
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { _playing.value = playWhenReady && p.playbackState != Player.STATE_ENDED }
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { sync() }
+                override fun onIsLoadingChanged(isLoading: Boolean) { if (!isLoading && p.playerError == null && p.playbackState == Player.STATE_READY) failures = 0 }
                 override fun onPlaybackStateChanged(state: Int) { if (state == Player.STATE_ENDED) _playing.value = false; sync() }
                 override fun onShuffleModeEnabledChanged(on: Boolean) { _shuffle.value = on }
+                // a song that can't be played (not found on YouTube, an address gone): say so, go on with the next
+                override fun onPlayerError(error: PlaybackException) {
+                    val t = _now.value
+                    t?.let { Music.forget(it.id) }
+                    Toast.makeText(app, "Couldn't play \"${t?.title ?: "this song"}\"", Toast.LENGTH_SHORT).show()
+                    if (++failures < p.mediaItemCount && p.mediaItemCount > 1) {
+                        if (p.hasNextMediaItem()) p.seekToNextMediaItem() else p.seekTo(0, 0L)
+                        p.prepare(); p.play()
+                    } else failures = 0
+                }
                 override fun onRepeatModeChanged(mode: Int) {
                     _repeat.value = when (mode) { Player.REPEAT_MODE_ONE -> REPEAT_ONE; Player.REPEAT_MODE_OFF -> REPEAT_OFF; else -> REPEAT_ALL }
                 }
@@ -101,7 +135,7 @@ object PhoneMusic : MusicPlayer {
     }
 
     private fun item(t: Track): MediaItem = MediaItem.Builder()
-        .setMediaId(t.id).setUri(Uri.parse(t.url))
+        .setMediaId(t.id).setUri(if (t.url.isEmpty()) Uri.parse("music://song/" + Uri.encode(t.id)) else Uri.parse(t.url))
         .setMediaMetadata(MediaMetadata.Builder().setTitle(t.title).setArtist(t.artist.ifEmpty { null }).setAlbumTitle(t.anime)
             .setArtworkUri(t.cover.takeIf { it.isNotEmpty() }?.let(Uri::parse)).build())
         .build()
