@@ -117,6 +117,8 @@ data class Settings(
     val videoQuality: Int = -1,
     /** The player's own volume (0..1, on top of the phone's media volume) and mute. */
     val videoVolume: Float = 1f,
+    /** The Music tab's volume, 0..1. */
+    val musicVolume: Float = 0.7f,
     val videoMuted: Boolean = false,
     /** Offline downloads: only on Wi-Fi (unmetered); delete a downloaded chapter once it is read; HLS video height. */
     val downloadWifiOnly: Boolean = true,

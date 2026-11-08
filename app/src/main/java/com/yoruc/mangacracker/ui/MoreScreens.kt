@@ -299,6 +299,8 @@ fun SettingsScreen(nav: Nav) {
 
         item { SectionHeader("Reader") }
         item { Box(Modifier.padding(horizontal = 0.dp)) { ReaderSettings(inReader = false) } }
+        item { SectionHeader("Music") }
+        item { MusicSettings() }
 
         item { SectionHeader("Downloads", action = "Open", onAction = { nav.downloads() }) }
         item {

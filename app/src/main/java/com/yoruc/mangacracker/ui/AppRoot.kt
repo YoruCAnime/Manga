@@ -17,6 +17,7 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.SmartDisplay
+import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -35,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -55,6 +57,7 @@ private val tabs = listOf(
     Tab("library", "Library", Icons.Rounded.CollectionsBookmark),
     Tab("sources", "Browse", Icons.Rounded.Explore),
     Tab("videos", "Videos", Icons.Rounded.SmartDisplay),
+    Tab("music", "Music", Icons.Rounded.LibraryMusic),
     Tab("updates", "Updates", Icons.Rounded.NewReleases),
     Tab("more", "More", Icons.Rounded.MoreHoriz),
 )
@@ -112,6 +115,9 @@ fun AppRoot(open: String?) {
     val route = entry?.destination?.route ?: "home"
     val updates by Repo.updates.collectAsState()
     val showBar = tabs.any { it.route == route }
+    // the music's bar: on every screen but the reader and the video player, while something plays
+    val musicNow by com.yoruc.mangacracker.music.Music.player.now.collectAsState()
+    val showMusic = musicNow != null && !route.startsWith("reader") && !route.startsWith("player")
     val appUpd by AppUpdate.state.collectAsState()
     val settings by Repo.settings.collectAsState()
     var updateAsked by remember { mutableStateOf(open == "appupdate") }
@@ -134,6 +140,8 @@ fun AppRoot(open: String?) {
     Scaffold(
         containerColor = Mc.Bg,
         bottomBar = {
+            androidx.compose.foundation.layout.Column {
+            if (showMusic) MusicBar(if (showBar) Modifier else Modifier.navigationBarsPadding())
             if (showBar) {
                 NavigationBar(containerColor = Mc.Card, tonalElevation = 0.dp) {
                     tabs.forEach { t ->
@@ -149,7 +157,7 @@ fun AppRoot(open: String?) {
                                     BadgedBox(badge = { Badge(containerColor = Mc.Pink) }) { Icon(t.icon, t.label) }
                                 } else Icon(t.icon, t.label)
                             },
-                            label = { Text(t.label) },
+                            label = { Text(t.label, maxLines = 1, softWrap = false, fontSize = 11.sp) },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = Mc.Blue, selectedTextColor = Mc.Blue,
                                 indicatorColor = Mc.Blue.copy(alpha = 0.12f),
@@ -159,9 +167,10 @@ fun AppRoot(open: String?) {
                     }
                 }
             }
+            }
         },
     ) { pad ->
-        Box(Modifier.fillMaxSize().padding(bottom = if (showBar) pad.calculateBottomPadding() else 0.dp)) {
+        Box(Modifier.fillMaxSize().padding(bottom = if (showBar || showMusic) pad.calculateBottomPadding() else 0.dp)) {
             NavHost(
                 c, startDestination = "home",
                 enterTransition = { fadeIn(tween(180)) + slideInHorizontally(tween(220)) { it / 12 } },
@@ -173,6 +182,7 @@ fun AppRoot(open: String?) {
                 composable("library") { LibraryScreen(nav) }
                 composable("sources") { SourcesScreen(nav) }
                 composable("videos") { VideosScreen(nav) }
+                composable("music") { MusicScreen() }
                 composable("player/{key}") { b -> PlayerScreen(nav, b.arguments?.getString("key") ?: "") }
                 composable("vseries/{key}") { b -> VideoSeriesScreen(nav, b.arguments?.getString("key") ?: "") }
                 composable("updates") { UpdatesScreen(nav) }
