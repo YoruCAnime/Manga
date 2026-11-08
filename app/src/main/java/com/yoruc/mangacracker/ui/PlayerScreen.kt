@@ -253,6 +253,8 @@ fun PlayerScreen(nav: Nav, key: String) {
     var volume by remember { mutableFloatStateOf(Repo.settings.value.videoVolume) }
     var muted by remember { mutableStateOf(Repo.settings.value.videoMuted) }
     var landscape by remember { mutableStateOf(true) }
+    // a video takes the sound: the Music tab's player pauses
+    LaunchedEffect(Unit) { if (com.yoruc.mangacracker.music.Music.ready) com.yoruc.mangacracker.music.Music.player.pause() }
     /** Loop: the video starts again at its end (no Up next); stays on for the next videos until switched off */
     var looping by remember { mutableStateOf(false) }
     var seekBadge by remember { mutableStateOf<Pair<Int, Int>?>(null) } // side, seconds

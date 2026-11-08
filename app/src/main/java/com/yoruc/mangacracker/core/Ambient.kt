@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Sounds while reading: a quiet loop under the pages (rain, café, lo-fi, fireplace, night crickets, or the user's
+ * Sounds while reading: a quiet loop under the pages (rain, café, fireplace, night crickets, or the user's
  * own audio file). One player for the app; it fades in and out, gives way to calls / other music (audio focus), pauses
  * while the app is in the background and stops when the reader closes. The built-in loops are made from scratch by
  * the sounds script (no recordings), 60 s each and seamless.
@@ -34,12 +34,6 @@ object Ambient {
         Sound("cafe", "Café", R.raw.ambient_cafe),
         Sound("fire", "Fireplace", R.raw.ambient_fire),
         Sound("night", "Night crickets", R.raw.ambient_night),
-        // lo-fi loops, each its own chords / tempo / instruments
-        Sound("lofi", "Lo-fi chill", R.raw.ambient_lofi),
-        Sound("lofi_night", "Lo-fi night drive", R.raw.ambient_lofi_night),
-        Sound("lofi_sunny", "Lo-fi sunny day", R.raw.ambient_lofi_sunny),
-        Sound("lofi_rainy", "Lo-fi rainy window", R.raw.ambient_lofi_rainy),
-        Sound("lofi_jazz", "Lo-fi study jazz", R.raw.ambient_lofi_jazz),
     )
 
     private val main = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)

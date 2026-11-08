@@ -54,7 +54,7 @@ below.
   - **Night filter** (moon button, or reader settings): darkens the pages and/or gives them a warm tint, each with
     its own slider, remembered. It never touches the phone's own brightness.
   - **Sounds while reading** (🎧 in the reader bar, or reader settings): Rain, Café, Fireplace, Night crickets,
-    five lo-fi loops (chill, night drive, sunny day, rainy window, study jazz), or **your own audio file**, with its own volume. The built-in sounds are made for the app (60-second
+    or **your own audio file** (music: the Music tab), with its own volume. The built-in sounds are made for the app (60-second
     loops that repeat without a seam). It fades in, pauses while the app is in the background or a call / other
     music starts, and fades out when you leave the reader.
   - **Two pages side by side** (reader settings, for doujins / galleries): with the phone turned sideways, pages show
@@ -95,6 +95,15 @@ below.
   anywhere for 2×, speeds 0.25× to 3×, previous / next episode of the same series (and "Up next" at the end),
   subtitles on / off, quality for streams with several sizes (**Best** = the highest there is, 1080p on these sites, or at most 1080p / 720p / 480p; your pick is remembered), **Snapshot** (the current frame to Pictures/MangaCracker/Snapshots) and
   **Record** (tap to start, tap to stop: that part is saved as an MP4 clip to Movies/MangaCracker).
+- **Music** (own tab): search an anime and play its **full** openings, endings and other songs (inserts, character /
+  image songs; never TV size) from kara.moe (320 kbps MP3s, or full music videos played as sound only), all of them or
+  only Openings / Endings / Other songs, in order or **Shuffle**; and its **soundtrack albums** from archive.org (per
+  track the best file there is: FLAC, else the highest MP3, the quality shown on each track). **Random anime songs**:
+  the LISTEN.moe radio (Opus 192 kbps) with what's on now. Covers from AniList. A bar at the bottom (every screen but
+  the reader and the video player) shows what plays, with previous / play-pause / next, stop, a line to jump in the
+  song, and **Loop**: the whole list starts over after the last song (default), or this song again and again, or no
+  loop. It keeps playing on other tabs and with the app in the background and with the screen off (play / pause / next in the notification and on the lock screen); a video pauses it. Its own volume
+  in Settings › Music. Not every song has a full version there (e.g. Frieren: 3 full songs).
 - **GIF maker** (the GIF button in the player): tap GIF to start capturing (red dot + timer, up to 30 s), tap again
   to stop. A panel opens at the bottom of the player (no pop-up): drag the two handles to pick the part you want
   (up to 30 s; the video behind shows the frame under the handle, small pictures show the start and the end), pick

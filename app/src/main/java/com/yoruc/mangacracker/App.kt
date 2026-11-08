@@ -22,6 +22,8 @@ class App : Application(), ImageLoaderFactory {
         AppUpdate.init(this)
         com.yoruc.mangacracker.video.VideoRepo.init(this)
         com.yoruc.mangacracker.core.Stats.init(this)
+        com.yoruc.mangacracker.music.PhoneMusic.init(this)
+        com.yoruc.mangacracker.music.Music.player = com.yoruc.mangacracker.music.PhoneMusic
         com.yoruc.mangacracker.sources.ComixBridge.init(this)
         com.yoruc.mangacracker.core.Downloads.init(this)
         getSystemService(NotificationManager::class.java).createNotificationChannels(listOf(
