@@ -227,15 +227,15 @@ fun DetailsScreen(nav: Nav, key: String) {
                 Column(Modifier.weight(1f).padding(top = 64.dp)) {
                     Text(shown.title, color = Mc.Text, fontWeight = FontWeight.Bold, fontSize = 19.sp, lineHeight = 24.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.height(4.dp))
-                    val people = (d?.authors.orEmpty() + d?.artists.orEmpty()).distinct()
-                    if (people.isNotEmpty()) {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            people.take(6).forEach { p ->
-                                Text(p, color = Mc.Blue, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.clickable { nav.browse(src.id, src.artistQuery(p)) }.padding(vertical = 2.dp))
-                            }
-                        }
+                    // who made it, each name opening their other works on this site
+                    val authors = d?.authors.orEmpty(); val artists = d?.artists.orEmpty()
+                    val circles = src.authorsAreGroups
+                    if (authors.isNotEmpty() && !circles && authors.toSet() == artists.toSet()) PeopleRow("Story & art", authors) { nav.browse(src.id, src.artistQuery(it)) }
+                    else {
+                        if (authors.isNotEmpty()) PeopleRow(if (circles) "Circle" else "Author", authors) { nav.browse(src.id, if (circles) src.groupQuery(it) else src.artistQuery(it)) }
+                        if (artists.isNotEmpty()) PeopleRow("Artist", artists) { nav.browse(src.id, src.artistQuery(it)) }
                     }
+                    if (d != null && authors.isEmpty() && artists.isEmpty()) Text("Author not listed on this site", color = Mc.Text3, fontSize = 12.5.sp)
                     val meta = listOfNotNull(src.name, d?.type?.ifEmpty { null }, d?.status?.ifEmpty { null },
                         d?.pageCount?.takeIf { it > 0 }?.let { "$it pages" }, d?.rating?.ifEmpty { null })
                     Text(meta.joinToString(" · "), color = Mc.Text3, fontSize = 12.5.sp)
@@ -430,6 +430,7 @@ fun DetailsScreen(nav: Nav, key: String) {
                                 Notes.show(Downloads.enqueueChapters(ctx, shown, listOf(c), d)); chapterMenu = null
                             })
                         }
+                        DropdownMenuItem(text = { Text("Open in new tab") }, onClick = { com.yoruc.mangacracker.core.Tabs.addChapter(shown, c); chapterMenu = null })
                         DropdownMenuItem(text = { Text(if (st?.read == true) "Mark unread" else "Mark read") }, onClick = {
                             Repo.setRead(ref, listOf(c), st?.read != true); chapterMenu = null
                         })
@@ -492,4 +493,19 @@ private fun RoundIcon(onClick: () -> Unit, content: @Composable () -> Unit) {
         Modifier.padding(4.dp).size(40.dp).clip(CircleShape).background(Color(0x55000000)).clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) { content() }
+}
+
+/** One line of the header: what they did, then their names; a name opens their other works. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun PeopleRow(label: String, names: List<String>, open: (String) -> Unit) {
+    androidx.compose.foundation.layout.Row(Modifier.padding(vertical = 1.dp)) {
+        Text(label, color = Mc.Text3, fontSize = 12.5.sp, modifier = Modifier.padding(top = 4.dp, end = 7.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            names.take(6).forEach { p ->
+                Text(p, color = Mc.Blue, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clickable { open(p) }.padding(vertical = 3.dp))
+            }
+        }
+    }
 }

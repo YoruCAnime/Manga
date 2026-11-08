@@ -184,7 +184,7 @@ fun LibraryScreen(nav: Nav) {
                         badge = if (unread > 0) "$unread new" else null,
                         progress = h?.state?.percent?.let { it / 100f },
                         showSource = sourceFilter.isEmpty() && usedSources.size > 1,
-                        onLongClick = { if (h != null) nav.reader(e.ref, h.chapter) },
+                        menu = listOfNotNull(h?.let { last -> "Continue reading" to { nav.reader(e.ref, last.chapter) } }),
                     ) { nav.details(e.ref) }
                 }
             }

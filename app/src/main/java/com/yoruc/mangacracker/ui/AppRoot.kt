@@ -97,6 +97,37 @@ class Nav(val c: NavHostController) {
     fun settings() = c.navigate("settings")
     fun sourceTest() = c.navigate("sourcetest")
     fun exLogin() = c.navigate("exlogin") { launchSingleTop = true }
+    /** Shows a tab: everything above Home goes (only the tab on screen is loaded); it picks up from its saved place. */
+    fun openTab(t: com.yoruc.mangacracker.core.OpenTab) {
+        val tabs = com.yoruc.mangacracker.core.Tabs
+        val route = tabs.latestRoute(t)
+        if (tabs.active.value == t.id && tabs.here.value == route) return
+        t.manga?.let { Repo.remember(it) }
+        t.video?.let { com.yoruc.mangacracker.video.VideoRepo.remember(it) }
+        tabs.activate(t.id)
+        val start = c.graph.findStartDestination().id
+        // a main screen keeps its scroll for coming back; a title page is let go
+        val keep = tabs.here.value == null
+        val m = t.manga
+        if (m != null && route.startsWith("reader/")) {
+            // Back from the reader goes to the title's page, as it always does
+            c.navigate(tabs.detailsRoute(m.key)) { popUpTo(start) { saveState = keep } }
+            c.navigate(route)
+        } else c.navigate(route) { popUpTo(start) { saveState = keep } }
+    }
+    fun closeTab(t: com.yoruc.mangacracker.core.OpenTab) {
+        val tabs = com.yoruc.mangacracker.core.Tabs
+        val showing = tabs.active.value == t.id
+        val next = tabs.close(t.id)
+        if (next != null) openTab(next) else if (showing) home()
+    }
+    fun closeAllTabs() {
+        val tabs = com.yoruc.mangacracker.core.Tabs
+        val showing = tabs.active.value != 0L
+        tabs.clear()
+        if (showing) home()
+    }
+    fun home() { c.popBackStack("home", false) }
     fun tab(route: String) = c.navigate(route) {
         popUpTo(c.graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
@@ -121,6 +152,10 @@ fun AppRoot(open: String?) {
     val appUpd by AppUpdate.state.collectAsState()
     val settings by Repo.settings.collectAsState()
     var updateAsked by remember { mutableStateOf(open == "appupdate") }
+    LaunchedEffect(entry) {
+        val a = entry?.arguments
+        com.yoruc.mangacracker.core.Tabs.noteScreen(entry?.destination?.route, a?.getString("key").orEmpty(), a?.getString("chapter").orEmpty(), a?.getString("grid") == "1")
+    }
 
     LaunchedEffect(open) {
         if (open == "updates") nav.tab("updates")
@@ -205,6 +240,11 @@ fun AppRoot(open: String?) {
                 composable("othersites/{key}") { b -> OtherSitesScreen(nav, b.arguments?.getString("key") ?: "") }
                 composable("downloads") { DownloadsScreen(nav) }
             }
+            // the open tabs: a small button over every screen but the reader and player (those have it in their top bars)
+            if (!route.startsWith("reader") && !route.startsWith("player")) TabsPill(
+                Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(end = 12.dp, bottom = 12.dp).then(if (showBar) Modifier else Modifier.navigationBarsPadding())
+            )
+            TabsSheet(nav)
             // in-window notes (Undo etc.), above the bottom bar
             NoteHost(Modifier.align(androidx.compose.ui.Alignment.BottomCenter).then(if (showBar) Modifier else Modifier.navigationBarsPadding()))
         }

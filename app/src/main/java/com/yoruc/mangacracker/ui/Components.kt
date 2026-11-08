@@ -112,12 +112,19 @@ fun MangaCard(
     showSource: Boolean = false,
     /** Show how far the title is read (from history / progress). */
     readMark: Boolean = true,
-    onLongClick: (() -> Unit)? = null,
+    /** Extra lines in the menu when held down (there is always "Open in new tab"). */
+    menu: List<Pair<String, () -> Unit>> = emptyList(),
     onClick: () -> Unit,
 ) {
     val marks by ReadMarks.state.collectAsState()
     val mark = if (readMark) marks[ref.key] else null
-    Column(modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
+    val held = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val heldCtx = androidx.compose.ui.platform.LocalContext.current
+    Column(modifier.combinedClickable(onClick = onClick, onLongClick = { held.value = true })) {
+        androidx.compose.material3.DropdownMenu(held.value, { held.value = false }, containerColor = Mc.Card2) {
+            menu.forEach { (label, act) -> androidx.compose.material3.DropdownMenuItem(text = { Text(label) }, onClick = { held.value = false; act() }) }
+            androidx.compose.material3.DropdownMenuItem(text = { Text("Open in new tab") }, onClick = { held.value = false; tabAdded(heldCtx, com.yoruc.mangacracker.core.Tabs.addManga(ref)) })
+        }
         Box(Modifier.fillMaxWidth().aspectRatio(ratio).clip(CardShape).background(Mc.Card)) {
             Cover(ref.cover, Modifier.fillMaxSize())
             Box(
