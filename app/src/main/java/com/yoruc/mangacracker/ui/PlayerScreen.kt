@@ -208,6 +208,8 @@ internal object PlayerTestHooks {
 @Composable
 fun PlayerScreen(nav: Nav, key: String) {
     val vm: PlayerVM = viewModel(key = "player-$key") { PlayerVM(key) }
+    // the next episode plays on the same screen: an open tab goes with it
+    androidx.compose.runtime.LaunchedEffect(vm.details?.ref?.key) { vm.details?.ref?.let { com.yoruc.mangacracker.core.Tabs.noteVideo(it) } }
     val src = vm.src ?: return
     val ctx = LocalContext.current
     val view = LocalView.current
@@ -583,6 +585,7 @@ fun PlayerScreen(nav: Nav, key: String) {
                         Text(listOfNotNull(r?.episode?.ifEmpty { null }?.let { "Episode $it" }, r?.lang?.let { com.yoruc.mangacracker.video.langName(it) }?.ifEmpty { null }, src.name).joinToString(" · "),
                             color = Color(0xCCFFFFFF), fontSize = 12.5.sp, maxLines = 1)
                     }
+                    TabsButton(Color.White)
                     if (d != null && d.stream.subs.isNotEmpty()) {
                         CtlIcon(if (settings.videoSubtitles) Icons.Rounded.ClosedCaption else Icons.Rounded.ClosedCaptionDisabled, "Subtitles") {
                             val on = !settings.videoSubtitles

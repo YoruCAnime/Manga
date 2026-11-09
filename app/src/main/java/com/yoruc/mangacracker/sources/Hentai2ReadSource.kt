@@ -197,6 +197,8 @@ object Hentai2ReadSource : Source {
     }
 
     override fun tagQuery(name: String): SearchQuery = SearchQuery(include = listOf(Tag(names[name.lowercase()] ?: name, name)))
+    override val authorsAreGroups get() = true
+    override fun groupQuery(name: String) = tagQuery(name)
 
     // ---------- details ----------
 

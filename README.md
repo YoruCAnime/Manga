@@ -247,6 +247,12 @@ Windows releases are tagged `windows-v<version>` and must be made with `--latest
 the release marked Latest, so a Windows release must never take that place. The Windows app's code is in `windows/`
 (built on its own, see [windows/README.md](windows/README.md)).
 
+## Tabs and who made it
+
+- **Tabs:** hold down on a cover, chapter or video and choose *Open in new tab*. The small button with a number shows your tabs: tap one to go there, swipe it away or press X to close it.
+- Only the tab on screen is loaded. The others keep your page or second, and come back after you restart the app.
+- **Author, Artist, Circle:** shown on each title's page. Tap a name to see their other works on that site.
+
 ## License
 
 GPL-3.0 (see LICENSE). The Music tab uses [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor)

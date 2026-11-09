@@ -21,6 +21,7 @@ class App : Application(), ImageLoaderFactory {
         Repo.init(this)
         AppUpdate.init(this)
         com.yoruc.mangacracker.video.VideoRepo.init(this)
+        com.yoruc.mangacracker.core.Tabs.init(this)
         com.yoruc.mangacracker.core.Stats.init(this)
         com.yoruc.mangacracker.music.PhoneMusic.init(this)
         com.yoruc.mangacracker.music.Music.player = com.yoruc.mangacracker.music.PhoneMusic

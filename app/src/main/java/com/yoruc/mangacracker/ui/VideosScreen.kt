@@ -369,13 +369,19 @@ fun VideoCard(v: VideoRef, w: WatchState?, onSeries: (() -> Unit)? = null, headi
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val favs by VideoRepo.favs.collectAsState()
     val fav = v.key in favs
+    val held = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).combinedClickable(
         onClick = onClick,
-        onLongClick = {
-            val on = VideoRepo.toggleFav(v)
-            android.widget.Toast.makeText(ctx, if (on) "Added to favourite videos" else "Removed from favourite videos", android.widget.Toast.LENGTH_SHORT).show()
-        },
+        onLongClick = { held.value = true },
     )) {
+        androidx.compose.material3.DropdownMenu(held.value, { held.value = false }, containerColor = Mc.Card2) {
+            androidx.compose.material3.DropdownMenuItem(text = { Text(if (fav) "Remove from favourites" else "Add to favourites") }, onClick = {
+                held.value = false
+                val on = VideoRepo.toggleFav(v)
+                android.widget.Toast.makeText(ctx, if (on) "Added to favourite videos" else "Removed from favourite videos", android.widget.Toast.LENGTH_SHORT).show()
+            })
+            androidx.compose.material3.DropdownMenuItem(text = { Text("Open in new tab") }, onClick = { held.value = false; tabAdded(ctx, com.yoruc.mangacracker.core.Tabs.addVideo(v)) })
+        }
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(Mc.Card)) {
             VideoCover(v, Modifier.fillMaxSize())
             if (v.lang.isNotEmpty()) Badge(v.lang, Modifier.align(Alignment.TopStart), when { v.lang == "EN" || v.lang.startsWith("SUB") -> Mc.Blue.copy(alpha = 0.9f); v.lang == "DUB" -> Mc.Pink.copy(alpha = 0.9f); else -> Color(0xCC000000) })

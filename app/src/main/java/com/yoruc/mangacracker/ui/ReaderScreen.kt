@@ -586,6 +586,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                     Text(ref.title, color = Mc.Text, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(cur?.first?.chapter?.name ?: "", color = Mc.Text3, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                TabsButton()
                 IconButton(onClick = { showSounds = true; overlay = false }) {
                     Icon(Icons.Rounded.Headphones, "Sounds while reading", tint = if (settings.readerSound != "") Mc.Blue else Mc.Text)
                 }

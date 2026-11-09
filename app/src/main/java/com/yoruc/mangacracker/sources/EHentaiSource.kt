@@ -151,6 +151,8 @@ object EHentaiSource : Source {
     }
 
     override fun artistQuery(name: String) = SearchQuery(include = listOf(Tag("artist:$name", name)))
+    override val authorsAreGroups get() = true
+    override fun groupQuery(name: String) = SearchQuery(include = listOf(Tag("group:$name", name)))
 
     override suspend fun tags(): List<Tag> = listOf(
         "female:big breasts", "female:sole female", "male:sole male", "female:stockings", "female:nakadashi", "female:glasses",
