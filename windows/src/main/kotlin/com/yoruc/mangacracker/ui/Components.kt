@@ -118,7 +118,7 @@ fun MangaCard(
 ) {
     val marks by ReadMarks.state.collectAsState()
     val mark = if (readMark) marks[ref.key] else null
-    Column(modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
+    Column(modifier.tabClick { added(com.yoruc.mangacracker.core.Tabs.addManga(ref)) }.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
         Box(Modifier.fillMaxWidth().aspectRatio(ratio).clip(CardShape).background(Mc.Card)) {
             Cover(ref.cover, Modifier.fillMaxSize())
             Box(

@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.yoruc.mangacracker"
-version = "1.0.10"
+version = "1.3.2"
 
 kotlin { jvmToolchain(21) }
 
@@ -22,6 +22,8 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jsoup:jsoup:1.18.3")
+    // the Music tab's full songs: YouTube Music search + audio streams (GPL-3, like this app)
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.9.0")
     implementation("com.microsoft.onnxruntime:onnxruntime:1.28.0")
@@ -48,7 +50,7 @@ compose.desktop {
             appResourcesRootDir.set(project.layout.projectDirectory.dir("appResources"))
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "MangaCracker"
-            packageVersion = "1.0.10"
+            packageVersion = "1.3.2"
             windows { menu = true; shortcut = true; perUserInstall = true; dirChooser = true; iconFile.set(project.file("appIcon/icon.ico")) }
             modules("java.net.http", "java.sql", "jdk.unsupported", "java.naming", "java.management", "jdk.management", "jdk.httpserver")
         }

@@ -8,11 +8,12 @@ object Sources {
         listOf(
             AtsuSource, ComixSource, NhentaiSource, EHentaiSource, DanbooruSource, GelbooruSource,
             HitomiSource, JestfulSource, Hentai20Source, Manhwa18NetSource, Manhwa18CcSource, Manga18ClubSource,
-            Hentai2ReadSource, HentaiFoxSource,
+            Hentai2ReadSource, HentaiFoxSource, NhentaiXxxSource,
         )
     }
 
     fun byId(id: String): Source? = all.firstOrNull { it.id == id }
 
-    fun enabled(): List<Source> = all.filter { it.id !in Repo.settings.value.disabledSources }
+    /** Switched on, and not waiting for an age confirmation: what Home, search-everywhere and the like may call. */
+    fun enabled(): List<Source> = Repo.settings.value.let { s -> all.filter { it.id !in s.disabledSources && (it.ageNotice == null || it.id in s.ageConfirmed) } }
 }

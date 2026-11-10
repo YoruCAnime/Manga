@@ -56,8 +56,11 @@ object WebCookieJar : CookieJar {
 
     private fun key(c: Cookie) = "${c.name}|${c.domain}|${c.path}"
 
-    private fun store(c: Cookie) {
-        all.removeAll { key(it) == key(c) }
+    // Several downloads save cookies at the same moment. Kotlin's removeAll { } walks the list by index and broke when
+    // another thread shrank it (crash.log 2026-11-08 / -10: "Index 22 out of bounds"), so: Java's removeIf (safe on
+    // this list) inside one lock, which also keeps a cookie from being added twice.
+    @Synchronized private fun store(c: Cookie) {
+        all.removeIf { key(it) == key(c) }
         if (c.expiresAt > System.currentTimeMillis()) all += c
         dirty = true
     }
@@ -86,13 +89,14 @@ object WebCookieJar : CookieJar {
     fun putAll(cookies: List<Cookie>) { cookies.forEach { store(it) }; flush() }
 
     /** Every cookie whose domain ends with one of [hosts] except [keep] names (sign out). */
-    fun clear(hosts: List<String>, keep: Set<String> = emptySet()) {
-        all.removeAll { c -> c.name !in keep && hosts.any { h -> c.domain == h || c.domain.endsWith(".$h") } }
+    @Synchronized fun clear(hosts: List<String>, keep: Set<String> = emptySet()) {
+        all.removeIf { c -> c.name !in keep && hosts.any { h -> c.domain == h || c.domain.endsWith(".$h") } }
         dirty = true
         flush()
     }
 
-    fun flush() {
+    /** One writer at a time: two threads sharing the .tmp file could save a half-written cookie file. */
+    @Synchronized fun flush() {
         val f = file ?: return
         if (!dirty) return
         dirty = false

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.SmartDisplay
+import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -68,6 +69,7 @@ private val tabs = listOf(
     Tab("library", "Library", Icons.Rounded.CollectionsBookmark),
     Tab("sources", "Browse", Icons.Rounded.Explore),
     Tab("videos", "Videos", Icons.Rounded.SmartDisplay),
+    Tab("music", "Music", Icons.Rounded.LibraryMusic),
     Tab("updates", "Updates", Icons.Rounded.NewReleases),
     Tab("more", "More", Icons.Rounded.MoreHoriz),
 )
@@ -107,6 +109,37 @@ class Nav(val c: NavHostController) {
     fun settings() = c.navigate("settings")
     fun sourceTest() = c.navigate("sourcetest")
     fun exLogin() = c.navigate("exlogin") { launchSingleTop = true }
+    /** Shows a tab: everything above Home goes (only the tab on screen is loaded); it picks up from its saved place. */
+    fun openTab(t: com.yoruc.mangacracker.core.OpenTab) {
+        val tabs = com.yoruc.mangacracker.core.Tabs
+        val route = tabs.latestRoute(t)
+        if (tabs.active.value == t.id && tabs.here.value == route) return
+        t.manga?.let { Repo.remember(it) }
+        t.video?.let { com.yoruc.mangacracker.video.VideoRepo.remember(it) }
+        tabs.activate(t.id)
+        val start = c.graph.findStartDestination().id
+        // a main screen keeps its scroll for coming back; a title page is let go
+        val keep = tabs.here.value == null
+        val m = t.manga
+        if (m != null && route.startsWith("reader/")) {
+            // Back from the reader goes to the title's page, as it always does
+            c.navigate(tabs.detailsRoute(m.key)) { popUpTo(start) { saveState = keep } }
+            c.navigate(route)
+        } else c.navigate(route) { popUpTo(start) { saveState = keep } }
+    }
+    fun closeTab(t: com.yoruc.mangacracker.core.OpenTab) {
+        val tabs = com.yoruc.mangacracker.core.Tabs
+        val showing = tabs.active.value == t.id
+        val next = tabs.close(t.id)
+        if (next != null) openTab(next) else if (showing) home()
+    }
+    fun closeAllTabs() {
+        val tabs = com.yoruc.mangacracker.core.Tabs
+        val showing = tabs.active.value != 0L
+        tabs.clear()
+        if (showing) home()
+    }
+    fun home() { c.popBackStack("home", false) }
     fun tab(route: String) = c.navigate(route) {
         popUpTo(c.graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
@@ -133,6 +166,10 @@ fun AppRoot(open: String?) {
     val updates by Repo.updates.collectAsState()
     val showBar = tabs.any { it.route == route }
     val settings by Repo.settings.collectAsState()
+    LaunchedEffect(entry) {
+        val a = entry?.arguments
+        com.yoruc.mangacracker.core.Tabs.noteScreen(entry?.destination?.route, a?.getString("key").orEmpty(), a?.getString("chapter").orEmpty(), a?.getString("grid") == "1")
+    }
 
     LaunchedEffect(open) {
         if (open == "updates") nav.tab("updates")
@@ -145,6 +182,65 @@ fun AppRoot(open: String?) {
                 val vs = com.yoruc.mangacracker.video.VideoSources.byId(srcId) ?: return@LaunchedEffect
                 val v = runCatching { (if (what == "series") vs.popular(1) else vs.latest(1)).items.first() }.getOrNull() ?: return@LaunchedEffect
                 if (what == "series") nav.videoSeries(v) else nav.player(v)
+                return@LaunchedEffect
+            }
+            // test runs: MC_OPEN=demo:music:<search> opens the Music tab with that search; MC_MUSIC_PLAY=<anime>|radio plays it
+            // and notes what plays (cache\music_test.txt): after 12 s, then Next and 8 s more
+            if (what == "music") {
+                musicStartQuery = srcId
+                musicOpenFirst = System.getenv("MC_MUSIC_OPEN") == "1"
+                nav.tab("music")
+                System.getenv("MC_MUSIC_PLAY")?.let { q ->
+                    val m = com.yoruc.mangacracker.music.Music
+                    val log = java.io.File(com.yoruc.mangacracker.platform.Desktop.ctx.cacheDir, "music_test.txt").apply { writeText("") }
+                    fun note(s: String) = log.appendText(s + System.lineSeparator())
+                    val list = if (q == "radio") listOf(m.radioTrack()) else m.allSongs(m.searchAnime(q).first())
+                    note("queue ${list.size}: " + list.joinToString(" | ") { it.kind + " " + it.title })
+                    m.player.play(list)
+                    kotlinx.coroutines.delay(12_000)
+                    note("after 12 s: ${m.player.now.value?.title} playing=${m.player.playing.value} at ${m.player.position.value} of ${m.player.duration.value} ms; radio now ${m.radioNow.value?.title}")
+                    if (q != "radio") { m.player.next(); kotlinx.coroutines.delay(8_000); note("after Next + 8 s: ${m.player.now.value?.title} at ${m.player.position.value} of ${m.player.duration.value} ms") }
+                    m.player.seek(60_000); kotlinx.coroutines.delay(3_000); note("after seek to 60 s: at ${m.player.position.value} ms")
+                    if (q != "radio") {
+                        // loop this song: near its end it starts again
+                        m.player.setRepeat(com.yoruc.mangacracker.music.REPEAT_ONE)
+                        val one = m.player.now.value?.title
+                        m.player.seek(m.player.duration.value - 3_000); kotlinx.coroutines.delay(7_000)
+                        note("loop this song: was $one near the end, now ${m.player.now.value?.title} at ${m.player.position.value} ms")
+                        // loop the list: from the last song back to the first
+                        m.player.setRepeat(com.yoruc.mangacracker.music.REPEAT_ALL)
+                        while (m.player.index.value != list.size - 1) { m.player.next(); kotlinx.coroutines.delay(1_500) }
+                        kotlinx.coroutines.delay(3_000)
+                        note("loop the list: last is ${m.player.now.value?.title}")
+                        m.player.seek(m.player.duration.value - 3_000); kotlinx.coroutines.delay(7_000)
+                        note("after the last: ${m.player.now.value?.title} (index ${m.player.index.value}) at ${m.player.position.value} ms")
+                    }
+                }
+                return@LaunchedEffect
+            }
+            // test runs: MC_OPEN=demo:tabs:<video source> opens tabs, moves between them and notes the places (cache: tabs_test.txt)
+            if (what == "tabs") {
+                val tabs = com.yoruc.mangacracker.core.Tabs
+                val log = java.io.File(com.yoruc.mangacracker.platform.Desktop.ctx.cacheDir, "tabs_test.txt").apply { writeText("") }
+                fun note(s: String) = log.appendText(s + System.lineSeparator())
+                val io = kotlinx.coroutines.Dispatchers.IO
+                val atsu = com.yoruc.mangacracker.sources.Sources.byId("atsu") ?: return@LaunchedEffect
+                val vs = com.yoruc.mangacracker.video.VideoSources.byId(srcId) ?: return@LaunchedEffect
+                val found = kotlinx.coroutines.withContext(io) { atsu.popular(1).items }
+                val vid = kotlinx.coroutines.withContext(io) { vs.latest(1).items.first().let { if (it.show) vs.series(it).first() else it } }
+                val ch = kotlinx.coroutines.withContext(io) { atsu.chapters(found[1]).last() }
+                val a = tabs.addManga(found[0])!!; val b = tabs.addChapter(found[1], ch)!!; val v = tabs.addVideo(vid)!!
+                note("added ${tabs.list.value.size}: " + tabs.list.value.joinToString(" | ") { it.route.substringBefore('/') })
+                fun state() = "active ${tabs.active.value} here ${tabs.here.value?.substringBefore('/')} tabs ${tabs.list.value.size}"
+                fun at() = com.yoruc.mangacracker.video.VideoRepo.state(vid.key)?.positionMs
+                kotlinx.coroutines.delay(3000); nav.openTab(a); kotlinx.coroutines.delay(6000); note("tab 1: " + state())
+                nav.openTab(b); kotlinx.coroutines.delay(9000); note("tab 2: " + state() + " chapter state " + Repo.state(found[1].key, ch.id))
+                nav.openTab(v); kotlinx.coroutines.delay(25000); note("video: " + state() + " saved " + at())
+                nav.openTab(a); kotlinx.coroutines.delay(2500)
+                note("left the video: " + state() + " saved at " + at())
+                nav.openTab(v); kotlinx.coroutines.delay(12000); note("back on the video: " + state() + " saved " + at())
+                nav.closeTab(v); kotlinx.coroutines.delay(5000); note("closed the video, next shown: " + state())
+                nav.closeTab(b); kotlinx.coroutines.delay(1500); nav.home(); kotlinx.coroutines.delay(1500); note("home: " + state())
                 return@LaunchedEffect
             }
             if (what == "gallery" || what == "stats") {
@@ -180,7 +276,7 @@ fun AppRoot(open: String?) {
 
     LaunchedEffect(Unit) { com.yoruc.mangacracker.platform.Back.fallback = { if (c.previousBackStackEntry != null) nav.back() } }
 
-    SideEffect { Here.route = route; Here.key = entry?.arguments?.getString("key") ?: "" }
+    SideEffect { Here.route = route; Here.key = entry?.arguments?.getString("key") ?: ""; TabKeys.nav = nav }
     // just switched to a newer copy: back on the same tab (and the same title / show page)
     LaunchedEffect(Unit) {
         val h = com.yoruc.mangacracker.platform.SelfUpdate.handoff ?: return@LaunchedEffect
@@ -194,6 +290,7 @@ fun AppRoot(open: String?) {
         }
     }
 
+    TabMenuHost()
     // Windows: the main tabs sit in a rail on the left (hidden in the reader / player, like the phone's bar)
     Row(Modifier.fillMaxSize().background(Mc.Bg)) {
         if (showBar) {
@@ -220,7 +317,9 @@ fun AppRoot(open: String?) {
                 }
             }
         }
-        Box(Modifier.weight(1f).fillMaxHeight()) {
+        androidx.compose.foundation.layout.Column(Modifier.weight(1f).fillMaxHeight()) {
+        if (!TabKeys.fullscreen) TabStrip(nav)
+        Box(Modifier.weight(1f).fillMaxSize()) {
             NavHost(
                 c, startDestination = "home",
                 enterTransition = { fadeIn(tween(180)) + slideInHorizontally(tween(220)) { it / 12 } },
@@ -232,6 +331,7 @@ fun AppRoot(open: String?) {
                 composable("library") { LibraryScreen(nav) }
                 composable("sources") { SourcesScreen(nav) }
                 composable("videos") { VideosScreen(nav) }
+                composable("music") { MusicScreen() }
                 composable("player/{key}") { b -> PlayerScreen(nav, b.arguments?.getString("key") ?: "") }
                 composable("vseries/{key}") { b -> VideoSeriesScreen(nav, b.arguments?.getString("key") ?: "") }
                 composable("updates") { UpdatesScreen(nav) }
@@ -270,6 +370,9 @@ fun AppRoot(open: String?) {
             // in-window notes (Undo etc.) and short messages
             NoteHost(Modifier.align(androidx.compose.ui.Alignment.BottomCenter))
             ToastHost(Modifier.align(androidx.compose.ui.Alignment.BottomCenter))
+        }
+        // the music's bar under every screen but the reader and the video player
+        if (!route.orEmpty().startsWith("player") && !route.orEmpty().startsWith("reader")) MusicBar()
         }
     }
 }

@@ -226,7 +226,7 @@ fun HintCard(text: String) {
 private fun ContinueCard(h: HistoryEntry, onClick: () -> Unit) {
     val pct = h.state.percent
     Row(
-        Modifier.width(290.dp).height(104.dp).clip(RoundedCornerShape(8.dp)).background(Mc.Card).clickable(onClick = onClick)
+        Modifier.width(290.dp).height(104.dp).clip(RoundedCornerShape(8.dp)).background(Mc.Card).tabClick { added(com.yoruc.mangacracker.core.Tabs.addChapter(h.ref, h.chapter)) }.clickable(onClick = onClick)
     ) {
         Cover(h.ref.cover, Modifier.width(72.dp).fillMaxSize())
         Column(Modifier.weight(1f).padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
@@ -257,7 +257,7 @@ fun UpdateRow(u: UpdateItem, onCover: () -> Unit, onClick: () -> Unit) {
     val st = Repo.state(u.ref.key, u.chapter.id)
     val read = st?.read == true
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 7.dp),
+        Modifier.fillMaxWidth().tabClick { added(com.yoruc.mangacracker.core.Tabs.addChapter(u.ref, u.chapter)) }.clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(Modifier.size(width = 46.dp, height = 64.dp).clip(RoundedCornerShape(5.dp)).clickable(onClick = onCover)) {
