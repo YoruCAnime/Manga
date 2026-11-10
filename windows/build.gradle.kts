@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.yoruc.mangacracker"
-version = "1.3.2"
+version = "1.4.0"
 
 kotlin { jvmToolchain(21) }
 
@@ -50,7 +50,7 @@ compose.desktop {
             appResourcesRootDir.set(project.layout.projectDirectory.dir("appResources"))
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "MangaCracker"
-            packageVersion = "1.3.2"
+            packageVersion = "1.4.0"
             windows { menu = true; shortcut = true; perUserInstall = true; dirChooser = true; iconFile.set(project.file("appIcon/icon.ico")) }
             modules("java.net.http", "java.sql", "jdk.unsupported", "java.naming", "java.management", "jdk.management", "jdk.httpserver")
         }

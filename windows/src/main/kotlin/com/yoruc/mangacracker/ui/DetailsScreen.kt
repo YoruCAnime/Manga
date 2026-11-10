@@ -229,10 +229,10 @@ fun DetailsScreen(nav: Nav, key: String) {
                     // who made it, each name opening their other works on this site
                     val authors = d?.authors.orEmpty(); val artists = d?.artists.orEmpty()
                     val circles = src.authorsAreGroups
-                    if (authors.isNotEmpty() && !circles && authors.toSet() == artists.toSet()) PeopleRow("Story & art", authors) { nav.browse(src.id, src.artistQuery(it)) }
+                    if (authors.isNotEmpty() && !circles && authors.toSet() == artists.toSet()) PeopleRow("Story & art", authors, src.id) { nav.browse(src.id, src.artistQuery(it)) }
                     else {
-                        if (authors.isNotEmpty()) PeopleRow(if (circles) "Circle" else "Author", authors) { nav.browse(src.id, if (circles) src.groupQuery(it) else src.artistQuery(it)) }
-                        if (artists.isNotEmpty()) PeopleRow("Artist", artists) { nav.browse(src.id, src.artistQuery(it)) }
+                        if (authors.isNotEmpty()) PeopleRow(if (circles) "Circle" else "Author", authors, src.id) { nav.browse(src.id, if (circles) src.groupQuery(it) else src.artistQuery(it)) }
+                        if (artists.isNotEmpty()) PeopleRow("Artist", artists, src.id) { nav.browse(src.id, src.artistQuery(it)) }
                     }
                     if (d != null && authors.isEmpty() && artists.isEmpty()) Text("Author not listed on this site", color = Mc.Text3, fontSize = 12.5.sp)
                     val meta = listOfNotNull(src.name, d?.type?.ifEmpty { null }, d?.status?.ifEmpty { null },
@@ -494,16 +494,24 @@ private fun RoundIcon(onClick: () -> Unit, content: @Composable () -> Unit) {
     ) { content() }
 }
 
-/** One line of the header: what they did, then their names; a name opens their other works. */
+/** One line of the header: what they did, then their names; a name opens their other works, its star keeps them (Library › Saved). */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun PeopleRow(label: String, names: List<String>, open: (String) -> Unit) {
+private fun PeopleRow(label: String, names: List<String>, source: String, open: (String) -> Unit) {
+    val saved = Repo.settings.collectAsState().value.saved
     androidx.compose.foundation.layout.Row(Modifier.padding(vertical = 1.dp)) {
         Text(label, color = Mc.Text3, fontSize = 12.5.sp, modifier = Modifier.padding(top = 4.dp, end = 7.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             names.take(6).forEach { p ->
-                Text(p, color = Mc.Blue, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clickable { open(p) }.padding(vertical = 3.dp))
+                val entry = com.yoruc.mangacracker.core.Saved(if (label == "Story & art") "Author" else label, p, source, artist = p, group = label == "Circle", added = System.currentTimeMillis())
+                val on = saved.any { it.key == entry.key }
+                androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(p, color = Mc.Blue, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable { open(p) }.padding(vertical = 3.dp))
+                    Text(if (on) "★" else "☆", color = if (on) Mc.Orange else Mc.Text3, fontSize = 15.sp,
+                        modifier = Modifier.clip(RoundedCornerShape(5.dp)).clickable { Notes.show(if (Repo.toggleSaved(entry)) "Saved $p: find them in Library › Saved" else "Removed $p from Saved") }
+                            .padding(horizontal = 5.dp, vertical = 1.dp))
+                }
             }
         }
     }

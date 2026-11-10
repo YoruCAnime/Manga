@@ -16,14 +16,28 @@ version is just unzipped over the old folder.
 
 ## Using it
 
-Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.3.2).
+Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.4.0).
 
 - **Left rail**: Home, Library, Browse, Videos, Music, Updates, More (the phone's bottom bar).
 - **Going back**: Esc, Alt+←, the mouse's back button, or the ← arrows. **F11** = full screen.
+- **Tabs keep the list you came from**: right-click (or Ctrl / middle click) a title in a source's list or in the
+  Videos tab and it opens as a tab in the strip at the top, without leaving the list. The list itself becomes the
+  first tab (compass icon, the source's name) with its titles lined up right after it: click it to come back to the
+  list exactly as you left it (search, filters, how far you scrolled).
+- **Home**: the ⟳ button at the top right checks for new chapters and reloads the recommendations and rows. The
+  "Popular on …" rows load as you scroll down to them, so opening the app doesn't ask every site at once.
+- **Browse** is sorted into shelves: Manga, Manhwa 18+, Doujinshi 18+ and Pictures 18+ (the pills at the top show
+  one shelf). **Videos** has Anime / Hentai / 3D & animations above its list of sites.
+- **Episodes / chapters in one click**: every video card has an **Episodes** button on its picture, and the whole
+  name area under the picture opens the show too (the picture itself plays). On Home's Continue reading cards the
+  cover and the list button open the title's page with every chapter; the rest of the card reads on.
+- **Saved** (Library, fourth shelf): the ☆ next to an author, artist or circle on a title's page keeps them; "☆ Save"
+  in a source's or the Videos tab's search keeps that search (a studio, a tag, some words). One click opens it again.
 - **Reader**: pages sit in a centred column (Reader settings › *Page width*, up to the whole window).
   ↓ ↑ or J K scroll a little, Page Down / Space and Page Up / Shift+Space a screen, Home / End; ← / P previous
-  chapter, → / N next chapter. A small bar at the bottom is always there: ‹ Previous chapter · page counter · Next
-  chapter › (greyed when there's no chapter that way).
+  chapter, → / N next chapter. A bar at the bottom is always there: **‹ Previous chapter** · page and % of this
+  chapter · **Next chapter ›** (greyed when there's no chapter that way), and the end of every chapter has the same
+  two buttons.
   **Right-click** a page (or press and hold): a small menu opens right at the mouse - **Save image** (first), *Save a
   cutout of this character*, Copy image (to the clipboard).
 - **Videos** play in mpv inside the window, with the controls under the picture: volume on the left (the app's own,
@@ -32,8 +46,8 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
   screen on the right. The title opens every episode of the show (so does the name on a Continue watching card; its
   picture plays). Keys: Space / K play-pause, ← → 1 s (keeps playing), [ ] one frame back / forward, J / L 10 s, ↑ ↓ volume, M mute, F full
   screen, N / P next / previous episode, R record, G GIF.
-- **Anime** (Videos tab, first two sites): **Anikoto** (1080p, Sub and Dub, subtitles in up to 9 languages) and
-  **AnimeHeaven** (720p, English subs in the picture, no dub). Latest lists new episodes; Popular and search list
+- **Anime** (Videos tab): **Anikoto** (1080p, Sub and Dub, subtitles in up to 9 languages),
+  **AnimeHeaven** (720p, English subs in the picture, no dub) and **Anitaku** (newer shows, English subs, no dub). Latest lists new episodes; Popular and search list
   whole shows: click one for all its episodes with **Sub** / **Dub** filters. The player line under the title says
   which one plays ("Episode 5 · Dub · Anikoto").
 - **Recommended for you** (Videos tab, under Continue watching): picked from the genres of what you favourite, finish

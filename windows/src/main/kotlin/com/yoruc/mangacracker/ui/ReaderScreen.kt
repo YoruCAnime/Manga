@@ -582,7 +582,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                         is ReaderItem.PageItem ->
                             if (twoPage) SpreadRow(r.filterIsInstance<ReaderItem.PageItem>(), vm, screenW, fg, settings.readerRtl, viewH)
                             else PageView(item, vm, screenW, fg)
-                        is ReaderItem.Footer -> ChapterFooter(item, fg, vm, settings.readerAutoNext)
+                        is ReaderItem.Footer -> ChapterFooter(item, fg, vm, settings.readerAutoNext, nav, ref)
                     }
                 }
             }
@@ -602,14 +602,14 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
             val prev = vm.prevOf(cur.first.chapter); val next = vm.nextOf(cur.first.chapter)
             val pct = ((cur.second + 1) * 100 / cur.first.total.coerceAtLeast(1))
             Row(
-                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 6.dp)
-                    .clip(RoundedCornerShape(50)).background(Color(0x99000000)).padding(horizontal = 4.dp, vertical = 2.dp),
+                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp)
+                    .clip(RoundedCornerShape(50)).background(Color(0xE60B1622)).padding(horizontal = 5.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ChapterJump("‹ Previous chapter", prev != null) { goChapter(next = false) }
                 if (settings.showReaderPageNumber)
-                    Text("${cur.second + 1} / ${cur.first.total} · $pct%", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 8.dp))
+                    Text("${cur.second + 1} / ${cur.first.total} · $pct%", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 10.dp))
                 ChapterJump("Next chapter ›", next != null) { goChapter(next = true) }
             }
         }
@@ -905,31 +905,41 @@ private fun PagePlaceholder(item: ReaderItem.PageItem, fg: Color) {
 private fun ChapterHeader(h: ReaderItem.Header, fg: Color, vm: ReaderVM, nav: Nav, ref: MangaRef) {
     Column(Modifier.fillMaxWidth().padding(top = if (h.first) 64.dp else 36.dp, bottom = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         if (h.first) vm.prevOf(h.chapter)?.let { p ->
-            Text("‹ ${p.name}", color = Mc.Blue, fontSize = 13.sp, modifier = Modifier.clickable { nav.back(); nav.reader(ref, p) }.padding(8.dp))
-            Spacer(Modifier.height(10.dp))
+            androidx.compose.material3.OutlinedButton(onClick = { nav.back(); nav.reader(ref, p) }) {
+                Text("‹ Previous: ${p.name}", color = Mc.Blue, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(Modifier.height(14.dp))
         }
         Text(h.chapter.name, color = fg, fontWeight = FontWeight.Bold, fontSize = 17.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 24.dp))
         if (h.chapter.group.isNotEmpty()) Text(h.chapter.group, color = fg.copy(alpha = 0.6f), fontSize = 12.sp)
     }
 }
 
-/** One end of the reader's small bottom bar; greyed when there's no chapter that way. */
+/** One end of the reader's bottom bar: a button of its own, greyed when there's no chapter that way. */
 @Composable
 private fun ChapterJump(label: String, enabled: Boolean, onClick: () -> Unit) {
-    Text(label, color = if (enabled) Color.White else Color.White.copy(alpha = 0.3f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.clip(RoundedCornerShape(50)).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 10.dp, vertical = 5.dp))
+    Text(label, color = if (enabled) Mc.Blue else Color.White.copy(alpha = 0.28f), fontSize = 13.5.sp, fontWeight = FontWeight.Bold,
+        modifier = Modifier.clip(RoundedCornerShape(50)).background(if (enabled) Mc.Blue.copy(alpha = 0.13f) else Color.Transparent)
+            .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 14.dp, vertical = 7.dp))
 }
 
+/** The end of a chapter: back to the one before, on to the next (which also just follows when you keep scrolling). */
 @Composable
-private fun ChapterFooter(f: ReaderItem.Footer, fg: Color, vm: ReaderVM, auto: Boolean) {
+private fun ChapterFooter(f: ReaderItem.Footer, fg: Color, vm: ReaderVM, auto: Boolean, nav: Nav, ref: MangaRef) {
     Column(Modifier.fillMaxWidth().padding(vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("End of ${f.chapter.name}", color = fg, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(12.dp))
-        when {
-            f.next == null -> Text("You're all caught up ✦", color = fg.copy(alpha = 0.6f), fontSize = 13.sp)
-            vm.loadingNext || auto -> CircularProgressIndicator(color = Mc.Blue, strokeWidth = 2.5.dp, modifier = Modifier.size(26.dp))
-            else -> Button(onClick = { vm.loadNext(f.chapter) }, colors = ButtonDefaults.buttonColors(containerColor = Mc.Blue, contentColor = Mc.Bg)) {
-                Text("Next: ${f.next.name}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+        val prev = vm.prevOf(f.chapter)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 16.dp)) {
+            if (prev != null) androidx.compose.material3.OutlinedButton(onClick = { nav.back(); nav.reader(ref, prev) }) {
+                Text("‹ Previous chapter", color = Mc.Blue, maxLines = 1)
+            }
+            when {
+                f.next == null -> Text("You're all caught up ✦", color = fg.copy(alpha = 0.6f), fontSize = 13.sp)
+                vm.loadingNext || auto -> CircularProgressIndicator(color = Mc.Blue, strokeWidth = 2.5.dp, modifier = Modifier.size(26.dp))
+                else -> Button(onClick = { vm.loadNext(f.chapter) }, colors = ButtonDefaults.buttonColors(containerColor = Mc.Blue, contentColor = Mc.Bg)) {
+                    Text("Next: ${f.next.name} ›", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
         Spacer(Modifier.height(if (f.next == null) 120.dp else 40.dp))

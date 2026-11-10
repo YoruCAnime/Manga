@@ -11,11 +11,15 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import java.io.File
 
-/** One open title: the page it is on ([route]), and the manga or video it belongs to. */
+/**
+ * One open title: the page it is on ([route]), and the manga or video it belongs to. A tab with a [place] is a list
+ * you were browsing (a source, the Videos tab) instead: it keeps that list while its titles open in tabs beside it.
+ */
 @Serializable
-data class OpenTab(val id: Long, val route: String, val manga: MangaRef? = null, val video: VideoRef? = null) {
-    val title: String get() = manga?.title ?: video?.title.orEmpty()
+data class OpenTab(val id: Long, val route: String, val manga: MangaRef? = null, val video: VideoRef? = null, val place: String = "") {
+    val title: String get() = place.ifEmpty { manga?.title ?: video?.title.orEmpty() }
     val cover: String get() = manga?.cover ?: video?.cover.orEmpty()
+    val isPlace: Boolean get() = place.isNotEmpty()
 }
 
 /**
@@ -37,6 +41,9 @@ object Tabs {
     val sheetOpen = MutableStateFlow(false)
     private var hereManga: MangaRef? = null
     private var hereVideo: VideoRef? = null
+    /** The list on screen that can be kept as a tab (route and name), null on other screens. */
+    private var placeRoute: String? = null
+    private var placeName = ""
     private var file: File? = null
     private var lastId = 0L
 
@@ -46,6 +53,7 @@ object Tabs {
         _list.value = saved.take(MAX)
         _active.value = 0L
         _here.value = null
+        placeRoute = null
         lastId = saved.maxOfOrNull { it.id } ?: 0L
     }
 
@@ -62,13 +70,31 @@ object Tabs {
     fun readerRoute(key: String, chapterId: String, grid: Boolean = false) = "reader/${Uri.encode(key)}/${Uri.encode(chapterId)}?grid=${if (grid) 1 else 0}"
     fun playerRoute(key: String) = "player/${Uri.encode(key)}"
     fun seriesRoute(key: String) = "vseries/${Uri.encode(key)}"
+    fun browseRoute(source: String, search: Boolean = false) = "browse/$source?search=${if (search) 1 else 0}"
+    const val VIDEOS = "videos"
 
-    /** A new tab, not shown yet; the page already in a tab gives that tab. Null = no room left. */
+    /**
+     * A new tab, not shown yet; the page already in a tab gives that tab. Null = no room left. Opened from a list
+     * (a source, Videos), the list becomes a tab too and stays as it is: the new tab goes right after it and its
+     * other titles, so the way back to the list is always in the strip.
+     */
     private fun add(route: String, manga: MangaRef?, video: VideoRef?): OpenTab? {
         _list.value.firstOrNull { it.route == route }?.let { return it }
-        if (_list.value.size >= MAX) return null
+        val from = placeRoute
+        val keep = from != null && _list.value.none { it.route == from }
+        if (_list.value.size + (if (keep) 1 else 0) >= MAX) return null
+        if (keep) {
+            val p = OpenTab(++lastId, from!!, place = placeName)
+            _list.value = _list.value + p
+            _active.value = p.id
+        }
         val t = OpenTab(++lastId, route, manga, video)
-        _list.update { it + t }
+        val l = _list.value
+        val i = if (from == null) -1 else l.indexOfFirst { it.route == from }
+        // after the list's tab and the titles already opened from it
+        var at = if (i < 0) l.size else i + 1
+        while (i >= 0 && at < l.size && !l[at].isPlace && l[at].id > l[i].id) at++
+        _list.value = l.subList(0, at) + t + l.subList(at, l.size)
         persist()
         return t
     }
@@ -112,6 +138,7 @@ object Tabs {
 
     /** Where to open [t]: a reader tab goes to the chapter last read (the reader moves on by itself as you scroll). */
     fun latestRoute(t: OpenTab): String {
+        if (t.isPlace) return t.route
         val m = t.manga
         if (m != null && t.route.startsWith("reader/")) Repo.history.value[m.key]?.let { return readerRoute(m.key, it.chapter.id) }
         return t.route
@@ -119,14 +146,24 @@ object Tabs {
 
     /** The small line under a tab's title in the phone's list. */
     fun subtitle(t: OpenTab): String {
+        if (t.isPlace) return if (t.route == VIDEOS) "Video list" else "Source"
         t.video?.let { v -> return if (v.episode.isNotEmpty()) "Episode ${v.episode}" else "Video" }
         val m = t.manga ?: return ""
         return if (t.route.startsWith("reader/")) Repo.history.value[m.key]?.chapter?.name ?: "Reading" else "Details"
     }
 
-    /** From the app's navigation: this screen is now showing. */
-    fun noteScreen(pattern: String?, key: String, chapter: String, grid: Boolean) {
+    /**
+     * From the app's navigation: this screen is now showing. [source] and [place] = the source and its name when the
+     * screen is a source's list (the Videos tab needs only its name).
+     */
+    fun noteScreen(pattern: String?, key: String, chapter: String, grid: Boolean, source: String = "", search: Boolean = false, place: String = "") {
         val p = pattern.orEmpty()
+        placeRoute = when {
+            p.startsWith("browse/") && source.isNotEmpty() -> browseRoute(source, search)
+            p == VIDEOS -> VIDEOS
+            else -> null
+        }
+        placeName = place
         val r = when {
             p.startsWith("details/") -> detailsRoute(key)
             p.startsWith("reader/") -> readerRoute(key, chapter, grid)
@@ -135,7 +172,12 @@ object Tabs {
             else -> null
         }
         _here.value = r
-        if (r == null) { hereManga = null; hereVideo = null; _active.value = 0L; return }
+        if (r == null) {
+            hereManga = null; hereVideo = null
+            // a list that is a tab lights its tab up
+            _active.value = placeRoute?.let { pr -> _list.value.firstOrNull { it.route == pr }?.id } ?: 0L
+            return
+        }
         val video = p.startsWith("player/") || p.startsWith("vseries/")
         hereManga = if (video) null else Repo.refs[key]
         hereVideo = if (video) VideoRepo.refs[key] else null
@@ -155,8 +197,9 @@ object Tabs {
     /** The tab showing moves along with the page; a page that is already a tab lights that tab up. */
     private fun follow(route: String) {
         val id = _active.value
-        if (id == 0L) { _list.value.firstOrNull { it.route == route }?.let { _active.value = it.id }; return }
-        val cur = _list.value.firstOrNull { it.id == id } ?: return
+        val cur = _list.value.firstOrNull { it.id == id }
+        // a list's tab never turns into the title opened from it
+        if (cur == null || cur.isPlace) { _active.value = _list.value.firstOrNull { it.route == route }?.id ?: 0L; return }
         val manga = hereManga ?: cur.manga.takeIf { hereVideo == null }
         val video = hereVideo ?: cur.video.takeIf { hereManga == null }
         if (cur.route == route && cur.manga == manga && cur.video == video) return

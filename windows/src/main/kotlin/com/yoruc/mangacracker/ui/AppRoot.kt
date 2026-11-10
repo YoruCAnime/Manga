@@ -113,7 +113,7 @@ class Nav(val c: NavHostController) {
     fun openTab(t: com.yoruc.mangacracker.core.OpenTab) {
         val tabs = com.yoruc.mangacracker.core.Tabs
         val route = tabs.latestRoute(t)
-        if (tabs.active.value == t.id && tabs.here.value == route) return
+        if (tabs.active.value == t.id && (t.isPlace || tabs.here.value == route)) return
         t.manga?.let { Repo.remember(it) }
         t.video?.let { com.yoruc.mangacracker.video.VideoRepo.remember(it) }
         tabs.activate(t.id)
@@ -121,7 +121,12 @@ class Nav(val c: NavHostController) {
         // a main screen keeps its scroll for coming back; a title page is let go
         val keep = tabs.here.value == null
         val m = t.manga
-        if (m != null && route.startsWith("reader/")) {
+        if (t.isPlace) {
+            // a list: the Videos tab as it was left, a source with its search and place in the grid
+            if (route == tabs.VIDEOS) return tab(route)
+            BrowseKeep.resume = route
+            c.navigate(route) { popUpTo(start) { saveState = keep } }
+        } else if (m != null && route.startsWith("reader/")) {
             // Back from the reader goes to the title's page, as it always does
             c.navigate(tabs.detailsRoute(m.key)) { popUpTo(start) { saveState = keep } }
             c.navigate(route)
@@ -130,6 +135,7 @@ class Nav(val c: NavHostController) {
     fun closeTab(t: com.yoruc.mangacracker.core.OpenTab) {
         val tabs = com.yoruc.mangacracker.core.Tabs
         val showing = tabs.active.value == t.id
+        if (t.isPlace) BrowseKeep.drop(t.route)
         val next = tabs.close(t.id)
         if (next != null) openTab(next) else if (showing) home()
     }
@@ -168,7 +174,13 @@ fun AppRoot(open: String?) {
     val settings by Repo.settings.collectAsState()
     LaunchedEffect(entry) {
         val a = entry?.arguments
-        com.yoruc.mangacracker.core.Tabs.noteScreen(entry?.destination?.route, a?.getString("key").orEmpty(), a?.getString("chapter").orEmpty(), a?.getString("grid") == "1")
+        val source = a?.getString("source").orEmpty()
+        val place = when (entry?.destination?.route) {
+            "videos" -> "Videos"
+            else -> com.yoruc.mangacracker.sources.Sources.byId(source)?.name.orEmpty().let { if (a?.getString("search") == "1") "$it search" else it }
+        }
+        com.yoruc.mangacracker.core.Tabs.noteScreen(entry?.destination?.route, a?.getString("key").orEmpty(), a?.getString("chapter").orEmpty(), a?.getString("grid") == "1",
+            source, a?.getString("search") == "1", place)
     }
 
     LaunchedEffect(open) {
@@ -241,6 +253,27 @@ fun AppRoot(open: String?) {
                 nav.openTab(v); kotlinx.coroutines.delay(12000); note("back on the video: " + state() + " saved " + at())
                 nav.closeTab(v); kotlinx.coroutines.delay(5000); note("closed the video, next shown: " + state())
                 nav.closeTab(b); kotlinx.coroutines.delay(1500); nav.home(); kotlinx.coroutines.delay(1500); note("home: " + state())
+                return@LaunchedEffect
+            }
+            // test runs: MC_OPEN=demo:place:<source> opens two titles of a source's list in tabs, goes to one and back to the list (cache: place_test.txt)
+            if (what == "place") {
+                val tabs = com.yoruc.mangacracker.core.Tabs
+                val log = java.io.File(com.yoruc.mangacracker.platform.Desktop.ctx.cacheDir, "place_test.txt").apply { writeText("") }
+                fun note(s: String) = log.appendText(s + System.lineSeparator())
+                fun state() = "active ${tabs.active.value} here ${tabs.here.value?.substringBefore('/')} tabs " + tabs.list.value.joinToString(" | ") { (if (it.isPlace) "[" + it.title + "]" else it.title.take(18)) + "#" + it.id }
+                nav.tab("sources"); kotlinx.coroutines.delay(1000)
+                nav.browse(srcId); kotlinx.coroutines.delay(9000)
+                val route = tabs.browseRoute(srcId)
+                val vm = BrowseKeep.peek(route) ?: return@LaunchedEffect
+                vm.switchMode(1); kotlinx.coroutines.delay(7000)
+                val items = vm.paged.items.toList()
+                note("list: ${items.size} titles, mode ${vm.mode}")
+                tabs.addManga(items[2]); tabs.addManga(items[4]); kotlinx.coroutines.delay(2500)
+                note("two opened in tabs: " + state())
+                nav.openTab(tabs.list.value.first { !it.isPlace }); kotlinx.coroutines.delay(7000)
+                note("on the first title: " + state())
+                nav.openTab(tabs.list.value.first { it.isPlace }); kotlinx.coroutines.delay(4000)
+                note("back on the list: " + state() + " | same list ${BrowseKeep.peek(route) === vm}, mode ${vm.mode}, ${vm.paged.items.size} titles")
                 return@LaunchedEffect
             }
             if (what == "gallery" || what == "stats") {

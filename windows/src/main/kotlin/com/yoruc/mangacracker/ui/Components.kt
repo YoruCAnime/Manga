@@ -50,7 +50,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.SubcomposeAsyncImage
+import coil3.compose.AsyncImage
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.drawBehind
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.yoruc.mangacracker.core.CloudflareException
@@ -67,36 +72,41 @@ val CardShape = RoundedCornerShape(6.dp)
 @Composable
 fun Shimmer(modifier: Modifier = Modifier) {
     val t = rememberInfiniteTransition(label = "shimmer")
-    val x by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1200, easing = LinearEasing), RepeatMode.Restart), label = "x")
+    val x = t.animateFloat(0f, 1f, infiniteRepeatable(tween(1200, easing = LinearEasing), RepeatMode.Restart), label = "x")
+    // read while drawing only: a screen full of loading covers repaints, it doesn't rebuild itself every frame
     Box(
-        modifier.background(
-            Brush.linearGradient(
-                listOf(Mc.Card, Mc.Card2, Mc.Card),
-                start = androidx.compose.ui.geometry.Offset(x * 1200f - 600f, 0f),
-                end = androidx.compose.ui.geometry.Offset(x * 1200f, 600f),
+        modifier.drawBehind {
+            drawRect(
+                Brush.linearGradient(
+                    listOf(Mc.Card, Mc.Card2, Mc.Card),
+                    start = androidx.compose.ui.geometry.Offset(x.value * 1200f - 600f, 0f),
+                    end = androidx.compose.ui.geometry.Offset(x.value * 1200f, 600f),
+                )
             )
-        )
+        }
     )
 }
 
 @Composable
 fun Cover(url: String, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop) {
-    val ctx = LocalContext.current
-    SubcomposeAsyncImage(
-        model = ImageRequest.Builder(coil3.PlatformContext.INSTANCE).data(url.ifEmpty { null }).crossfade(220).build(),
-        contentDescription = null,
-        contentScale = contentScale,
-        modifier = modifier,
-        loading = { Shimmer(Modifier.fillMaxSize()) },
-        error = {
-            // booru samples only exist for big pictures: fall back to the thumbnail
-            val thumb = if ("/samples/" in url && "sample_" in url) url.replace("/samples/", "/thumbnails/").replace("sample_", "thumbnail_").replaceAfterLast('.', "jpg") else ""
-            if (thumb.isNotEmpty()) SubcomposeAsyncImage(model = thumb, contentDescription = null, contentScale = contentScale, modifier = Modifier.fillMaxSize())
-            else Box(Modifier.fillMaxSize().background(Mc.Card2), contentAlignment = Alignment.Center) {
-                Text("MC", color = Mc.Text3, fontWeight = FontWeight.Bold)
-            }
-        },
-    )
+    // the plain picture loader (grids hold dozens of these): 0 = loading, 1 = shown, 2 = no picture
+    var src by remember(url) { mutableStateOf(url) }
+    var state by remember(url) { mutableIntStateOf(0) }
+    val request = remember(src) { ImageRequest.Builder(coil3.PlatformContext.INSTANCE).data(src.ifEmpty { null }).crossfade(220).build() }
+    Box(modifier) {
+        if (state == 0) Shimmer(Modifier.fillMaxSize())
+        if (state == 2) Box(Modifier.fillMaxSize().background(Mc.Card2), contentAlignment = Alignment.Center) {
+            Text("MC", color = Mc.Text3, fontWeight = FontWeight.Bold)
+        } else AsyncImage(
+            model = request, contentDescription = null, contentScale = contentScale, modifier = Modifier.fillMaxSize(),
+            onSuccess = { state = 1 },
+            onError = {
+                // booru samples only exist for big pictures: fall back to the thumbnail
+                val thumb = if ("/samples/" in url && "sample_" in url) url.replace("/samples/", "/thumbnails/").replace("sample_", "thumbnail_").replaceAfterLast('.', "jpg") else ""
+                if (src == url && thumb.isNotEmpty()) src = thumb else state = 2
+            },
+        )
+    }
 }
 
 /** A grid / row card: cover on top, title under it (AniList style), optional badges and read bar. */
