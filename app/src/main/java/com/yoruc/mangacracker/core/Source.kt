@@ -50,6 +50,9 @@ interface Source {
     /** A search for one genre / tag name as shown on the details page. */
     fun tagQuery(name: String): SearchQuery = SearchQuery(include = listOf(Tag(name, name)))
     fun artistQuery(name: String): SearchQuery = SearchQuery(artist = name)
+    /** true = this site's "authors" are circles / groups, which it searches differently from artists. */
+    val authorsAreGroups: Boolean get() = false
+    fun groupQuery(name: String): SearchQuery = artistQuery(name)
 
     /** Web page of a title (open in the in-app browser). */
     fun webUrl(ref: MangaRef): String

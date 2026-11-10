@@ -32,6 +32,7 @@ class UpdateWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
     override suspend fun doWork(): Result {
         val fresh = checkLibrary()
         if (fresh.isNotEmpty() && Repo.settings.value.notifyUpdates) notify(applicationContext, fresh)
+        Backup.autoIfDue(applicationContext)
         if (Repo.settings.value.autoAppUpdates) {
             val rel = AppUpdate.check()
             if (rel != null && rel.version != Repo.settings.value.notifiedAppVersion) {

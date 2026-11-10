@@ -1,22 +1,37 @@
 # MangaCracker
 
-A personal Android manga reader in the spirit of Tachiyomi / Mihon, with an AniList-style dark look.
-A personal project, shared as is. Not affiliated with any of the sites below.
+## Install
 
-## Download
+**Android phone** (Android 10 or newer)
+1. Download the APK from the **[latest release](https://github.com/YoruCAnime/Manga/releases/latest)** on the phone.
+2. Open it and tap Install (allow "Install unknown apps" for your browser if asked).
+3. Done: the app updates itself after that ("Update ready" pop-up, or Settings › App updates).
 
-**[Get the latest APK from Releases](https://github.com/YoruCAnime/Manga/releases/latest)** (Android 10 or newer).
-From 1.1.0 on the app updates itself: when a new release is out it shows an "Update ready" pop-up (Update now /
-Later); Later keeps it under Settings → App updates.
+**Windows PC** (Windows 10 / 11, 64-bit)
+1. Download **MangaCracker-Windows-…zip** from the **[Windows release](https://github.com/YoruCAnime/Manga/releases?q=windows)**.
+2. Unzip it anywhere and run **MangaCracker.exe** (right-click › Send to › Desktop for a shortcut). If Windows says
+   "Windows protected your PC": More info › Run anyway.
+3. Once, for AVIF pages, GIFs and recording: `winget install Gyan.FFmpeg` in a terminal.
+
+More on the Windows version: [windows/README.md](windows/README.md).
+
+---
+
+A personal Android manga reader in the spirit of Tachiyomi / Mihon, with an AniList-style dark look, and a
+Windows version of it ([windows/](windows/)). A personal project, shared as is. Not affiliated with any of the sites
+below.
 
 ## What it does
 
 - **Home**: Continue reading (page and % of where you stopped), Updates for you (new chapters of your library),
   Recommended for you (built from the genres you favourite and read, plus "more like this" of what you read last),
-  and a Popular row for every source. Pull down to check for new chapters.
+  and a Popular row for every source. Pull down to check for new chapters. With the season, sakura blossoms and
+  petals, summer light (bokeh) / fireflies, red and gold maple leaves or six-armed snow crystals drift and tumble
+  over Home (far ones out of focus, a faint seasonal glow at the top), and stars twinkle at night (now and then a
+  shooting star). Settings › Home screen picks one or switches them off.
 - **Library** has three shelves: **Manga**, **Fav videos** (♥ in the player, or long-press any video) and
   **Watched** (every video you started, newest first, with % and time left; tap to resume, ✕ to remove, the bin
-  clears the list). **Manga**: your favourites (tap ♥ on a title). Search by title / author / genre, sort, filter by source,
+  clears the list after a Clear / Keep row at the top). **Manga**: your favourites (tap ♥ on a title). Search by title / author / genre, sort, filter by source,
   "N new" badges, a reading bar on each cover. Long-press a cover to jump straight back into it.
 - **Browse**: every source, Popular / Latest, search, and a filter sheet: sort, type, status, author / artist, and
   genres / tags (tap once to include ✓, twice to exclude ✕, as many as you like). "Search every source" at the top.
@@ -27,25 +42,135 @@ Later); Later keeps it under Settings → App updates.
 - **Reader**: one smooth vertical strip (no page turns). It remembers the exact page when you leave and opens
   there again, flows straight into the next chapter, preloads the next pages, pinch or double-tap to zoom, tap for
   the bar (page n of N · %, a page slider, previous / next chapter, save the whole chapter, reader settings:
-  background, page gap, side margin). Long-press a page to save or share it (Pictures/MangaCracker/<title>).
+  background, page gap, side margin). Long-press a page to save or share it (Pictures/MangaCracker/<title>),
+  or to **save a cutout of the character** you pressed on (see below).
   The grid button shows every page: tap one to jump there, hold to pick several and save them at once (galleries
   have the same Gallery button on their title page). Animated GIFs play (Danbooru / Gelbooru animated posts load the
   original moving file).
-- **Videos** (own tab): Hentaigasm, Oppai.stream, MuchoHentai, HentaiMama, NSFW R34, Porcore, SFM Compile and Rule34Video. Latest / Popular, search with genre autocomplete,
-  a genre sheet (include / exclude), Continue watching (resumes where you stopped). Tap a **series name ›** (on a
+  - **Auto-scroll**: ▶ in the bottom bar starts it. The strip glides on by itself (smoothly, not in jumps); a small
+    − / speed / + / ⏸ pill sits at the bottom right while it runs, and the bar has a speed slider (0.25× to 5×), so
+    you can change the speed without stopping. Touching the screen pauses it; it carries on a moment after you let
+    go. It flows into the next chapter and stops at the very end.
+  - **Night filter** (moon button, or reader settings): darkens the pages and/or gives them a warm tint, each with
+    its own slider, remembered. It never touches the phone's own brightness.
+  - **Sounds while reading** (🎧 in the reader bar, or reader settings): Rain, Café, Fireplace, Night crickets,
+    or **your own audio file** (music: the Music tab), with its own volume. The built-in sounds are made for the app (60-second
+    loops that repeat without a seam). It fades in, pauses while the app is in the background or a call / other
+    music starts, and fades out when you leave the reader.
+  - **Two pages side by side** (reader settings, for doujins / galleries): with the phone turned sideways, pages show
+    in pairs like a book, fitted to the screen height. The cover and wide two-page spreads stay on their own.
+    **Right to left** (on by default: Japanese order, page 2 on the right) can be switched off. Pinch zoom, the page
+    slider, saving your place and the next chapter all still work.
+- **Read badges**: covers everywhere (Browse, Home rows, search, Library, Recommended) show how far you are:
+  "Ch. 12/40" with a thin bar, "Reading", or a green "✓ Read" once every chapter is read (a gallery: read to the
+  end). **Hide titles I've finished** (Settings → Library, off by default) takes finished titles out of Browse, Home
+  and search; Library and History keep them.
+- **Character cutout** (long-press a page → *Save a cutout of this character*): the character under your finger is
+  cut out of its panel and saved as a transparent PNG next to the title's saved pages. It runs on the phone with two
+  picture models, downloaded once the first time (220 MB, best on Wi-Fi):
+  [anime-seg](https://huggingface.co/skytnt/anime-seg) (SkyTNT, Apache-2.0) draws the outline of every character in
+  the panel, and [MobileSAM](https://huggingface.co/Acly/MobileSAM) (Apache-2.0) picks the one you pressed when two
+  touch. Speech bubbles full of text and stray bits are left out by themselves. The window shows the panel with
+  everything that is not kept dimmed: **Add** + a tap brings back a missing part, **Remove** + a tap drops one (a
+  speech bubble goes whole), the **Erase** brush removes whatever you paint over (it is highlighted while you paint
+  and goes when you lift your finger), **Restore** paints parts back, S / M / L brush sizes, two fingers zoom in for
+  fine edges, ↶ undoes, 👁 previews only what Save keeps. Manhwa strips are cut at their panel gaps,
+  so a 20 000 px strip is never handled whole. Works best on clean art; very busy black-and-white pages full of tone
+  may need a few taps.
+- **Videos** (own tab): anime from Anikoto and AnimeHeaven, then Hentaigasm, Oppai.stream, MuchoHentai, HentaiMama, NSFW R34, Porcore, SFM Compile and Rule34Video. Latest / Popular, search with genre autocomplete,
+  a genre sheet (include / exclude), Continue watching (resumes where you stopped), and **Recommended for you** under it:
+  picked from the genres of what you favourite, finish and watch for a while, on every site you use (plus similar
+  sites you haven't tried), leaving out what you've seen; one card per show. Tap a **series name ›** (on a
   card, the player's title or in Watched) for the series page: every episode in every language (Raw / English /
-  Español / previews) with language filters. Long-press a video to add it to your favourites. covers that fall back to other
+  Español / previews, anime Sub / Dub) with language filters. On the anime sites Popular and search list whole shows: tap one
+  for all its episodes, with **Sub** and **Dub** side by side (SUB / DUB badges). Long-press a video to add it to your favourites. covers that fall back to other
   sizes / the same series when a site refuses a picture. The player opens in landscape (forced: works with
-  auto-rotate locked; Rotate switches to portrait and back), controls hide after 3 s, tap to show them:
-  −1s / +1s buttons, double-tap the left / right side to step 1 s (taps stack), double-tap the middle to pause, hold
+  auto-rotate locked; Rotate switches to portrait and back), controls hide after 3 s, tap to show them. All the
+  big play / pause sits in the middle of the picture between −1s / +1s and previous / next episode; the seek bar
+  runs along the bottom with the app's own **volume** above it on the left (separate from the phone's volume, it is
+  remembered; tap the speaker to mute) and Snapshot, Record, GIF, speed, **Loop** (blue while on: the video starts again at its end instead of Up next) and Rotate on the right (all clear of the
+  camera notch). The seek bar is easy to hit: touch anywhere on it to jump there and keep sliding; while you slide
+  the dot grows, a time bubble rides above your finger and the picture follows (it plays on from there when you
+  let go). Double-tap the left / right side to step 1 s (taps stack), double-tap the middle to pause, hold
   anywhere for 2×, speeds 0.25× to 3×, previous / next episode of the same series (and "Up next" at the end),
-  subtitles on / off, quality (MuchoHentai), **Snapshot** (the current frame to Pictures/MangaCracker/Snapshots) and
+  subtitles on / off, quality for streams with several sizes (**Best** = the highest there is, 1080p on these sites, or at most 1080p / 720p / 480p; your pick is remembered), **Snapshot** (the current frame to Pictures/MangaCracker/Snapshots) and
   **Record** (tap to start, tap to stop: that part is saved as an MP4 clip to Movies/MangaCracker).
+- **Music** (own tab): type an anime and pick it from the suggestions (AniList, as you type: covers, format, year).
+  Its page plays **every opening and ending in full**: **This season** or **All seasons** (the whole show in one
+  list, season after season, each song once), all of them or only Openings / Endings, in order or **Shuffle**. The
+  song list is MyAnimeList's (every OP / ED with its singer); each song plays in full from YouTube (YouTube Music's
+  official audio first; covers, remixes and TV-size cuts are passed over), Opus 160 kbps, found when it starts. Below:
+  **Soundtracks & albums**: official soundtracks and character-song albums from YouTube Music, and uploads from
+  archive.org (FLAC or MP3, the quality on each track); open one or **Play all albums**. **Random anime songs**: the
+  LISTEN.moe radio (Opus 192 kbps) with what's on now. A bar at the bottom (every screen but the reader and the video
+  player) shows what plays, with previous / play-pause / next, stop, a line to jump in the song, **Loop** ("Loop all seasons" /
+  "Loop all": after the last song back to the first, the default; "Loop 1 song"; "No loop") and the music **volume**
+  (the speaker button opens a slider). Switching tabs and coming back keeps the anime or album you had open. It keeps playing on other
+  tabs and with the app in the background and with the screen off (play / pause / next in the notification and on the lock screen); a video pauses it. Its own volume in Settings › Music.
+- **GIF maker** (the GIF button in the player): tap GIF to start capturing (red dot + timer, up to 30 s), tap again
+  to stop. A panel opens at the bottom of the player (no pop-up): drag the two handles to pick the part you want
+  (up to 30 s; the video behind shows the frame under the handle, small pictures show the start and the end), pick
+  a speed (0.25× to 2×: slow motion makes real in-between frames from the motion, so it stays smooth and sharp, no
+  blurry cross-fades or after-images; fast skips frames), **Ping-pong** (plays forward then back, looping), the
+  **FPS** (**Auto**, **24**, **30** or **50**: 50 makes extra in-between frames for very smooth motion, even at normal
+  speed) and a size (**Tiny** up
+  to 2 MB, **Small** up to 5 MB, the default, **Big** up to 10 MB), then **Make GIF**. It shows its progress, then
+  the GIF playing with its size in MB, picture size and length: **Save** (Pictures/MangaCracker/GIFs), **Share** or
+  **Change** to try other settings. The GIF always fits the size you picked: if it would be bigger the app makes it
+  a bit smaller or lowers the frame rate (a frame rate you picked is kept), keeping it as sharp as it can. Long GIFs
+  come out smaller in picture size, so pick a short part for big, sharp slow motion.
+- **My GIFs & clips** (More): every GIF, snapshot and recording you made in the player, newest first, with All / GIFs /
+  Snapshots / Clips filters. Tap one to see it full screen (GIFs play) and swipe for the next one; **Share**, **Open**
+  (clips play in your video player) and **Delete** (tap twice). Only what the app saved itself is listed.
+- **Your stats** (More): your streak (days in a row you read or watched something), the last 7 days (chapters,
+  reading time, videos, watching time, compared with the week before, and a bar for each day), an activity calendar,
+  favourite manga and video genres, the titles you read most this month, and all-time totals. Reading time counts
+  from the day you first open this version; the days before come from your history.
 - **Updates**: new chapters grouped by day; checked in the background (every 6 h by default, Settings) with a
   notification.
 - **Settings**: app updates (check now, install, what's new, automatic check on / off), update interval, covers per
-  row, reader options, switch sources on / off, ExHentai sign-in, Danbooru key, hidden tags, Hide AI-generated, clear the picture cache.
+  row, Hide titles I've finished, reader options, downloads (Wi-Fi only, delete after reading, video size), switch sources on / off, ExHentai sign-in, Danbooru key, hidden
+  tags, Hide AI-generated, backup & restore, clear the picture cache.
+- **Backup & restore** (Settings): **Back up now** writes one file, `MangaCracker-backup-<date>.json`, to
+  Download/MangaCracker; **Save to…** lets you pick the place (Drive, a folder...). It holds your library, history,
+  reading progress, settings, favourite videos and video resume points; logins and API keys are never in it.
+  **Restore…** opens a backup and first shows what's inside (how many titles, chapters, videos, settings), right in
+  the settings page. **Merge** adds it to what's on the phone (where both have the same title, chapter or video, the
+  newer one wins); **Replace** swaps the phone's reading for the backup's (tap twice to be sure). Files from older or
+  newer app versions open too; damaged entries are skipped and counted. **Weekly backup** (off by default) puts a
+  file in the same folder once a week and keeps the last 4.
+- **Test sources** (More, or Settings → Sources → Test all): checks every switched-on manga source and every video
+  source, two at a time so no site is hammered: the latest page loads, the first cover answers, one title / video
+  page opens. Each gets a row: OK, Slow, **Needs VPN** (UK blocks and age checks, e.g. E-Hentai, Rule34Video), Browser
+  check (Cloudflare: open the site once from Browse) or Broken, with a short reason and the time it took. Cancel
+  stops it.
 - **Recommended** uses the manga / doujin sources only (no image boards).
+- **Other sites** (button on a title page): the title (and its other names) is looked up on every other switched-on
+  manga site. Each site gets a box: the matches with cover, chapter count, latest chapter and how close the title is
+  ("100% match"), or why there is nothing ("Not found", **Needs VPN**, "Browser check", "Not working"). Tap a match to
+  open it there. **Move here** (for titles in your library or history) moves your library entry, history and read
+  chapters to that site: chapters are matched by number (chapter 12 read here = chapter 12 read there, 10.5 stays
+  10.5, "Extra" chapters only by the same name), the chapter you were in carries over at the same place, and the
+  library keeps the date you added it. A note at the bottom says how many chapters were marked read (and how many
+  that site doesn't have), with **Undo** for a few seconds. When a library title's site is switched off, not working
+  or gone from the app, its page shows **Find on other sites** at the top.
+- **Downloads** (read and watch with no connection):
+  - Manga: on a title page **Download** → *Next 5 chapters* (from where you are), *All unread* or *All chapters*;
+    a gallery has one Download button; long-press a chapter → *Download* for just that one. Chapters with a green ↓
+    are on the phone, a chapter in the queue shows its pages ("↓ 12/40"), covers in grids get a small ↓ badge. The
+    reader opens downloaded chapters from the phone (no data used, works offline) and the rest from the site as
+    before; with no connection the title page shows the saved chapters.
+  - Videos: the ↓ button at the top of the player. MP4 videos are saved as the file; HLS streams (MuchoHentai,
+    Porcore...) are saved in the size picked in Settings → Downloads (720p by default). Downloaded videos play from
+    the phone in the same player (Snapshot, Record and GIF still work).
+  - **More → Downloads**: space used and free, the queue (pause / resume / cancel each one, pause or resume all;
+    failed ones say why and retry with one tap), downloaded titles with size (tap to see the chapters, ✕ deletes a
+    chapter, the bin deletes the whole title: tap it twice), downloaded videos (tap to play, bin to delete).
+    **Wi-Fi only** (on by default: the queue waits for Wi-Fi) and **Delete chapters after reading** (off) are there and
+    in Settings → Downloads. A notification shows the progress while it downloads.
+  - Downloads stay inside the app (not in your gallery). Nothing starts when the phone is nearly full (it says how
+    much space is left) and a running queue pauses itself. Titles and videos hidden by the safety filter are never
+    downloaded. A failed page or file is tried again a few times, waiting longer each time.
 
 ## Sources
 
@@ -54,7 +179,7 @@ Later); Later keeps it under Settings → App updates.
 | atsu.moe (Atsumaru) | JSON API + its search engine; all filters, author pages, recommendations |
 | comix.to | details / home rows over plain HTTP; search, chapter lists and pages run the site's own scripts in a hidden web view (comix encrypts them). Chapter lists load in steps a few seconds apart (the site blocks fast paging) |
 | nhentai | v2 JSON API (the website is blocked in the UK, the API is not). Low limits: searches are spaced ~6 s apart |
-| E-Hentai / ExHentai | lists and search are blocked in the UK (Online Safety Act) and work on a VPN; galleries open by link (paste a gallery link into the search box) and from the library. ExHentai: sign in under Settings, then switch it on |
+| E-Hentai / ExHentai | lists and search are blocked in the UK (Online Safety Act) and work on a VPN; galleries open by link (paste a gallery link into the search box) and from the library. ExHentai: Settings → Logins → ExHentai → **Sign in** (inside the app: a login in your phone's browser never reaches the app). After the E-Hentai login the app opens ExHentai once and checks it really works, then switches it on; or paste the `ipb_member_id` / `ipb_pass_hash` / `igneous` cookies from a browser where ExHentai opens. A blank ExHentai page means the account has no ExHentai access yet; a block in the UK needs a VPN |
 | Danbooru | pictures and comic pools; 2 tags per search without a login (add your key in Settings for more) |
 | Gelbooru | pictures through its web pages (no key needed) |
 | hitomi.la | its data server (the website itself answers "not found" in the UK; its gallery files and pictures do not); lists, popular today / week / month / year, word and tag search (include / exclude), tag suggestions with counts |
@@ -65,6 +190,8 @@ Later); Later keeps it under Settings → App updates.
 | Manhwa18.net | adult manhwa; genres include / exclude, status, sort, tags, artists |
 | Manhwa18.cc | adult manhwa; one genre at a time, sort, Raw / Completed lists |
 | Manga18.club | adult manga / manhwa; one genre at a time, sort |
+| Anikoto (anime) | its pages + its player's API; HLS 1080p, Sub and Dub, subtitles in up to 9 languages |
+| AnimeHeaven (anime) | its pages; one MP4 per episode (720p, English subs in the picture), no dub |
 | Hentaigasm (videos) | its WordPress feed; one MP4 per episode (720p) |
 | Oppai.stream (videos) | its pages + search form; one WebM per episode (1440p, heavy on mobile data), English subtitles |
 | MuchoHentai (videos) | its pages; HLS up to 1080p (the stream key is unlocked the way the site's own player does), Raw / English / Spanish subtitles |
@@ -99,7 +226,34 @@ uses the debug key. Checks:
 - `AppUpdateTest` (GitHub release check, download, installer hand-off, pop-up shots), `GifAndTagsTest` (animated
   posts give real GIFs, autocomplete on every source). `python _dev_tools\run_tests.py <Test> ...` runs tests and
   prints only results.
+- `GifEngineTest` (the GIF maker on the PC: writer checked against ffmpeg's decoder, slow-motion in-betweens
+  against the real frames, sizes / quality against ffmpeg's GIF recipes; the measuring parts need frames made with
+  ffmpeg in `_dev_tools\out\gif\frames`), `GifScreensTest` (the player's bottom controls, the seek bar and the GIF
+  panel in landscape).
+- `BackupTest` (backup round trip, merge, bad / old / newer files, weekly files), `ReaderLogicTest` (two-page pairing,
+  read badges, hide finished), `FeatureScreensTest` (badges, backup panel, auto-scroll, night filter, and "Test
+  sources" run live against every site), `TwoPageShotTest` (the two-page view in landscape).
+- `SourceMoveTest` (title matching, chapter-number mapping, move + undo) and `DownloadLogicTest` (download queue
+  rules, files on disk, offline lookup, sizes) run with no network; `DownloadLiveTest` (real downloads from a few
+  sites read back with the network blocked, the "Other sites" table, an MP4 and an HLS video checked offline;
+  `-Psources=` picks the sites) and `DownloadScreensTest` (Other sites, move + Undo, downloads, the offline reader,
+  shots 80-89) use the real sites.
 
 Releasing: bump `versionCode` / `versionName` in `app/build.gradle.kts`, build, then
 `gh release create v<version> MangaCracker-<version>.apk --repo YoruCAnime/Manga --title "MangaCracker <version>" --notes-file NOTES.md`.
 The release notes show in the app's pop-up ("**bold**", "- " lists are fine).
+
+Windows releases are tagged `windows-v<version>` and must be made with `--latest=false`: the phone app updates from
+the release marked Latest, so a Windows release must never take that place. The Windows app's code is in `windows/`
+(built on its own, see [windows/README.md](windows/README.md)).
+
+## Tabs and who made it
+
+- **Tabs:** hold down on a cover, chapter or video and choose *Open in new tab*. The small button with a number shows your tabs: tap one to go there, swipe it away or press X to close it.
+- Only the tab on screen is loaded. The others keep your page or second, and come back after you restart the app.
+- **Author, Artist, Circle:** shown on each title's page. Tap a name to see their other works on that site.
+
+## License
+
+GPL-3.0 (see LICENSE). The Music tab uses [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor)
+(GPL-3.0) for YouTube.

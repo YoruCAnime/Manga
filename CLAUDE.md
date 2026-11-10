@@ -86,6 +86,208 @@ User guide: README.md. Log of past work: the DOA2XPS repo's HISTORY.md (2026-11-
   only some tags; untestable here: lists are 451 in the UK). Recommender: AI tags never become taste, "more like this"
   skips AI titles read, `cached()` filters again. `RecommendAiTest` (4 AI favourites on nhentai -> 41 recs, 0 AI).
 
+- 1.6.1 (2026-11-02, Exos: "make play and seek be in middle for video player and default highest quality also have
+  separate volume slider for this app only"): big play / pause with -1s / +1s and prev / next in the MIDDLE of the
+  screen (this replaces the "nothing in the middle" layout below); the seek bar stays full width at the bottom. App
+  volume = `player.volume` (`ui/SeekBar.kt` VolumeBar, white, saved on release in `Settings.videoVolume` /
+  `videoMuted`; the phone's media volume is never touched; portrait hides the %). Quality: `Settings.videoQuality`
+  -1 = Best (`setForceHighestSupportedBitrate`), 0 = Auto, else a max height; picked in the HQ menu and remembered.
+  Test: `GifScreensTest.volumeAndQuality` (shots 59 / 59b / 59c).
+- Player controls + GIF maker (2026-11-02, not released yet). Controls: nothing in the middle of the picture any more;
+  bottom = a button row (prev / -1s / +1s / next ... Snapshot, Record, GIF, speed, Rotate; labels hidden under 560 dp)
+  and play / pause beside the seek bar. `ui/SeekBar.kt`: 48 dp touch strip, slim track, touch anywhere = jump + drag,
+  thumb grows, time bubble; while dragging the player is paused and seeks CLOSEST_SYNC every 120 ms, release = EXACT
+  seek (+ play again if it was playing). Controls / panel use `safePad` (safeDrawing: cutout + bars). In-window notes
+  (`toast()` in PlayerScreen) for the GIF flow, no system toasts there.
+  GIF: `ui/GifPanel.kt` (GifEdit state, range bar, thumbs from `TextureView.getBitmap`, speed / ping-pong / size chips,
+  progress, result with Coil + Save / Share / Change); capture = `gifStart` (30 s cap), range max 30 s (1.9.1).
+  1.9.1: FPS chips (`GIF_FPS` 0 = auto / 24 / 30 / 50; `GifOptions.fps`): a picked rate is kept while fitting (picture
+  shrinks first, fps only last), a picked rate above the video's makes in-betweens at 1x too. `GifMaker.guess()` =
+  size from 10 stretches of 6 frames (within ~7 %), `make()` starts from it with a second guess to correct the slope
+  (long GIFs fit on try 1, ~75-90 % of the limit). `Motion.inBetween`: a third per-pixel guess "not moving" (keeps
+  opaque subtitles / borders crisp) and the real-frame fallback judged against the MOVING part (BAD_SHARE 0.14 of
+  moving pixels): the old whole-frame 30 % let missed scene changes through as mangled frames. GifClip reads up to
+  60 fps for slow motion / 50 fps and shrinks long clips' work frames to a 450 MB cache budget. Tried and rejected
+  (on a JVM bench of gif/ outside the repo): cross-fade where motion is unsure (Exos: "No
+  blurred after images"), Horn-Schunck per-pixel flow (slower, no better), bigger blocks / lambda / medians (no change).
+  `video/GifClip.kt`: `ClipSaver.cut(forGif = true)` (Transformer, video only, <= 720p via Presentation, 16 Mb/s,
+  key frame every 0.5 s, same playerClient + beforePlay) -> MediaMetadataRetriever.getFramesAtIndex in chunks of 8
+  (60 fps halved) -> Lanczos to 640 long side -> `gif/FileFrames` (cache file, 3 B/px) -> `GifMaker` -> cache/gif;
+  `ClipSaver.saveGif` (Pictures/MangaCracker/GIFs), `shareGif` (FileProvider share/). Temp files go on close.
+  Pure Kotlin in `gif/` (JVM-testable): `GifWriter` (GIF89a, LZW, loop), `Palette` (5-bit histogram, variance split +
+  k-means, 7-bit lazy LUT; plain RGB beat OKLab by 1-5 dB here), `GifMaker` (timeline: fast = even frame picks,
+  slow = in-betweens between KEY frames (anime holds deduped, so "on twos" slows smoothly); ping-pong without repeated
+  ends; delays by cumulative rounding (30 fps = 3,4,3 cs); pattern dither only between two CLOSE palette colours
+  (flat areas and edges untouched, no shimmer); `FrameWriter`: changed-rect crop, unchanged (within threshold 6, then
+  10) = transparent, no-change frames merged; auto-fit: threshold 10 -> 160 colours -> long side to 3/4 -> fps to 15 ->
+  smaller -> 10 fps; a threshold-only retry reuses the quantized frames), `Motion` (hierarchical block matching
+  4 px cells / 8 px blocks on a 3-level pyramid of a ~240 px luma plane, smoothness bias, median filter, sub-pixel;
+  both directions; per pixel the better of the 2 vectors, Catmull-Rom warp, blend ONLY where the moved frames agree,
+  else the nearer frame's moved pixel; > 30 % mismatch or a cut (block error / luma histogram) = nearest real frame),
+  `Resample` (Lanczos-3), `Par` (row bands on <= 4 low-priority threads).
+  Tests: `GifEngineTest` (writer vs ffmpeg decode, timing, in-betweens vs real frames, dither / threshold sweep,
+  vs ffmpeg palettegen recipes, speed, make every size), frames from `GifSampleTest -Psources=gifsample` +
+  `_dev_tools\gif_frames.py`; `GifScreensTest` (landscape shots 50-58, PlayerTestHooks = fake clock / GIF job).
+  Measured (PC, 480 px): our GIF vs ffmpeg's best (palettegen diff + paletteuse dither=none): anime talk 2.59 MB /
+  40.2 dB vs 2.91 MB / 38.6 dB, anime action 6.12 / 39.4 vs 7.16 / 39.0, 3D 3.22 / 40.7 vs 5.83 / 42.8 (gradient
+  dither adds ~20 % and removes visible banding). In-betweens vs the dropped real frame: pan 33.4 dB (blend 25.1),
+  3D 41.3 (blend 33.7), testsrc 25.7 (24.9); anime with random speed lines 21.0 (blend 22.0, but sharp, no ghosts).
+  Speed (PC JVM, 1 thread, 480 x 270): resize 7 ms, quantize 2, LZW 2, flow both ways 11, warp 15 per in-between;
+  whole make (2 threads): 1x Small 0.5-3 s, 0.5x Small 5-16 s, 0.25x Small 15-29 s (guess a phone at 2-4x that).
+  Not checked without a phone: Transformer cut + MMR decoding of real streams, MediaStore save, share, real speed,
+  the Coil preview of the finished GIF (black under Robolectric).
+
+- Backup, read badges, reader extras, source test (2026-11-02, not released yet).
+  Backup: `core/Backup.kt` = one JSON file `{"app":"MangaCracker backup","format":1,created,appVersion,library,history,
+  progress,settings,videoWatch,videoFavs}`. Logins / keys / update bookkeeping are never written and always stay the
+  phone's (`withDeviceOnly`). `read()` refuses non-JSON / other apps / format < 1 (BackupException, message shown),
+  reads newer formats (unknown keys ignored, "made by a newer app" note), decodes entry by entry (a broken one is
+  skipped and counted). `apply(MERGE)` = newer wins per key (library by max(added, lastChecked, lastUpdate), history /
+  progress / watch by time; favs union; hidden tags joined; other settings from the file), REPLACE = the file's data.
+  `Repo.restore` / `VideoRepo.restore` put it in place. Writes: MediaStore Download/MangaCracker (`saveToDownloads`),
+  SAF CreateDocument / OpenDocument in `ui/BackupUi.kt` (Settings card + in-window restore preview, Replace needs a
+  second tap, no dialogs). Weekly: `Settings.autoBackup` (off), `autoIfDue` from App start and UpdateWorker, keeps 4
+  `MangaCracker-auto-*` files. Test seams: `Backup.folderOverride`, `BackupTestHooks.openText`.
+  Read badges: `core/ReadMarks.kt` (combine of library / history / progress -> map key -> ReadMark(read, total,
+  percent, finished); total = max(library chapterCount, `HistoryEntry.chapterCount` (new field, the reader passes
+  `vm.chapters.size` to `saveRead`), chaptersCache); galleries (`hasChapters=false`) = 1). `MangaCard` draws the pill
+  ("✓ Read" / "Ch. 12/40" / "Reading") + bar for every caller (`readMark=false` to opt out). `Settings.hideFinished`
+  filters BrowseScreen (load-more keyed on the raw item count so hidden pages keep loading) and `CardRow` (Home rows,
+  Recommended, global search, More like this); Library / History unchanged.
+  Reader (`ui/ReaderScreen.kt`): the LazyColumn now shows `rows` (`readerRows`: one item per line, or in the two-page
+  view each chapter's pages paired by `ui/Spreads.kt` `spreads()`: first page alone, wide (> 1.05) alone, a page
+  before a wide one alone; `screenOrder` = RTL). All index work (start spot, slider, page grid, long-press, preload,
+  current page) goes through rows; `rows` is ONE remembered derivedStateOf reading `rememberUpdatedState(twoPage)`
+  (effects / gestures started once must see the current lines). `vm.ratios` is a snapshot map so pairs re-form when
+  a page turns out wide. Two-page only when `readerTwoPage` and the window is wider than tall; lines fit the screen
+  height (`SpreadRow`). Auto-scroll: `withFrameNanos` loop + `dispatchRawDelta` (60 dp/s x `autoScrollSpeed` / zoom),
+  held while a finger is down (+1.2 s), a fling, the grid / sheet / page menu; waits for an appended chapter, stops at
+  the real end. Progress saving switched from debounce(350) to sample(400) (auto-scroll never stands still).
+  Night filter = a dim + warm layer drawn over the list (`readerNight/readerDim/readerWarm`), never system brightness.
+  Source test: `core/SourceCheck.kt` (latest page -> first covers through Coil with caches off -> details; videos the
+  same; 45 s timeout, > 8 s = slow; message with "VPN" or a 451 = VPN, CloudflareException = browser check) +
+  `ui/SourceTestScreen.kt` (route `sourcetest`, from More and Settings › Sources "Test all"; 2 at a time; Cancel).
+  `SourceCheck.unavailable` marks sources that can't run here (tests: comix).
+  Tests: `BackupTest` (round trip, merge, bad / old / newer files, weekly prune), `ReaderLogicTest` (pairs, RTL, rows
+  per chapter, read marks incl. '#' in chapter ids, hide finished), `FeatureScreensTest` (shots 60-70, 73-75; the
+  live source check), `TwoPageShotTest` (landscape shots 71, 72, 72b). Live check 2026-11-02 (PC, UK): 19 OK, E-Hentai
+  and Rule34Video "needs VPN", comix skipped (no WebView in Robolectric); slowest SFM Compile 5.8 s, HentaiMama 5.0 s.
+  Harness gotcha: Coil's cross-fade freezes part way under Robolectric, so freshly loaded pages can look black / dim in
+  shots (TwoPageShotTest re-draws from the memory cache). Not checked without a phone: SAF pickers, MediaStore
+  Downloads write / prune, real auto-scroll smoothness and speed, rotation into the two-page view.
+
+- Other sites + offline downloads (2026-11-02, not released yet).
+  Other sites: `core/SourceMatch.kt` (pure): `similarity` = half word Dice + half edit distance on normalised titles
+  (accents, punctuation, noise words), also without [..] / (..) parts; a 2+ word prefix scores >= 0.8 minus 0.05 per
+  extra word (so a sequel ranks under the same title). `number(chapter)` = Chapter.number, else "Ch. / Chapter /
+  Episode / # N(.5)" or a bare number; `numberFromId` for slugs ("chapter-10-5"); no number ("Extra") = same name only.
+  `carry()` = read marks by number (duplicate uploads all marked), galleries one to one, the history chapter by number
+  with page scaled by the page counts; counts `unmatched`. Old chapters come from chaptersCache / the download's
+  title.json / progress keys (when the old site is broken the IDs are all there is). `Repo.moveTitle` (keeps `added`,
+  old cover when the new one is unknown, a mark the new title already had wins when further on) returns `MoveUndo`
+  (old values of both keys) -> `Repo.undoMove`. The app has no categories: library = favourites, so "favourite
+  state" = staying in the library. UI `ui/OtherSitesScreen.kt` (route `othersites/{key}`, `OtherSitesVM`: every
+  enabled manga site except boorus, 4 at a time, title then alt titles (Latin first) while nothing scores >= 0.8,
+  keeps >= 0.5, top 3, chapter lists of the best 2 >= 0.6; per-site state via `SourceCheck.classify`: Needs VPN /
+  Browser check / Not working / Skipped (`SourceCheck.unavailable`)). Details: "Other sites" chip, orange "Find on
+  other sites" card when the site is switched off / failing (not when simply offline), `GoneSourcePage` when the
+  source id no longer exists. In-window notes with an action: `ui/Notes.kt` (`Notes.show(text, "Undo") {}`, drawn by
+  `NoteHost` in AppRoot above the bottom bar); Undo also goes back to the old title's page.
+  Downloads: `core/DownloadQueue.kt` (pure rules: FIFO, one task per site, PAUSED / FAILED stay, failed = retry after
+  15 s / 1 min / 4 min then FAILED, permanent errors at once; `load` turns RUNNING into QUEUED), `core/Downloads.kt`
+  (store + index + actions; files in `noBackupFilesDir/downloads` so Android's cloud backup never tries to copy them:
+  manga/<site>/<title>/title.json (ref, details, whole chapter list) + cover.* + <chapter>/0001.jpg.. + chapter.json
+  written LAST (no chapter.json = not downloaded); folder names = readable part + CRC32 (`safe`); the queue in
+  data/downloads.json), `core/DownloadWorker.kt` (`DownloadWorker` = WorkManager, unique work "downloads",
+  APPEND_OR_REPLACE, UNMETERED when `Settings.downloadWifiOnly` (default on; switching it REPLACEs), foreground
+  dataSync notification, channel "downloads"; `DownloadRunner.run` = 2 tasks at once from different sites, pages 2 at a
+  time through `Http.imageClient` + `Http.request` (the reader's Coil request: same cookies / UA / Referer rules, comix
+  without Referer), page addresses resolved at download time (`src.pages` / `imageUrl`: hitomi's gg.js), a page that
+  isn't a picture (magic bytes) fails the try; pages already on disk are kept on a retry; free space < 300 MB = refuse
+  to queue, < 150 MB = the runner pauses everything (`lowSpace`)). Reader: `ReaderVM.pagesOf` = `Downloads.localPages`
+  ("file:" + path, Coil gets a File via `Downloads.model`; also PageGrid / preload / Http.bytes for save + share) else
+  the site; a downloaded start chapter opens with the saved chapter list and asks the site in the background.
+  Details offline: saved chapters + details, "Offline" hint. "Delete chapters after reading" (off) deletes the read
+  downloaded chapters of the visit when the reader closes. Markers: green ↓ on chapter rows / "↓ 12/40" / "↓ paused",
+  ↓ badge on `MangaCard`. Videos: `video/VideoDownloads.kt`: MP4 / WebM = the stream file via `src.playerClient` with
+  Range resume (first bytes must be ftyp / EBML); HLS = our own master parse (`pickVariant`: tallest <=
+  `Settings.videoDownloadHeight` (720 default; 0 = best) + its default audio rendition) then Media3 `HlsDownloader`
+  into a SimpleCache of the video's own (deprecated no-database constructor; one instance per folder, kept in a map,
+  released on delete) with `OkHttpDataSource(src.playerClient)`; the key files are segments too, so MuchoHentai's
+  AES streams play from the cache. `VideoStream.local` (video key) + `streamKeys`; `dataSourceFactory` (player,
+  ClipSaver.cut -> Record / GIF) = file / read-only cache / network; PlayerVM plays a download first (episode list
+  from the site in the background); GifClip skips `beforePlay` for downloads. UI: `ui/DownloadsScreen.kt` (route
+  `downloads`, More row, notification opens it), player ↓ button. Safety: `Safety.blocked` / `VideoSafety` at enqueue
+  and again in the worker (details checked before any file). Test seams: `Downloads.autoStart` (no WorkManager),
+  `Downloads.freeOverride`, `Http.blockNetwork` (every request fails as offline), `VideoDownloads.testByteCap`.
+  Also: Library "Clear watched" = an in-window Keep / Clear row (no AlertDialog); CI runs BackupTest, ReaderLogicTest,
+  SourceMoveTest, DownloadLogicTest offline.
+  Tests: `SourceMoveTest` (7: similarity, numbers, carry incl. 10.5 / missing / Extra / IDs only / galleries, move +
+  undo, move onto a kept title), `DownloadLogicTest` (6: queue rules + backoff, disk layout + offline lookup + sizes +
+  delete, enqueue rules incl. minors / low space / next 5, runner pause on a full disk, picture sniffing, HLS variant
+  pick). Live `DownloadLiveTest`: nhentai gallery (4 p), atsu chapter 1 (9 p), manhwa18cc chapter (60 p) through the
+  real queue in 4-13 s, then ReaderVM + Coil decode every page with the network blocked; Other sites for a manhwa18cc
+  title: Hentai20 + Manga18.club 100 % (112 ch), others "Not found", E-Hentai "Needs VPN", comix skipped; videos:
+  SFM Compile MP4 3 MB (ftyp, moov, mdat; read offline), Porcore HLS 720p (capped 24 MB, first segment MPEG-TS from
+  the cache offline), MuchoHentai HLS 720p (key from the cache, first segment AES-128 decrypted -> MPEG-TS offline).
+  NSFW R34's Bunny HLS answered 403 to everything on 2026-11-02 (playback too, with or without Referer): source issue.
+  `DownloadScreensTest` shots 80-89 (picks a manhwa18cc title with no school / young words, grown-up stories first).
+  Harness: the offline reader shot reopens the chapter so pages come from Coil's memory cache (cross-fade freeze).
+  Not checked without a phone: WorkManager scheduling, the Wi-Fi constraint, the foreground notification and
+  Android 14 background limits, real offline playback (ExoPlayer from file / cache), Transformer cuts of downloads.
+  Regression after it: ScreensTest, NewScreensTest, FeatureScreensTest, GifScreensTest, VideoScreensTest, BackupTest,
+  ReaderLogicTest, GifAndTagsTest, AiFilterTest (nhentai) all pass; assembleRelease (R8) OK.
+
+- 1.7.0 (2026-11-02):
+  - **Character cutout** (`cutout/`): reader long-press → "Save a cutout of this character" → `ui/CutoutScreen.kt`
+    (Dialog). Pipeline `Cutter`: `Panels.find` (XY cut along flat white / black gutter rows and columns, keeps the
+    piece under the tap; strips without gutters → a 2x-width window), anime-seg isnetis (1024 letterbox) = clean
+    figure outlines, the part under the tap (or nearest within 8 % of the diagonal; a missed tap = that part as it is),
+    MobileSAM (encoder once, decoder per tap) picks WHICH figure: its last ("whole") mask if >= 70 % on the figure,
+    else its confident masks (score >= best - 0.05) on the figure, biggest; IoU >= 0.85 → the anime-seg part alone,
+    else part x (SAM mask grown by 1.5 % of the diagonal). `Bubbles.clean`: paper-white (grey >= 225, chroma < 14)
+    round-ish blobs (>= 80 % of hull) with >= 8 letter marks inside are erased with their outline, pieces < 4 % of
+    the biggest dropped. Add tap = SAM point + the anime-seg part under it (+ SAM's own pixels for props); Remove tap
+    on a light round-ish blob erases it whole, else a SAM negative point. Models (`CutoutModels`, 220 MB, pinned HF
+    revisions + SHA-256, resumable) in filesDir/cutout. ONNX Runtime 1.28.0, arm64-v8a only, native libs compressed
+    (`jniLibs.useLegacyPackaging`): APK 13.5 MB. Study: ~20 pages (B&W doujin, full colour, manhwa) with SAM 2.1
+    tiny / small, MobileSAM and anime-seg compared side by side; SAM alone fails on B&W line art, anime-seg alone
+    can't split touching figures, the mix wins. Busy full-bleed B&W pages (tone backgrounds, no gutters) and
+    silhouettes stay hard: the Add / Remove taps cover them.
+  - Tests: `CutoutTest.rules` (offline, CI) and, with `-PcutoutData=<folder>` (parity/ cases from the study +
+    app_models/), `CutoutTest.models` (the app's pipeline with the real models on the PC via the desktop ONNX Runtime
+    jar: IoU >= 0.98 with the study on 5 pages, ~11 s one thread) and `CutoutScreenTest` (shots 60-63).
+  - **ExHentai sign-in** (`core/ExLogin.kt`, `ui/ExLoginScreen.kt`, route `exlogin`): exhentai.org without login
+    cookies bounces through forums.e-hentai.org/remoteapi.php (Cloudflare-checked), which the old flow hit; now the
+    forum login is copied onto .exhentai.org (a year) before every ExHentai request, the sign-in page opens
+    exhentai.org in the same WebView after the forum login and reads the answer (list = OK and the switch turns on;
+    empty / igneous=mystery = no access; 451 = VPN). Or paste ipb_member_id / ipb_pass_hash / igneous. A login in
+    the phone's browser never reaches the app (separate cookie stores); the Settings card says so.
+  - 1.7.1: cutout brush. `CutoutScreen` keeps one undo list of `Edit.Tap` (models) and `Edit.Brush` (stroke in
+    panel px + radius, erase / restore); the models' alpha for a tap list is cached, so strokes are only painted on
+    top (`Mask.paint`: distance to the polyline <= r sets 0 / 1, 1.5 px soft rim). `Picture` = one custom gesture:
+    one finger taps or draws (live highlight, applied on lift), two fingers zoom 1-6x / pan. Shots 64-66.
+  - 1.8.0: new app icon (adaptive `mipmap-*/ic_launcher_{fg,bg,mono}.png` + `drawable-nodpi/splash_icon.webp`; the
+    old book vector stays as the notification small icon). `ui/Seasons.kt` = `SeasonLayer` over Home: `Seasons.scene()`
+    picks the kind (month: sakura / summer (motes by day, fireflies 20-6 h) / leaves / snow) + night stars; a frame
+    loop steps a `Field` at ~30 fps and only the Canvas draw reads the tick (no recomposition); off when the phone's
+    animator scale is 0. Settings `homeEffect` / `homeNightSky`. `core/Ambient.kt` = one ExoPlayer (audio focus on,
+    REPEAT_MODE_ONE, fades) for `res/raw/ambient_*.ogg` (Opus, made by the sounds script, no recordings) or the
+    user's file (`readerSoundUri`, persisted SAF permission, device-only in backups). The reader syncs it on
+    ON_START, pauses on ON_STOP, stops on dispose. `ui/SoundsUi.kt` SoundPicker (reader 🎧 sheet + ReaderSettings).
+    Tests: `CozyShotTest` (rules in CI; shots 100-108), `SeasonPreviewTest` (each effect alone, shots 109a-e).
+  - 1.9.1 seasons: Exos found the shapes "lame and basic". `Sprites` in Seasons.kt draws each piece once into a 192 px
+    bitmap with android.graphics (six-armed crystals with seeded branches / plate / tips over a blurred ice-blue glow;
+    maple + slim momiji leaves = 7 lance-shaped saw-toothed lobes + a centre painted one by one (Path.op UNION did
+    nothing under Robolectric) with a radial red-gold fill, then light, veins via SRC_ATOP; sakura blossoms with
+    stamens + gradient petals) plus a softened copy (shrunk / grown) for far ones; the Field only moves / turns /
+    squeezes them (drawImage). Paint default colour must be opaque: a shader is multiplied by the paint's alpha.
+    sin(pi) is a hair below 0, so pow() of it is NaN and broke whole lobe paths. Summer by day = lens bokeh discs
+    with a rim + glints. A faint seasonal glow at the top. Lo-fi: 4 more loops (`ambient_lofi_{night,sunny,rainy,jazz}`,
+    made by a script like the others; ids lofi_* in `Ambient.sounds`).
+  - Reader long-press undoes the strip zoom before finding the page (zoomed in, it used to pick the wrong page) and
+    records where on the page the finger was (two-page spreads included).
+
 ## Rules / facts learnt
 - Chapters are newest first. `chaptersFlow` lets slow sources (comix, 2.5-4.8 s between chapter pages) fill in;
   `latestChapters` = what the update check fetches.

@@ -1,6 +1,7 @@
 package com.yoruc.mangacracker.sources
 
 import com.yoruc.mangacracker.core.Chapter
+import com.yoruc.mangacracker.core.ExLogin
 import com.yoruc.mangacracker.core.Http
 import com.yoruc.mangacracker.core.MangaDetails
 import com.yoruc.mangacracker.core.MangaRef
@@ -37,10 +38,13 @@ object EHentaiSource : Source {
     override val baseUrl: String get() = if (Repo.settings.value.useExHentai) "https://exhentai.org" else "https://e-hentai.org"
 
     private const val GUARD = "-lolicon -shotacon -toddlercon"
-    /** [GUARD], plus the "ai generated" tag while Settings hides AI (the site drops them, so pages stay full). */
-    private val guard get() = if (Safety.hideAi) "$GUARD -other:\"ai generated$\"" else GUARD
+    /** [GUARD], plus the AI / futanari / furry tags while Settings hides them (the site drops them, so pages stay full). */
+    private val guard get() = GUARD + (if (Safety.hideAi) " -other:\"ai generated$\"" else "") +
+        (if (Safety.hideFuta) " -female:futanari$ -male:\"dickgirl on male$\"" else "") +
+        (if (Safety.hideFurry) " -female:furry$ -male:furry$" else "")
     private const val UK_BLOCK = "E-Hentai blocks its lists and search in the UK (Online Safety Act). They work on a VPN. " +
         "Galleries from your library or a pasted gallery link still open."
+    private const val EX_SIGN_IN = "ExHentai needs you signed in: Settings › Logins › ExHentai › Sign in"
 
     init {
         Http.rateLimits["e-hentai.org"] = 700L
@@ -66,11 +70,15 @@ object EHentaiSource : Source {
     private val cursors = ConcurrentHashMap<String, MutableMap<Int, String>>()
 
     private suspend fun fetch(url: String): Document {
-        if (url.contains("exhentai.org") && WebCookieJar.get("https://exhentai.org", "ipb_member_id") == null)
-            throw SourceException("ExHentai needs you signed in (Settings › Logins)")
+        val ex = url.contains("exhentai.org")
+        // the login goes on exhentai.org first: without it the site bounces through the forums' Cloudflare check
+        if (ex && !ExLogin.carryOver()) throw SourceException(EX_SIGN_IN)
         val (code, body) = Http.getRaw(url)
+        if (ex && (code !in 200..299 || body.isBlank())) {
+            val s = ExLogin.read(code, body, WebCookieJar.get(ExLogin.EX, "igneous"))
+            throw SourceException(s.text + " (Settings › Logins › ExHentai)")
+        }
         if (code == 451) throw SourceException(UK_BLOCK)
-        if (code == 302 || (body.isBlank() && url.contains("exhentai"))) throw SourceException("ExHentai needs you signed in (Settings › Logins)")
         if (code !in 200..299) throw SourceException("E-Hentai answered $code")
         if ("temporarily banned" in body) throw SourceException("E-Hentai paused you for loading too fast. Try again in a few minutes.")
         return Jsoup.parse(body, url)
@@ -143,6 +151,8 @@ object EHentaiSource : Source {
     }
 
     override fun artistQuery(name: String) = SearchQuery(include = listOf(Tag("artist:$name", name)))
+    override val authorsAreGroups get() = true
+    override fun groupQuery(name: String) = SearchQuery(include = listOf(Tag("group:$name", name)))
 
     override suspend fun tags(): List<Tag> = listOf(
         "female:big breasts", "female:sole female", "male:sole male", "female:stockings", "female:nakadashi", "female:glasses",

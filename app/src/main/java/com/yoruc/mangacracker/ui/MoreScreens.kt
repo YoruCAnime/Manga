@@ -36,8 +36,12 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.DownloadForOffline
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SystemUpdate
@@ -50,6 +54,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +72,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.yoruc.mangacracker.core.AppUpdate
+import com.yoruc.mangacracker.core.DlState
+import com.yoruc.mangacracker.core.Downloads
+import com.yoruc.mangacracker.core.ExLogin
 import com.yoruc.mangacracker.core.Http
 import com.yoruc.mangacracker.core.LoginKind
 import com.yoruc.mangacracker.core.Repo
@@ -161,7 +169,18 @@ fun MoreScreen(nav: Nav) {
             }
         }
         item { MoreRow(Icons.Rounded.History, "History", "Everything you've read") { nav.history() } }
-        item { MoreRow(Icons.Rounded.Settings, "Settings", "Reader, updates, sources, hidden tags, logins") { nav.settings() } }
+        item { MoreRow(Icons.Rounded.Insights, "Your stats", "Streak, the last 7 days, favourite genres, most read") { nav.stats() } }
+        item { MoreRow(Icons.Rounded.PhotoLibrary, "My GIFs & clips", "Every GIF, snapshot and recording you've made") { nav.gallery() } }
+        item {
+            val q by Downloads.queue.tasks.collectAsState()
+            val t by Downloads.titles.collectAsState()
+            val v by com.yoruc.mangacracker.video.VideoDownloads.videos.collectAsState()
+            val active = q.count { it.state == DlState.QUEUED || it.state == DlState.RUNNING }
+            MoreRow(Icons.Rounded.DownloadForOffline, "Downloads",
+                (if (active > 0) "$active downloading · " else "") + "${t.size} title${if (t.size == 1) "" else "s"}, ${v.size} video${if (v.size == 1) "" else "s"} for offline") { nav.downloads() }
+        }
+        item { MoreRow(Icons.Rounded.Settings, "Settings", "Reader, updates, sources, hidden tags, logins, backup") { nav.settings() } }
+        item { MoreRow(Icons.Rounded.NetworkCheck, "Test sources", "Check that every site still loads") { nav.sourceTest() } }
         item {
             val upd by AppUpdate.state.collectAsState()
             val rel = upd.release
@@ -255,13 +274,55 @@ fun SettingsScreen(nav: Nav) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     (2..5).forEach { n -> FilterPill("$n", s.gridColumns == n) { Repo.updateSettings { it.copy(gridColumns = n) } } }
                 }
+                SwitchRow("Hide titles I've finished", s.hideFinished, sub = "In Browse, Home and search, not in Library or History. Covers show how far you've read.") { v ->
+                    Repo.updateSettings { it.copy(hideFinished = v) }
+                }
+            }
+        }
+
+        item { SectionHeader("Home screen") }
+        item {
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                Text("Season effects", color = Mc.Text, fontSize = 15.sp)
+                Text(Seasons.describe(s.homeEffect, s.homeNightSky), color = Mc.Text3, fontSize = 12.sp)
+                Spacer(Modifier.height(8.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Seasons.choices.forEach { (id, l) -> FilterPill(l, s.homeEffect == id) { Repo.updateSettings { it.copy(homeEffect = id) } } }
+                }
+                if (s.homeEffect != Seasons.OFF && s.homeEffect != Seasons.STARS) {
+                    SwitchRow("Stars at night", s.homeNightSky, sub = "8 pm to 6 am: twinkling stars, now and then a shooting star") { v ->
+                        Repo.updateSettings { it.copy(homeNightSky = v) }
+                    }
+                }
             }
         }
 
         item { SectionHeader("Reader") }
-        item { Box(Modifier.padding(horizontal = 0.dp)) { ReaderSettings() } }
+        item { Box(Modifier.padding(horizontal = 0.dp)) { ReaderSettings(inReader = false) } }
+        item { SectionHeader("Music") }
+        item { MusicSettings() }
 
-        item { SectionHeader("Sources") }
+        item { SectionHeader("Downloads", action = "Open", onAction = { nav.downloads() }) }
+        item {
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                SwitchRow("Wi-Fi only", s.downloadWifiOnly, sub = "Downloads wait for Wi-Fi (no mobile data)") { v ->
+                    Repo.updateSettings { it.copy(downloadWifiOnly = v) }
+                    if (Downloads.queue.hasWaiting()) Downloads.kick(ctx, replace = true)
+                }
+                SwitchRow("Delete chapters after reading", s.deleteAfterReading, sub = "A downloaded chapter goes once you've read it and leave the reader") { v ->
+                    Repo.updateSettings { it.copy(deleteAfterReading = v) }
+                }
+                Text("Video downloads (streams with several sizes)", color = Mc.Text, fontSize = 15.sp, modifier = Modifier.padding(top = 6.dp))
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(480 to "480p", 720 to "720p", 1080 to "1080p", 0 to "Best").forEach { (h, l) ->
+                        FilterPill(l, s.videoDownloadHeight == h) { Repo.updateSettings { it.copy(videoDownloadHeight = h) } }
+                    }
+                }
+            }
+        }
+
+        item { SectionHeader("Sources", action = "Test all", onAction = { nav.sourceTest() }) }
         items(Sources.all, key = { "src" + it.id }) { src ->
             Box(Modifier.padding(horizontal = 16.dp)) {
                 SwitchRow(src.name, src.id !in s.disabledSources, sub = src.blurb) { on ->
@@ -273,24 +334,19 @@ fun SettingsScreen(nav: Nav) {
         item { SectionHeader("Logins & keys") }
         item {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                LoginCard(
-                    "ExHentai",
-                    if (WebCookieJar.get("https://exhentai.org", "ipb_member_id") != null || WebCookieJar.get("https://e-hentai.org", "ipb_member_id") != null)
-                        "Signed in" else "Sign in on the E-Hentai forums to use ExHentai",
-                ) {
+                var ex by remember { mutableStateOf(if (ExLogin.signedIn()) "Signed in to E-Hentai" else "Not signed in. A login in your phone's browser doesn't reach the app: sign in here.") }
+                LaunchedEffect(Unit) { if (ExLogin.signedIn()) ex = ExLogin.check().text }
+                LoginCard("ExHentai", ex) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { nav.web("https://forums.e-hentai.org/index.php?act=Login&CODE=00") }, colors = ButtonDefaults.buttonColors(containerColor = Mc.Blue, contentColor = Mc.Bg)) { Text("Sign in") }
-                        Button(onClick = {
-                            CookieManager.getInstance().apply {
-                                listOf("https://e-hentai.org", "https://exhentai.org", "https://forums.e-hentai.org").forEach { u ->
-                                    getCookie(u)?.split(";")?.forEach { c -> setCookie(u, c.substringBefore("=").trim() + "=; Max-Age=0; Path=/") }
-                                }
-                                flush()
-                            }
-                            Repo.updateSettings { it.copy(useExHentai = false) }
-                        }, colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text)) { Text("Sign out") }
+                        Button(onClick = { nav.exLogin() }, colors = ButtonDefaults.buttonColors(containerColor = Mc.Blue, contentColor = Mc.Bg)) {
+                            Text(if (ExLogin.signedIn()) "Sign-in & check" else "Sign in")
+                        }
+                        if (ExLogin.signedIn()) Button(onClick = { ExLogin.signOut(); ex = "Signed out" },
+                            colors = ButtonDefaults.buttonColors(containerColor = Mc.Card2, contentColor = Mc.Text)) { Text("Sign out") }
                     }
-                    SwitchRow("Use ExHentai instead of E-Hentai", s.useExHentai) { v -> Repo.updateSettings { it.copy(useExHentai = v) } }
+                    SwitchRow("Use ExHentai instead of E-Hentai", s.useExHentai) { v ->
+                        if (v && !ExLogin.signedIn()) nav.exLogin() else Repo.updateSettings { it.copy(useExHentai = v) }
+                    }
                 }
                 LoginCard("Danbooru (optional)", "Your login name and API key lift the 2-tag search limit") {
                     KeyField("Login", s.danbooruUser) { v -> Repo.updateSettings { it.copy(danbooruUser = v.trim()) } }
@@ -305,6 +361,12 @@ fun SettingsScreen(nav: Nav) {
                 Text("Titles with these tags never show up. Titles involving minors are always hidden.", color = Mc.Text3, fontSize = 12.5.sp)
                 SwitchRow("Hide AI-generated", s.hideAi, sub = "Manga and pictures (not videos) whose title says \"AI generated\" (or [AI]) or that have an AI tag") { v ->
                     Repo.updateSettings { it.copy(hideAi = v) }
+                }
+                SwitchRow("Hide futanari", s.hideFuta, sub = "Manga, pictures and videos with a futanari / dickgirl tag or \"futanari\" in the title") { v ->
+                    Repo.updateSettings { it.copy(hideFuta = v) }
+                }
+                SwitchRow("Hide furry", s.hideFurry, sub = "Manga, pictures and videos with a furry / anthro tag or \"furry\" in the title (not animal ears)") { v ->
+                    Repo.updateSettings { it.copy(hideFurry = v) }
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -326,6 +388,9 @@ fun SettingsScreen(nav: Nav) {
                 }
             }
         }
+        item { SectionHeader("Backup & restore") }
+        item { BackupCard() }
+
         item { SectionHeader("Storage") }
         item {
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -386,7 +451,7 @@ fun WebScreen(nav: Nav, url: String) {
                             loading = false; title = view.title ?: u
                             WebCookieJar.flush()
                             // after signing in on the forums, carry the login over to ExHentai
-                            if (u.contains("e-hentai.org")) copyEhLogin()
+                            if (u.contains("e-hentai.org")) ExLogin.carryOver()
                         }
                         override fun onPageStarted(view: WebView, u: String, favicon: android.graphics.Bitmap?) { loading = true }
                     }
@@ -396,14 +461,4 @@ fun WebScreen(nav: Nav, url: String) {
             },
         )
     }
-}
-
-private fun copyEhLogin() {
-    val id = WebCookieJar.get("https://e-hentai.org", "ipb_member_id") ?: WebCookieJar.get("https://forums.e-hentai.org", "ipb_member_id") ?: return
-    val hash = WebCookieJar.get("https://e-hentai.org", "ipb_pass_hash") ?: WebCookieJar.get("https://forums.e-hentai.org", "ipb_pass_hash") ?: return
-    WebCookieJar.set("https://exhentai.org", "ipb_member_id", id, ".exhentai.org")
-    WebCookieJar.set("https://exhentai.org", "ipb_pass_hash", hash, ".exhentai.org")
-    WebCookieJar.set("https://e-hentai.org", "ipb_member_id", id, ".e-hentai.org")
-    WebCookieJar.set("https://e-hentai.org", "ipb_pass_hash", hash, ".e-hentai.org")
-    WebCookieJar.flush()
 }

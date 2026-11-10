@@ -35,6 +35,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,7 +53,10 @@ import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.yoruc.mangacracker.core.CloudflareException
+import com.yoruc.mangacracker.core.Downloads
 import com.yoruc.mangacracker.core.MangaRef
+import com.yoruc.mangacracker.core.ReadMark
+import com.yoruc.mangacracker.core.ReadMarks
 import com.yoruc.mangacracker.sources.Sources
 import com.yoruc.mangacracker.ui.theme.Mc
 
@@ -106,27 +110,48 @@ fun MangaCard(
     progress: Float? = null,
     inLibrary: Boolean = false,
     showSource: Boolean = false,
-    onLongClick: (() -> Unit)? = null,
+    /** Show how far the title is read (from history / progress). */
+    readMark: Boolean = true,
+    /** Extra lines in the menu when held down (there is always "Open in new tab"). */
+    menu: List<Pair<String, () -> Unit>> = emptyList(),
     onClick: () -> Unit,
 ) {
-    Column(modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
+    val marks by ReadMarks.state.collectAsState()
+    val mark = if (readMark) marks[ref.key] else null
+    val held = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val heldCtx = androidx.compose.ui.platform.LocalContext.current
+    Column(modifier.combinedClickable(onClick = onClick, onLongClick = { held.value = true })) {
+        androidx.compose.material3.DropdownMenu(held.value, { held.value = false }, containerColor = Mc.Card2) {
+            menu.forEach { (label, act) -> androidx.compose.material3.DropdownMenuItem(text = { Text(label) }, onClick = { held.value = false; act() }) }
+            androidx.compose.material3.DropdownMenuItem(text = { Text("Open in new tab") }, onClick = { held.value = false; tabAdded(heldCtx, com.yoruc.mangacracker.core.Tabs.addManga(ref)) })
+        }
         Box(Modifier.fillMaxWidth().aspectRatio(ratio).clip(CardShape).background(Mc.Card)) {
             Cover(ref.cover, Modifier.fillMaxSize())
             Box(
                 Modifier.fillMaxWidth().height(48.dp).align(Alignment.BottomCenter)
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xAA05101A))))
             )
-            if (badge != null) {
-                Text(
-                    badge, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(6.dp).clip(RoundedCornerShape(4.dp)).background(Mc.Pink).padding(horizontal = 6.dp, vertical = 2.dp)
-                )
+            if (badge != null || mark != null) {
+                Column(Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (badge != null) Text(
+                        badge, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(Mc.Pink).padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                    if (mark != null) ReadPill(mark)
+                }
             }
-            if (inLibrary) {
-                Box(
-                    Modifier.align(Alignment.TopEnd).padding(6.dp).size(18.dp).clip(CircleShape).background(Mc.Blue),
-                    contentAlignment = Alignment.Center
-                ) { Text("♥", color = Color.White, fontSize = 10.sp) }
+            val dls by Downloads.titles.collectAsState()
+            val downloaded = dls[ref.key]?.saved?.isNotEmpty() == true
+            if (inLibrary || downloaded) {
+                Column(Modifier.align(Alignment.TopEnd).padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (inLibrary) Box(Modifier.size(18.dp).clip(CircleShape).background(Mc.Blue), contentAlignment = Alignment.Center) {
+                        Text("♥", color = Color.White, fontSize = 10.sp)
+                    }
+                    // chapters saved on the phone
+                    if (downloaded) Box(Modifier.size(18.dp).clip(CircleShape).background(Mc.Green), contentAlignment = Alignment.Center) {
+                        Text("↓", color = Mc.Bg, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
             if (corner != null) {
                 Text(
@@ -143,9 +168,10 @@ fun MangaCard(
                     )
                 }
             }
-            if (progress != null) {
+            val bar = progress ?: mark?.takeIf { !it.finished }?.fraction?.takeIf { it > 0f }
+            if (bar != null) {
                 LinearProgressIndicator(
-                    progress = { progress.coerceIn(0f, 1f) },
+                    progress = { bar.coerceIn(0f, 1f) },
                     modifier = Modifier.fillMaxWidth().height(3.dp).align(Alignment.BottomCenter),
                     color = Mc.Blue, trackColor = Color(0x55000000), drawStopIndicator = {},
                 )
@@ -160,6 +186,22 @@ fun MangaCard(
             Text(ref.subtitle, color = Mc.Text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
+}
+
+/** Small read badge on a cover: "✓ Read" when every known chapter is read, else "Ch. 12/40" or "Reading". */
+@Composable
+private fun ReadPill(m: ReadMark) {
+    val (label, color) = when {
+        m.finished -> "✓ Read" to Mc.Green
+        m.total > 1 && m.read > 0 -> "Ch. ${m.read}/${m.total}" to Mc.Text
+        m.read > 0 -> "${m.read} read" to Mc.Text
+        m.total > 1 -> "Reading" to Mc.Blue
+        else -> return
+    }
+    Text(
+        label, color = color, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+        modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xD90B1622)).padding(horizontal = 5.dp, vertical = 1.dp)
+    )
 }
 
 @Composable
