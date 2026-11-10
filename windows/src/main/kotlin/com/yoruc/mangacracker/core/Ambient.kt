@@ -15,7 +15,7 @@ import java.io.File
 import kotlin.math.cbrt
 
 /**
- * Sounds while reading: a quiet loop under the pages (rain, café, lo-fi, fireplace, night crickets, or the user's
+ * Sounds while reading: a quiet loop under the pages (rain, café, fireplace, night crickets, or the user's
  * own audio file). One player for the app; it fades in and out, pauses while the window is minimised and stops when
  * the reader closes. The built-in loops are the phone's (made from scratch by the sounds script, 60 s each, seamless).
  * Windows: a sound-only mpv (the video player's libmpv) in place of ExoPlayer; the loops are unpacked from the app
@@ -30,12 +30,6 @@ object Ambient {
         Sound("cafe", "Café", "ambient_cafe.ogg"),
         Sound("fire", "Fireplace", "ambient_fire.ogg"),
         Sound("night", "Night crickets", "ambient_night.ogg"),
-        // lo-fi loops, each its own chords / tempo / instruments
-        Sound("lofi", "Lo-fi chill", "ambient_lofi.ogg"),
-        Sound("lofi_night", "Lo-fi night drive", "ambient_lofi_night.ogg"),
-        Sound("lofi_sunny", "Lo-fi sunny day", "ambient_lofi_sunny.ogg"),
-        Sound("lofi_rainy", "Lo-fi rainy window", "ambient_lofi_rainy.ogg"),
-        Sound("lofi_jazz", "Lo-fi study jazz", "ambient_lofi_jazz.ogg"),
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

@@ -5,6 +5,9 @@ import com.sun.net.httpserver.HttpServer
 import com.yoruc.mangacracker.core.Http
 import com.yoruc.mangacracker.video.VideoDownloads
 import com.yoruc.mangacracker.video.VideoSources
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.URLDecoder
@@ -20,6 +23,11 @@ object StreamProxy {
     private const val TS_SYNC: Byte = 0x47
     /** What sites name their video pieces to look like something else (Anikoto: .jpg, .html, .js ...). */
     private val FALSE_NAMES = setOf("jpg", "jpeg", "png", "webp", "gif", "ico", "svg", "html", "htm", "js", "css", "txt", "woff", "woff2")
+    /** ffmpeg on a plain video file: pick up again after a dropped connection or a busy answer, and never wait for ever. */
+    private val RECOVER = listOf("-reconnect", "1", "-reconnect_on_network_error", "1", "-reconnect_on_http_error", "429,5xx",
+        "-reconnect_delay_max", "4", "-rw_timeout", "30000000")
+    /** How often one answer may be picked up again in a row. */
+    private const val RESUME_TRIES = 5
     private var server: HttpServer? = null
     private var port = 0
     @Volatile var maxHeight = 0
@@ -63,7 +71,7 @@ object StreamProxy {
             referer?.let { append("Referer: $it\r\n") }
             if (cookies.isNotEmpty()) append("Cookie: $cookies\r\n")
         }
-        return listOf("-user_agent", ua) + (if (headers.isNotEmpty()) listOf("-headers", headers) else emptyList()) + listOf("-i", url)
+        return listOf("-user_agent", ua) + (if (headers.isNotEmpty()) listOf("-headers", headers) else emptyList()) + RECOVER + listOf("-i", url)
     }
 
     private fun serve(ex: HttpExchange) {
@@ -97,8 +105,41 @@ object StreamProxy {
             ex.responseHeaders.add("Accept-Ranges", r.header("Accept-Ranges") ?: "bytes")
             val len = body.contentLength()
             ex.sendResponseHeaders(r.code, if (len >= 0) len else 0)
-            ex.responseBody.use { out -> body.byteStream().use { it.copyTo(out, 64 * 1024) } }
+            // a video file whose connection drops half way (or stalls) is asked again from the byte it reached, so the
+            // player just waits a moment instead of being left with a cut-off file
+            val canResume = r.isSuccessful && len > 0 && (r.code == 206 || r.header("Accept-Ranges").equals("bytes", true))
+            val start = r.header("Content-Range")?.let { Regex("bytes (\\d+)-").find(it)?.groupValues?.get(1)?.toLongOrNull() } ?: 0L
+            ex.responseBody.use { out ->
+                copyResuming(body.byteStream(), out, len, canResume) { sent ->
+                    client.newCall(Http.request(url, mapOf("Range" to "bytes=${start + sent}-${start + len - 1}"))).execute()
+                }
+            }
         }
+    }
+
+    /**
+     * [first] into [out] ([len] bytes, -1 = unknown). A site that stops early or fails is asked again ([reopen] gets the
+     * bytes sent so far) up to [RESUME_TRIES] times in a row; only a real part (206) is used. A player that went away
+     * (a write that fails) ends it at once.
+     */
+    internal fun copyResuming(first: InputStream, out: OutputStream, len: Long, canResume: Boolean, reopen: (Long) -> okhttp3.Response) {
+        val buf = ByteArray(64 * 1024)
+        var input = first
+        var open: okhttp3.Response? = null
+        var sent = 0L
+        var tries = 0
+        try {
+            while (len < 0 || sent < len) {
+                val n = try { input.read(buf) } catch (e: IOException) { if (canResume) -1 else throw e }
+                if (n > 0) { out.write(buf, 0, n); sent += n; tries = 0; continue }
+                if (n < 0 && len < 0) return
+                if (!canResume || ++tries > RESUME_TRIES) throw IOException("the site stopped sending at byte $sent of $len")
+                Thread.sleep(700L * tries)
+                open?.close()
+                open = runCatching { reopen(sent) }.getOrNull()
+                input = open?.takeIf { it.code == 206 }?.body?.byteStream() ?: InputStream.nullInputStream()
+            }
+        } finally { open?.close(); runCatching { first.close() } }
     }
 
     /** Every URI in the playlist -> through the relay (absolute); variants over [maxHeight] left out. */

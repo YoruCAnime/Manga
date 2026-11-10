@@ -221,7 +221,7 @@ fun HistoryScreen(nav: Nav) {
         LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
             items(list, key = { it.ref.key }) { h ->
                 Row(
-                    Modifier.fillMaxWidth().combinedClickable(onClick = { nav.reader(h.ref, h.chapter) }, onLongClick = { nav.details(h.ref) })
+                    Modifier.fillMaxWidth().tabClick { added(com.yoruc.mangacracker.core.Tabs.addChapter(h.ref, h.chapter)) }.combinedClickable(onClick = { nav.reader(h.ref, h.chapter) }, onLongClick = { nav.details(h.ref) })
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -279,6 +279,8 @@ fun SettingsScreen(nav: Nav) {
 
         item { SectionHeader("Reader") }
         item { Box(Modifier.padding(horizontal = 0.dp)) { ReaderSettings() } }
+        item { SectionHeader("Music") }
+        item { MusicSettings() }
 
         item { SectionHeader("Downloads", action = "Open", onAction = { nav.downloads() }) }
         item {

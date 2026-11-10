@@ -225,7 +225,7 @@ private fun WatchedVideos(nav: Nav, watch: Map<String, WatchState>, query: Strin
     LazyColumn(contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
         items(list, key = { it.ref.key }) { w ->
             Row(
-                Modifier.fillMaxWidth().clickable { nav.player(w.ref) }.padding(horizontal = 16.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth().tabClick { added(com.yoruc.mangacracker.core.Tabs.addVideo(w.ref)) }.clickable { nav.player(w.ref) }.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(Modifier.width(138.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(Mc.Card)) {

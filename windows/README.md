@@ -16,9 +16,9 @@ version is just unzipped over the old folder.
 
 ## Using it
 
-Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.0.10).
+Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.3.2).
 
-- **Left rail**: Home, Library, Browse, Videos, Updates, More (the phone's bottom bar).
+- **Left rail**: Home, Library, Browse, Videos, Music, Updates, More (the phone's bottom bar).
 - **Going back**: Esc, Alt+←, the mouse's back button, or the ← arrows. **F11** = full screen.
 - **Reader**: pages sit in a centred column (Reader settings › *Page width*, up to the whole window).
   ↓ ↑ or J K scroll a little, Page Down / Space and Page Up / Shift+Space a screen, Home / End; ← / P previous
@@ -76,8 +76,20 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
   of the last months, favourite manga and video genres, the titles you read most this month, and all-time totals.
   Reading time counts from the day you first open this version; the days before come from your history (chapters
   finished, videos watched).
+- **Music** (own tab): type an anime and pick it from the suggestions (AniList, as you type: covers, format, year).
+  Its page plays **every opening and ending in full**: **This season** or **All seasons** (the whole show in one
+  list, season after season, each song once), all of them or only Openings / Endings, in order or **Shuffle**. The
+  song list is MyAnimeList's (every OP / ED with its singer); each song plays in full from YouTube (YouTube Music's
+  official audio first; covers, remixes and TV-size cuts are passed over), Opus 160 kbps, found when it starts. Below:
+  **Soundtracks & albums**: official soundtracks and character-song albums from YouTube Music, and uploads from
+  archive.org (FLAC or MP3, the quality on each track); open one or **Play all albums**. **Random anime songs**: the
+  LISTEN.moe radio (Opus 192 kbps) with what's on now. A bar at the bottom (every screen but the reader and the video
+  player) shows what plays, with previous / play-pause / next, stop, a line to jump in the song, **Loop** ("Loop all seasons" /
+  "Loop all": after the last song back to the first, the default; "Loop 1 song"; "No loop") and the music **volume**
+  (a slider in the bar). Switching tabs and coming back keeps the anime or album you had open. It keeps playing on other
+  tabs and with the app in the background (also minimised); a video pauses it. Its own volume in Settings › Music.
 - **Sounds while reading**: the 🎧 button in the reader (or Settings › Reader) plays a quiet loop under the pages:
-  rain, café, fireplace, night crickets, five lo-fi tracks, or your own audio file. It fades out when you leave the
+  rain, café, fireplace, night crickets, or your own audio file (music: the Music tab). It fades out when you leave the
   reader and holds while the window is minimised; its own volume slider.
 - **Sign-ins and Cloudflare checks** open a small Microsoft Edge window with the app's own profile (never your own
   Edge or Brave). Sign in there; the app picks the login up by itself. A login in your normal browser doesn't reach
@@ -144,3 +156,14 @@ ext` (`current.txt` says so) and the running copy switches by itself
 
 - Splitting giant strips (atsu) into pieces to bring their memory down.
 
+## Tabs and who made it
+
+- **Tabs:** right-click any manga, manhwa, doujin, chapter or video and choose *Open in new tab* (or Ctrl+click / middle-click). They sit in a strip along the top.
+- Only the tab on screen is loaded. The others keep your page or second, and come back after you restart the app.
+- **Keys:** Ctrl+1 to 9 jump to a tab, Ctrl+Tab goes to the next, Ctrl+W closes, Ctrl+T keeps the page you're on as a tab.
+- **Author, Artist, Circle:** shown on each title's page. Click a name to see their other works on that site.
+
+## License
+
+GPL-3.0 (see LICENSE). The Music tab uses [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor)
+(GPL-3.0) for YouTube.

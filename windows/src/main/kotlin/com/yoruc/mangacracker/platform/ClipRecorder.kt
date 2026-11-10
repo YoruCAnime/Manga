@@ -5,6 +5,7 @@ import com.sun.jna.platform.win32.WinNT
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -91,32 +92,46 @@ object ClipRecorder {
         // while its frames are still being drawn; files left by a crash are cleared after a day
         dir.listFiles()?.filter { it.name.endsWith(".bin") && System.currentTimeMillis() - it.lastModified() > 86_400_000L }?.forEach { it.delete() }
         val frames = com.yoruc.mangacracker.gif.FileFrames(File(dir, "$name-${ProcessHandle.current().pid()}-${System.nanoTime()}.bin"), w, h, fps)
-        val args = mutableListOf(ff.path, "-hide_banner", "-loglevel", "error", "-nostdin", "-ss", t(start))
-        args += input
-        args += listOf("-t", t(len), "-an", "-sn", "-dn", "-vf", "fps=%.4f,scale=$w:$h:flags=lanczos".format(Locale.US, fps),
-            "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1")
-        val p = ProcessBuilder(args).redirectError(ProcessBuilder.Redirect.DISCARD).start()
-        lower(p)
         val frameBytes = w * h * 3
         val buf = ByteArray(frameBytes)
         val total = (len * fps).toInt().coerceAtLeast(1)
-        val stop = currentCoroutineContext()[Job]?.invokeOnCompletion { if (it != null) p.destroyForcibly() }
-        try {
-            p.inputStream.buffered(1 shl 20).use { inp ->
-                while (true) {
-                    var n = 0
-                    while (n < frameBytes) { val r = inp.read(buf, n, frameBytes - n); if (r < 0) break; n += r }
-                    if (n < frameBytes) break
-                    currentCoroutineContext().ensureActive()
-                    frames.add(IntArray(w * h) { k -> ((buf[3 * k].toInt() and 0xFF) shl 16) or ((buf[3 * k + 1].toInt() and 0xFF) shl 8) or (buf[3 * k + 2].toInt() and 0xFF) })
-                    onFrame((frames.count.toFloat() / total).coerceAtMost(1f))
+        // a site can give nothing for a moment (Hentaigasm did: every read for a few seconds, then fine), so try again
+        // before giving up; ffmpeg's first message goes in cache\gif\last_gif.log
+        val tries = 4
+        var why = ""
+        for (attempt in 0 until tries) {
+            if (attempt > 0) delay(1500L * attempt)
+            val args = mutableListOf(ff.path, "-hide_banner", "-loglevel", "error", "-nostdin", "-ss", t(start))
+            args += input
+            args += listOf("-t", t(len), "-an", "-sn", "-dn", "-vf", "fps=%.4f,scale=$w:$h:flags=lanczos".format(Locale.US, fps),
+                "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1")
+            val p = ProcessBuilder(args).start()
+            lower(p)
+            val err = StringBuilder()
+            val errThread = Thread { runCatching { p.errorStream.bufferedReader().forEachLine { if (err.length < 4000) err.appendLine(it) } } }.apply { isDaemon = true; start() }
+            val stop = currentCoroutineContext()[Job]?.invokeOnCompletion { if (it != null) p.destroyForcibly() }
+            try {
+                p.inputStream.buffered(1 shl 20).use { inp ->
+                    while (true) {
+                        var n = 0
+                        while (n < frameBytes) { val r = inp.read(buf, n, frameBytes - n); if (r < 0) break; n += r }
+                        if (n < frameBytes) break
+                        currentCoroutineContext().ensureActive()
+                        frames.add(IntArray(w * h) { k -> ((buf[3 * k].toInt() and 0xFF) shl 16) or ((buf[3 * k + 1].toInt() and 0xFF) shl 8) or (buf[3 * k + 2].toInt() and 0xFF) })
+                        onFrame((frames.count.toFloat() / total).coerceAtMost(1f))
+                    }
                 }
-            }
-            p.waitFor()
-            currentCoroutineContext().ensureActive()
-        } catch (e: Throwable) { p.destroyForcibly(); frames.close(); throw e } finally { stop?.dispose() }
-        if (frames.count == 0) { frames.close(); throw Failed("ffmpeg couldn't read the video here") }
-        frames
+                p.waitFor()
+                currentCoroutineContext().ensureActive()
+            } catch (e: Throwable) { p.destroyForcibly(); frames.close(); throw e } finally { stop?.dispose() }
+            errThread.join(2000)
+            // the first message is the cause; the ones after it only say that ffmpeg gave up
+            why = err.lineSequence().firstOrNull { it.isNotBlank() }.orEmpty().replace(Regex("^\\[[^]]+]\\s*"), "").take(140)
+            if (frames.count > 0) return@withContext frames
+            runCatching { File(dir, "last_gif.log").appendText("read ${attempt + 1} of $tries from $start: no frames, ffmpeg ended ${p.exitValue()}: $why\n") }
+        }
+        frames.close()
+        throw Failed("The site didn't send the video (tried $tries times). Close this and try again in a moment." + if (why.isNotBlank()) "\n($why)" else "")
     }
 
     /**

@@ -157,6 +157,8 @@ private fun clock(ms: Long): String {
 @Composable
 fun PlayerScreen(nav: Nav, key: String) {
     val vm: PlayerVM = viewModel(key = "player-$key") { PlayerVM(key) }
+    // the next episode plays on the same screen: an open tab goes with it
+    androidx.compose.runtime.LaunchedEffect(vm.details?.ref?.key) { vm.details?.ref?.let { com.yoruc.mangacracker.core.Tabs.noteVideo(it) } }
     val settings by Repo.settings.collectAsState()
     var player by remember { mutableStateOf<Mpv.Player?>(null) }
     var pos by remember { mutableDoubleStateOf(0.0) }
@@ -216,7 +218,7 @@ fun PlayerScreen(nav: Nav, key: String) {
     LaunchedEffect(Unit) {
         while (!canvas.isDisplayable) delay(50)
         runCatching { Mpv.Player(Native.getComponentID(canvas)) }
-            .onSuccess { player = it }
+            .onSuccess { player = it; if (com.yoruc.mangacracker.music.Music.ready) com.yoruc.mangacracker.music.Music.player.pause() }
             .onFailure { Desktop.toast("The video player couldn't start: ${it.message}"); nav.back() }
     }
     DisposableEffect(Unit) {

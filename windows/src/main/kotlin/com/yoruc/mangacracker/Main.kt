@@ -70,7 +70,9 @@ private fun startUp() {
     Runtime.getRuntime().addShutdownHook(Thread { runCatching { Edge.close() } })
     Repo.init(ctx)
     VideoRepo.init(ctx)
+    com.yoruc.mangacracker.core.Tabs.init(ctx)
     com.yoruc.mangacracker.core.Stats.init(ctx)
+    com.yoruc.mangacracker.music.Music.player = com.yoruc.mangacracker.platform.DesktopMusic
     Downloads.init(ctx)
     if (Downloads.queue.hasWaiting()) Downloads.kick(ctx)
     UpdateWorker.schedule(ctx)
@@ -162,7 +164,8 @@ private fun run() = application {
             icon = iconImage?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.toComposeImageBitmap()) },
             onPreviewKeyEvent = { e ->
                 // Esc and Alt+Left go back; F11 full screen
-                if (e.type == KeyEventType.KeyDown && e.key == Key.F11) {
+                if (com.yoruc.mangacracker.ui.TabKeys.handle(e)) true
+                else if (e.type == KeyEventType.KeyDown && e.key == Key.F11) {
                     state.placement = if (state.placement == androidx.compose.ui.window.WindowPlacement.Fullscreen)
                         androidx.compose.ui.window.WindowPlacement.Floating else androidx.compose.ui.window.WindowPlacement.Fullscreen
                     true
@@ -175,6 +178,7 @@ private fun run() = application {
             },
         ) {
             Files.owner = window
+            androidx.compose.runtime.SideEffect { com.yoruc.mangacracker.ui.TabKeys.fullscreen = state.placement == androidx.compose.ui.window.WindowPlacement.Fullscreen }
             Desktop.fullscreen = {
                 state.placement = if (state.placement == androidx.compose.ui.window.WindowPlacement.Fullscreen)
                     androidx.compose.ui.window.WindowPlacement.Floating else androidx.compose.ui.window.WindowPlacement.Fullscreen

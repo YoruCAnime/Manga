@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
@@ -116,10 +117,30 @@ class BrowseVM(val src: Source, start: SearchQuery?) : ViewModel() {
     }
 }
 
+/** The site's own question, asked once in the page. Nothing is read from the site before the answer. */
+@Composable
+internal fun AgeConfirm(id: String, notice: String, onBack: () -> Unit) {
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+        Column(Modifier.widthIn(max = 420.dp).clip(RoundedCornerShape(12.dp)).background(Mc.Card).padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Adults only", color = Mc.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(notice, color = Mc.Text2)
+            Button(onClick = { Repo.updateSettings { it.copy(ageConfirmed = it.ageConfirmed + id) } }, colors = ButtonDefaults.buttonColors(containerColor = Mc.Blue), modifier = Modifier.fillMaxWidth()) {
+                Text("I am 18 or older, continue")
+            }
+            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("I'm not 18, go back") }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrowseScreen(nav: Nav, sourceId: String, startSearch: Boolean) {
     val src = Sources.byId(sourceId) ?: return
+    val notice = src.ageNotice
+    if (notice != null && src.id !in Repo.settings.collectAsState().value.ageConfirmed) {
+        AgeConfirm(src.id, notice) { nav.back() }
+        return
+    }
     val start = remember { if (startSearch) Pending.query.also { Pending.query = null } else null }
     val vm: BrowseVM = viewModel(key = "browse-$sourceId-${start?.hashCode()}") { BrowseVM(src, start) }
     val lib by Repo.library.collectAsState()

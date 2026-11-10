@@ -369,7 +369,7 @@ fun VideoCard(v: VideoRef, w: WatchState?, onSeries: (() -> Unit)? = null, headi
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val favs by VideoRepo.favs.collectAsState()
     val fav = v.key in favs
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).combinedClickable(
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).tabClick { added(com.yoruc.mangacracker.core.Tabs.addVideo(v)) }.combinedClickable(
         onClick = onClick,
         onLongClick = {
             val on = VideoRepo.toggleFav(v)
@@ -407,7 +407,7 @@ fun VideoCard(v: VideoRef, w: WatchState?, onSeries: (() -> Unit)? = null, headi
 @Composable
 private fun RecCard(v: VideoRef, onSeries: () -> Unit, onClick: () -> Unit) {
     Column(Modifier.width(220.dp)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(Mc.Card).clickable(onClick = onClick)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(Mc.Card).tabClick { added(com.yoruc.mangacracker.core.Tabs.addVideo(v)) }.clickable(onClick = onClick)) {
             VideoCover(v, Modifier.fillMaxSize())
             if (v.lang.isNotEmpty()) Badge(v.lang, Modifier.align(Alignment.TopStart), when { v.lang == "EN" || v.lang.startsWith("SUB") -> Mc.Blue.copy(alpha = 0.9f); v.lang == "DUB" -> Mc.Pink.copy(alpha = 0.9f); else -> Color(0xCC000000) })
             if (v.duration.isNotEmpty()) Badge(v.duration, Modifier.align(Alignment.BottomEnd))
@@ -425,7 +425,7 @@ private fun RecCard(v: VideoRef, onSeries: () -> Unit, onClick: () -> Unit) {
 private fun ContinueCard(w: WatchState, onSeries: () -> Unit, onClick: () -> Unit) {
     // the picture plays the episode; the name below opens every episode of the show
     Column(Modifier.width(220.dp)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(Mc.Card).clickable(onClick = onClick)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(Mc.Card).tabClick { added(com.yoruc.mangacracker.core.Tabs.addVideo(w.ref)) }.clickable(onClick = onClick)) {
             VideoCover(w.ref, Modifier.fillMaxSize())
             Box(Modifier.align(Alignment.Center).size(42.dp).clip(CircleShape).background(Color(0x99000000)), contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.PlayArrow, null, tint = Color.White)

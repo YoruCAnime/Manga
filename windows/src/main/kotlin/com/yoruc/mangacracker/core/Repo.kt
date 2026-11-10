@@ -65,6 +65,8 @@ data class UpdateItem(val ref: MangaRef, val chapter: Chapter, val found: Long)
 @Serializable
 data class Settings(
     val disabledSources: Set<String> = emptySet(),
+    /** Sources whose "I am 18 or older" question was answered yes. */
+    val ageConfirmed: Set<String> = emptySet(),
     val hiddenTags: List<String> = emptyList(),
     val updateHours: Int = 6,
     val notifyUpdates: Boolean = true,
@@ -125,6 +127,8 @@ data class Settings(
     val videoQuality: Int = -1,
     /** The player's own volume (0..1, on top of the phone's media volume) and mute. */
     val videoVolume: Float = 1f,
+    /** The Music tab's volume, 0..1. */
+    val musicVolume: Float = 0.7f,
     val videoMuted: Boolean = false,
     /** Offline downloads: only on Wi-Fi (unmetered); delete a downloaded chapter once it is read; HLS video height. */
     val downloadWifiOnly: Boolean = true,

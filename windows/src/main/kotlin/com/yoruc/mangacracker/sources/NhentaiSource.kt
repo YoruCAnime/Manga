@@ -148,6 +148,8 @@ object NhentaiSource : Source {
     }
 
     override fun artistQuery(name: String) = SearchQuery(include = listOf(Tag("artist:$name", name)))
+    override val authorsAreGroups get() = true
+    override fun groupQuery(name: String) = SearchQuery(include = listOf(Tag("group:$name", name)))
 
     override suspend fun tags(): List<Tag> = listOf(
         "big breasts", "sole female", "sole male", "nakadashi", "stockings", "glasses", "schoolgirl uniform", "full color",

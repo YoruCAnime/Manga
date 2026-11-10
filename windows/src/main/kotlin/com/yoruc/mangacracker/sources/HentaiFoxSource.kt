@@ -135,6 +135,7 @@ object HentaiFoxSource : Source {
     }
 
     override fun tagQuery(name: String) = SearchQuery(include = listOf(Tag(slug(name), name)))
+    override val authorsAreGroups get() = true
 
     // ---------- gallery ----------
 
