@@ -20,6 +20,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Explore
+import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -180,7 +182,8 @@ private fun TabChip(t: OpenTab, on: Boolean, nav: Nav) {
             .tabClick(menu = false) { nav.closeTab(t) }.clickable { nav.openTab(t) }.padding(start = 5.dp, end = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(width = 18.dp, height = 25.dp).clip(RoundedCornerShape(3.dp)).background(Mc.Card)) {
+        if (t.isPlace) Icon(if (t.route == Tabs.VIDEOS) Icons.Rounded.SmartDisplay else Icons.Rounded.Explore, null, tint = Mc.Blue, modifier = Modifier.size(18.dp))
+        else Box(Modifier.size(width = 18.dp, height = 25.dp).clip(RoundedCornerShape(3.dp)).background(Mc.Card)) {
             val v = t.video
             if (v != null) VideoCover(v, Modifier.fillMaxSize()) else Cover(t.cover, Modifier.fillMaxSize())
         }

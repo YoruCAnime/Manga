@@ -62,8 +62,41 @@ data class HistoryEntry(
 @Serializable
 data class UpdateItem(val ref: MangaRef, val chapter: Chapter, val found: Long)
 
+/**
+ * An author, artist, circle, studio or search kept for later (Library › Saved). [kind] is what shows on its row
+ * ("Author", "Artist", "Circle", "Search"); [video] = on a video site. The rest is the search that opens it again.
+ */
+@Serializable
+data class Saved(
+    val kind: String,
+    val name: String,
+    val source: String,
+    val video: Boolean = false,
+    val text: String = "",
+    val artist: String = "",
+    /** The site searches this name as a circle / group. */
+    val group: Boolean = false,
+    val include: List<Tag> = emptyList(),
+    val exclude: List<Tag> = emptyList(),
+    val added: Long = 0L,
+) {
+    val key: String get() = "${if (video) "v" else "m"}|$source|${if (group) "g" else if (artist.isNotEmpty()) "a" else "s"}|${name.lowercase()}"
+
+    companion object {
+        /** A search as a saved entry; its name is what was typed and picked ("big sword · ✓ fantasy"). */
+        fun of(source: String, video: Boolean, q: SearchQuery, kind: String = if (q.artist.isNotEmpty()) "Artist" else "Search", group: Boolean = false): Saved {
+            val name = q.artist.ifEmpty {
+                (listOfNotNull(q.text.trim().ifEmpty { null }) + q.include.map { it.label } + q.exclude.map { "not " + it.label }).joinToString(" · ")
+            }
+            return Saved(kind, name, source, video, q.text.trim(), q.artist, group, q.include, q.exclude, System.currentTimeMillis())
+        }
+    }
+}
+
 @Serializable
 data class Settings(
+    /** Library › Saved: authors, artists, circles, studios and searches, newest first. */
+    val saved: List<Saved> = emptyList(),
     val disabledSources: Set<String> = emptySet(),
     /** Sources whose "I am 18 or older" question was answered yes. */
     val ageConfirmed: Set<String> = emptySet(),
@@ -401,6 +434,15 @@ object Repo {
     }
 
     // ---------- settings ----------
+
+    fun isSaved(s: Saved): Boolean = settings.value.saved.any { it.key == s.key }
+
+    /** Saves or removes; true = it is saved now. */
+    fun toggleSaved(s: Saved): Boolean {
+        val had = isSaved(s)
+        updateSettings { st -> st.copy(saved = if (had) st.saved.filter { it.key != s.key } else listOf(s) + st.saved) }
+        return !had
+    }
 
     fun updateSettings(f: (Settings) -> Settings) {
         _settings.update(f)

@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.foundation.combinedClickable
@@ -138,7 +139,14 @@ class VideoPaged(private val scope: CoroutineScope, private val load: suspend (p
     }
 }
 
-class VideosVM : ViewModel() {
+/** The Videos tab's list lives as long as the app: coming back (from a video, from another tab) finds it as it was left. */
+object VideosKeep { val vm by lazy { VideosVM() } }
+
+class VideosVM {
+    private val viewModelScope = CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Main.immediate)
+    /** Where the grid was (first row showing and its offset), for coming back. */
+    var scrollIndex = 0
+    var scrollOffset = 0
     var source by mutableStateOf(VideoSources.byId(Repo.settings.value.lastVideoSource) ?: VideoSources.all.first()); private set
     /** 0 = latest, 1 = popular, 2 = search */
     var mode by mutableStateOf(0); private set
@@ -193,16 +201,18 @@ class VideosVM : ViewModel() {
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun VideosScreen(nav: Nav) {
-    val vm: VideosVM = viewModel { VideosVM() }
+    val vm = VideosKeep.vm
     val watch by VideoRepo.watch.collectAsState()
     val cont = remember(watch) { VideoRepo.continueList() }
     val favsNow by VideoRepo.favs.collectAsState()
+    val savedNow = Repo.settings.collectAsState().value.saved
     // what you watched / favourited since leaves the row at once
     val recs = remember(watch, favsNow, vm.recs) { VideoRecommender.fresh(vm.recs) }
     var text by remember { mutableStateOf(vm.query.text) }
     var focused by remember { mutableStateOf(false) }
     var showGenres by remember { mutableStateOf(false) }
-    val grid = rememberLazyGridState()
+    val grid = remember { androidx.compose.foundation.lazy.grid.LazyGridState(vm.scrollIndex, vm.scrollOffset) }
+    LaunchedEffect(grid) { snapshotFlow { grid.firstVisibleItemIndex to grid.firstVisibleItemScrollOffset }.collect { (i, o) -> vm.scrollIndex = i; vm.scrollOffset = o } }
 
     val word = text.substringAfterLast(' ')
     val suggestions = remember(word, vm.genres, focused, vm.query) {
@@ -248,11 +258,22 @@ fun VideosScreen(nav: Nav) {
         // sources (the row keeps the picked one in view: there are more sites than fit)
         val pills = rememberLazyListState()
         LaunchedEffect(vm.source.id) {
-            val i = VideoSources.all.indexOfFirst { it.id == vm.source.id }
+            val i = VideoSources.all.filter { VideoSources.category(it) == VideoSources.category(vm.source) }.indexOfFirst { it.id == vm.source.id }
             if (i >= 0) pills.animateScrollToItem((i - 1).coerceAtLeast(0))
         }
+        // the kinds of site, then the sites of the kind picked
+        var kind by remember { mutableStateOf(VideoSources.category(vm.source)) }
+        LaunchedEffect(vm.source.id) { kind = VideoSources.category(vm.source) }
+        Row(Modifier.padding(start = 12.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            VideoSources.categories.forEach { c ->
+                val on = c == kind
+                Text(c, color = if (on) Mc.Text else Mc.Text3, fontSize = 13.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.SemiBold,
+                    modifier = Modifier.clip(RoundedCornerShape(7.dp)).background(if (on) Mc.Card2 else Color.Transparent).clickable { kind = c }.padding(horizontal = 11.dp, vertical = 6.dp))
+            }
+        }
+        val ofKind = remember(kind) { VideoSources.all.filter { VideoSources.category(it) == kind } }
         LazyRow(state = pills, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(VideoSources.all, key = { it.id }) { s ->
+            items(ofKind, key = { it.id }) { s ->
                 val on = s.id == vm.source.id
                 Row(
                     Modifier.clip(RoundedCornerShape(50)).background(if (on) Color(s.color).copy(alpha = 0.22f) else Mc.Card)
@@ -269,6 +290,12 @@ fun VideosScreen(nav: Nav) {
             item { FilterPill("Latest", vm.mode == 0) { vm.switchMode(0) } }
             item { FilterPill("Popular", vm.mode == 1) { vm.switchMode(1) } }
             if (vm.mode == 2) item { FilterPill("Results", true) {} }
+            // keep this studio / search for later (Library › Saved)
+            if (!vm.query.isEmpty) item {
+                val entry = com.yoruc.mangacracker.core.Saved.of(vm.source.id, true, vm.query)
+                val on = savedNow.any { it.key == entry.key }
+                FilterPill(if (on) "★ Saved" else "☆ Save", on) { Notes.show(if (Repo.toggleSaved(entry)) "Saved: find it in Library › Saved" else "Removed from Saved") }
+            }
             items(vm.query.include, key = { "i" + it.id }) { t -> FilterPill("✓ ${t.label}", true) { vm.search(vm.query.copy(include = vm.query.include - t)) } }
             items(vm.query.exclude, key = { "e" + it.id }) { t -> FilterPill("✕ ${t.label}", false) { vm.search(vm.query.copy(exclude = vm.query.exclude - t)) } }
         }
@@ -362,6 +389,18 @@ private fun Badge(text: String, modifier: Modifier, bg: Color = Color(0xCC000000
         modifier = modifier.padding(6.dp).clip(RoundedCornerShape(5.dp)).background(bg).padding(horizontal = 6.dp, vertical = 2.dp))
 }
 
+/** "Episodes" on a picture: a button of its own, so the whole list is one easy click (the picture itself plays). */
+@Composable
+fun AllPill(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Row(
+        modifier.padding(6.dp).clip(RoundedCornerShape(7.dp)).background(Color(0xE60B1622)).clickable(onClick = onClick).padding(start = 7.dp, end = 9.dp, top = 5.dp, bottom = 5.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(Icons.AutoMirrored.Rounded.FormatListBulleted, null, tint = Mc.Blue, modifier = Modifier.size(15.dp))
+        Text(label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
+}
+
 /** A video in a grid. Long-press adds it to / removes it from the favourites (Library → Favourite videos). */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -369,13 +408,11 @@ fun VideoCard(v: VideoRef, w: WatchState?, onSeries: (() -> Unit)? = null, headi
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val favs by VideoRepo.favs.collectAsState()
     val fav = v.key in favs
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).tabClick { added(com.yoruc.mangacracker.core.Tabs.addVideo(v)) }.combinedClickable(
-        onClick = onClick,
-        onLongClick = {
-            val on = VideoRepo.toggleFav(v)
-            android.widget.Toast.makeText(ctx, if (on) "Added to favourite videos" else "Removed from favourite videos", android.widget.Toast.LENGTH_SHORT).show()
-        },
-    )) {
+    val hold = {
+        val on = VideoRepo.toggleFav(v)
+        android.widget.Toast.makeText(ctx, if (on) "Added to favourite videos" else "Removed from favourite videos", android.widget.Toast.LENGTH_SHORT).show()
+    }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).tabClick { added(com.yoruc.mangacracker.core.Tabs.addVideo(v)) }.combinedClickable(onClick = onClick, onLongClick = hold)) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).background(Mc.Card)) {
             VideoCover(v, Modifier.fillMaxSize())
             if (v.lang.isNotEmpty()) Badge(v.lang, Modifier.align(Alignment.TopStart), when { v.lang == "EN" || v.lang.startsWith("SUB") -> Mc.Blue.copy(alpha = 0.9f); v.lang == "DUB" -> Mc.Pink.copy(alpha = 0.9f); else -> Color(0xCC000000) })
@@ -383,23 +420,23 @@ fun VideoCard(v: VideoRef, w: WatchState?, onSeries: (() -> Unit)? = null, headi
                 Icon(Icons.Rounded.Favorite, "Favourite", tint = Color.White, modifier = Modifier.size(14.dp))
             }
             if (v.duration.isNotEmpty()) Badge(v.duration, Modifier.align(Alignment.BottomEnd))
+            if (onSeries != null && !v.show) AllPill("Episodes", Modifier.align(Alignment.BottomStart), onSeries)
             if (w != null && w.percent > 0) {
                 Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color(0x55000000))) {
                     Box(Modifier.fillMaxWidth(w.percent / 100f).fillMaxHeight().background(Mc.Pink))
                 }
             }
         }
-        // the series name opens the series page (every episode and language); the › stays visible on long names
-        Row(
-            Modifier.padding(start = 2.dp, top = 6.dp, end = 2.dp).then(if (onSeries != null) Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onSeries) else Modifier),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Text(heading ?: v.series.ifEmpty { v.title }, color = Mc.Text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 2,
-                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-            if (onSeries != null) Text(" ›", color = Mc.Blue, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        // everything under the picture opens the series page (every episode and language); the › stays visible on long names
+        Column(Modifier.fillMaxWidth().then(if (onSeries != null) Modifier.clip(RoundedCornerShape(6.dp)).combinedClickable(onClick = onSeries, onLongClick = hold) else Modifier).padding(bottom = 4.dp)) {
+            Row(Modifier.padding(start = 2.dp, top = 6.dp, end = 2.dp), verticalAlignment = Alignment.Top) {
+                Text(heading ?: v.series.ifEmpty { v.title }, color = Mc.Text, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 2,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (onSeries != null) Text(" ›", color = Mc.Blue, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+            val sub = listOfNotNull(v.episode.ifEmpty { null }?.takeIf { heading == null }?.let { "Episode $it" }, v.views.ifEmpty { null }?.let { "$it views" }).joinToString(" · ")
+            if (sub.isNotEmpty()) Text(sub, color = Mc.Text3, fontSize = 12.sp, maxLines = 1, modifier = Modifier.padding(horizontal = 2.dp))
         }
-        val sub = listOfNotNull(v.episode.ifEmpty { null }?.takeIf { heading == null }?.let { "Episode $it" }, v.views.ifEmpty { null }?.let { "$it views" }).joinToString(" · ")
-        if (sub.isNotEmpty()) Text(sub, color = Mc.Text3, fontSize = 12.sp, maxLines = 1, modifier = Modifier.padding(horizontal = 2.dp))
     }
 }
 
@@ -411,8 +448,9 @@ private fun RecCard(v: VideoRef, onSeries: () -> Unit, onClick: () -> Unit) {
             VideoCover(v, Modifier.fillMaxSize())
             if (v.lang.isNotEmpty()) Badge(v.lang, Modifier.align(Alignment.TopStart), when { v.lang == "EN" || v.lang.startsWith("SUB") -> Mc.Blue.copy(alpha = 0.9f); v.lang == "DUB" -> Mc.Pink.copy(alpha = 0.9f); else -> Color(0xCC000000) })
             if (v.duration.isNotEmpty()) Badge(v.duration, Modifier.align(Alignment.BottomEnd))
+            if (!v.show) AllPill("Episodes", Modifier.align(Alignment.BottomStart), onSeries)
         }
-        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).clickable(onClick = onSeries)) {
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).clickable(onClick = onSeries).padding(bottom = 4.dp)) {
             Text(v.series.ifEmpty { v.title }, color = Mc.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 2.dp, top = 6.dp))
             Text(listOfNotNull(VideoSources.byId(v.source)?.name, v.episode.ifEmpty { null }?.takeIf { !v.show }?.let { "Episode $it" }).joinToString(" · "),
@@ -431,11 +469,12 @@ private fun ContinueCard(w: WatchState, onSeries: () -> Unit, onClick: () -> Uni
                 Icon(Icons.Rounded.PlayArrow, null, tint = Color.White)
             }
             Badge(com.yoruc.mangacracker.video.clock((w.durationMs - w.positionMs) / 1000) + " left", Modifier.align(Alignment.BottomEnd))
+            AllPill("Episodes", Modifier.align(Alignment.BottomStart).padding(bottom = 2.dp), onSeries)
             Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color(0x55000000))) {
                 Box(Modifier.fillMaxWidth(w.percent / 100f).fillMaxHeight().background(Mc.Pink))
             }
         }
-        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).clickable(onClick = onSeries)) {
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).clickable(onClick = onSeries).padding(bottom = 4.dp)) {
             Text(w.ref.series.ifEmpty { w.ref.title }, color = Mc.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 2.dp, top = 6.dp))
             Text(listOfNotNull(w.ref.episode.ifEmpty { null }?.let { "Episode $it" }, VideoSources.byId(w.ref.source)?.name).joinToString(" · "),

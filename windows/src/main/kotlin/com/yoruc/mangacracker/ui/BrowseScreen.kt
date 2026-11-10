@@ -89,7 +89,40 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class BrowseVM(val src: Source, start: SearchQuery?) : ViewModel() {
+/**
+ * Source lists that stay as they are while you are away (search, filters, what has loaded, how far you scrolled):
+ * the last few, by source. A source's tab comes back to exactly this; opening the source the normal way starts fresh.
+ */
+object BrowseKeep {
+    private const val MAX = 6
+    private val map = LinkedHashMap<String, BrowseVM>(8, 0.75f, true)
+    /** Set by the tab strip: the next opening of this route picks its kept list up. */
+    var resume: String? = null
+
+    fun get(route: String, make: () -> BrowseVM): BrowseVM {
+        val kept = map[route]
+        if (kept != null && resume == route) { resume = null; return kept }
+        resume = null
+        // a list let go here may still be on screen further back: it is only forgotten, never stopped
+        val vm = make()
+        map[route] = vm
+        while (map.size > MAX) map.remove(map.keys.first())
+        return vm
+    }
+
+    fun drop(route: String) { map.remove(route) }
+    fun peek(route: String): BrowseVM? = map[route]
+}
+
+/** Holds a screen's list for as long as the screen is in the back stack. */
+class BrowseHolder(val vm: BrowseVM) : ViewModel()
+
+class BrowseVM(val src: Source, start: SearchQuery?) {
+    private val viewModelScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Main.immediate)
+    /** Where the grid was (first row showing and its offset), for coming back. */
+    var scrollIndex = 0
+    var scrollOffset = 0
+
     /** 0 = popular, 1 = latest, 2 = search */
     var mode by mutableStateOf(if (start != null) 2 else 0); private set
     var query by mutableStateOf(start ?: SearchQuery()); private set
@@ -142,12 +175,15 @@ fun BrowseScreen(nav: Nav, sourceId: String, startSearch: Boolean) {
         return
     }
     val start = remember { if (startSearch) Pending.query.also { Pending.query = null } else null }
-    val vm: BrowseVM = viewModel(key = "browse-$sourceId-${start?.hashCode()}") { BrowseVM(src, start) }
+    val vm: BrowseVM = viewModel(key = "browse-$sourceId-${start?.hashCode()}") {
+        BrowseHolder(BrowseKeep.get(com.yoruc.mangacracker.core.Tabs.browseRoute(sourceId, startSearch)) { BrowseVM(src, start) })
+    }.vm
     val lib by Repo.library.collectAsState()
     val settings by Repo.settings.collectAsState()
     var text by remember { mutableStateOf(vm.query.text.ifEmpty { vm.query.artist }) }
     var showFilters by remember { mutableStateOf(false) }
-    val grid = rememberLazyGridState()
+    val grid = remember { androidx.compose.foundation.lazy.grid.LazyGridState(vm.scrollIndex, vm.scrollOffset) }
+    LaunchedEffect(grid) { snapshotFlow { grid.firstVisibleItemIndex to grid.firstVisibleItemScrollOffset }.collect { (i, o) -> vm.scrollIndex = i; vm.scrollOffset = o } }
     // autocomplete for the word being typed (ignore it by typing on)
     var focused by remember { mutableStateOf(false) }
     var suggestions by remember { mutableStateOf<List<Tag>>(emptyList()) }
@@ -210,6 +246,12 @@ fun BrowseScreen(nav: Nav, sourceId: String, startSearch: Boolean) {
             item { FilterPill("Popular", vm.mode == 0) { vm.switchMode(0) } }
             item { FilterPill("Latest", vm.mode == 1) { vm.switchMode(1) } }
             if (vm.mode == 2) item { FilterPill("Results", true) {} }
+            // keep this author / search for later (Library › Saved)
+            if (!vm.query.isEmpty) item {
+                val entry = com.yoruc.mangacracker.core.Saved.of(src.id, false, vm.query)
+                val on = settings.saved.any { it.key == entry.key }
+                FilterPill(if (on) "★ Saved" else "☆ Save", on) { Notes.show(if (Repo.toggleSaved(entry)) "Saved: find it in Library › Saved" else "Removed from Saved") }
+            }
             if (vm.query.artist.isNotEmpty()) item { FilterPill("✎ ${vm.query.artist}", true) { vm.search(vm.query.copy(artist = "")); text = "" } }
             items(vm.query.include, key = { "i" + it.id }) { t -> FilterPill("✓ ${t.label}", true) { vm.search(vm.query.copy(include = vm.query.include - t)) } }
             items(vm.query.exclude, key = { "e" + it.id }) { t -> FilterPill("✕ ${t.label}", false) { vm.search(vm.query.copy(exclude = vm.query.exclude - t)) } }

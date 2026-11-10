@@ -22,6 +22,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -73,7 +75,6 @@ class HomeVM : ViewModel() {
 
     init {
         loadRecs(false)
-        Sources.enabled().forEach { loadRow(it) }
         // a gentle check for new chapters when the app opens (at most every 2 hours)
         if (System.currentTimeMillis() - Repo.settings.value.lastLibraryCheck > 2 * 3600_000L && Repo.library.value.isNotEmpty()) {
             viewModelScope.launch { runCatching { UpdateWorker.checkLibrary() } }
@@ -88,7 +89,13 @@ class HomeVM : ViewModel() {
         }
     }
 
+    private val asked = HashSet<String>()
+
+    /** A source's row loads when it first scrolls into view (not every site at once when the app opens). */
+    fun showRow(src: Source) { if (asked.add(src.id)) loadRow(src) }
+
     fun loadRow(src: Source) {
+        asked.add(src.id)
         rowErrors.remove(src.id)
         viewModelScope.launch {
             val r = withContext(Dispatchers.IO) { runCatching { src.popular(1).items } }
@@ -101,7 +108,10 @@ class HomeVM : ViewModel() {
         viewModelScope.launch {
             runCatching { UpdateWorker.checkLibrary() }
             loadRecs(true)
-            Sources.enabled().forEach { loadRow(it) }
+            // the rows already on the page; the others load fresh when they come into view
+            val seen = asked.toSet()
+            rows.keys.filter { it !in seen }.forEach { rows.remove(it) }
+            Sources.enabled().filter { it.id in seen }.forEach { loadRow(it) }
             refreshing = false
         }
     }
@@ -129,6 +139,10 @@ fun HomeScreen(nav: Nav) {
                         Text("MangaCracker", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Mc.Text)
                         Text(greeting(), color = Mc.Text3, fontSize = 13.sp)
                     }
+                    // new chapters, recommendations and the rows below, again
+                    if (vm.refreshing) Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                        androidx.compose.material3.CircularProgressIndicator(color = Mc.Blue, strokeWidth = 2.5.dp, modifier = Modifier.size(20.dp))
+                    } else IconButton(onClick = { vm.refresh() }) { Icon(Icons.Rounded.Refresh, "Refresh", tint = Mc.Text2) }
                     IconButton(onClick = { nav.globalSearch() }) { Icon(Icons.Rounded.Search, "Search everywhere", tint = Mc.Text2) }
                 }
             }
@@ -138,7 +152,7 @@ fun HomeScreen(nav: Nav) {
                 item { SectionHeader("Continue reading", action = "History", onAction = { nav.history() }) }
                 item {
                     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(continueList, key = { it.ref.key }) { h -> ContinueCard(h) { nav.reader(h.ref, h.chapter) } }
+                        items(continueList, key = { it.ref.key }) { h -> ContinueCard(h, onChapters = { nav.details(h.ref) }) { nav.reader(h.ref, h.chapter) } }
                     }
                 }
             }
@@ -172,6 +186,7 @@ fun HomeScreen(nav: Nav) {
                     Column {
                         SectionHeader("Popular on ${src.name}", action = "More", onAction = { nav.browse(src.id) })
                         val list = vm.rows[src.id]
+                        androidx.compose.runtime.LaunchedEffect(src.id) { vm.showRow(src) }
                         when {
                             list != null -> CardRow(list, nav, ratio = src.coverRatio.coerceAtLeast(0.66f))
                             vm.rowErrors[src.id] == true -> Text(
@@ -223,16 +238,22 @@ fun HintCard(text: String) {
 }
 
 @Composable
-private fun ContinueCard(h: HistoryEntry, onClick: () -> Unit) {
+private fun ContinueCard(h: HistoryEntry, onChapters: () -> Unit, onClick: () -> Unit) {
     val pct = h.state.percent
     Row(
         Modifier.width(290.dp).height(104.dp).clip(RoundedCornerShape(8.dp)).background(Mc.Card).tabClick { added(com.yoruc.mangacracker.core.Tabs.addChapter(h.ref, h.chapter)) }.clickable(onClick = onClick)
     ) {
-        Cover(h.ref.cover, Modifier.width(72.dp).fillMaxSize())
-        Column(Modifier.weight(1f).padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            Column {
-                Text(h.ref.title, color = Mc.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 18.sp)
-                Text(h.chapter.name, color = Mc.Text3, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // the cover and the list button open the title page (every chapter); the rest of the card reads on
+        Box(Modifier.width(72.dp).fillMaxSize().clickable(onClick = onChapters)) { Cover(h.ref.cover, Modifier.fillMaxSize()) }
+        Column(Modifier.weight(1f).padding(start = 12.dp, top = 10.dp, end = 8.dp, bottom = 12.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text(h.ref.title, color = Mc.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 18.sp)
+                    Text(h.chapter.name, color = Mc.Text3, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (Sources.byId(h.ref.source)?.hasChapters != false) Box(
+                    Modifier.padding(start = 6.dp).size(30.dp).clip(RoundedCornerShape(7.dp)).background(Mc.Card2).clickable(onClick = onChapters), contentAlignment = Alignment.Center,
+                ) { Icon(Icons.AutoMirrored.Rounded.FormatListBulleted, "All chapters", tint = Mc.Blue, modifier = Modifier.size(18.dp)) }
             }
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {

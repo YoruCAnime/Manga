@@ -122,4 +122,46 @@ class TabsTest {
         scene.close()
         println("[tabs] clicks ok")
     }
+
+    /** Opened from a source's list, the list becomes a tab of its own and the titles line up after it. */
+    @Test fun place() {
+        ctx()
+        val browse = "browse/{source}?search={search}"
+        Tabs.noteScreen("home", "", "", false)
+        val home = Tabs.addManga(MangaRef("atsu", "zero", "From home", "c0"))!!
+        Tabs.noteScreen(browse, "", "", false, "atsu", false, "Atsu")
+        assertEquals("no tab for a list nothing was opened from", 0L, Tabs.active.value)
+        val a = Tabs.addManga(m1)!!
+        val list = Tabs.list.value
+        assertEquals(3, list.size)
+        val place = list[1]
+        assertTrue(place.isPlace)
+        assertEquals("Atsu", place.title)
+        assertEquals(Tabs.browseRoute("atsu"), place.route)
+        assertEquals("the list stays on screen, lit up", place.id, Tabs.active.value)
+        assertEquals(a.id, list[2].id)
+        val b = Tabs.addManga(m2)!!
+        assertEquals(listOf(home.id, place.id, a.id, b.id), Tabs.list.value.map { it.id })
+        // a title opened the normal way from the list: the list's tab stays what it is
+        Tabs.noteScreen("details/{key}", "atsu|other", "", false)
+        assertEquals(0L, Tabs.active.value)
+        assertEquals(Tabs.browseRoute("atsu"), Tabs.list.value.first { it.id == place.id }.route)
+        Tabs.noteScreen("details/{key}", m2.key, "", false)
+        assertEquals(b.id, Tabs.active.value)
+        // back on the list: its tab lights up; another source's list has no tab
+        Tabs.noteScreen(browse, "", "", false, "atsu", false, "Atsu")
+        assertEquals(place.id, Tabs.active.value)
+        Tabs.noteScreen(browse, "", "", false, "comix", false, "Comix")
+        assertEquals(0L, Tabs.active.value)
+        // a second list goes to the end with its own titles
+        val c = Tabs.addVideo(v1)!!
+        val l2 = Tabs.list.value
+        assertEquals(6, l2.size)
+        assertTrue(l2[4].isPlace)
+        assertEquals(c.id, l2[5].id)
+        // the first list's next title still lands next to it
+        Tabs.noteScreen(browse, "", "", false, "atsu", false, "Atsu")
+        val d = Tabs.addManga(MangaRef("atsu", "three", "Third", "c3"))!!
+        assertEquals(listOf(home.id, place.id, a.id, b.id, d.id), Tabs.list.value.take(5).map { it.id })
+    }
 }

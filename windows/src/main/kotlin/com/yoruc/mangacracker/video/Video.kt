@@ -85,8 +85,15 @@ interface VideoSource {
 }
 
 object VideoSources {
-    val all: List<VideoSource> = listOf(AnikotoSource, AnimeHeavenSource, HentaigasmSource, OppaiStreamSource, MuchoHentaiSource, HentaiMamaSource, NsfwR34Source, PorcoreSource, SfmCompileSource, Rule34VideoSource)
+    val all: List<VideoSource> = listOf(AnikotoSource, AnimeHeavenSource, AnitakuSource, HentaigasmSource, OppaiStreamSource, MuchoHentaiSource, HentaiMamaSource, HstreamSource, HentaiHavenSource, NsfwR34Source, PorcoreSource, SfmCompileSource, Rule34VideoSource)
     fun byId(id: String) = all.firstOrNull { it.id == id }
+
+    /** The groups of the Videos tab, in order. */
+    val categories = listOf("Anime", "Hentai", "3D & animations")
+    private val anime = setOf("anikoto", "animeheaven", "animepahe", "allanime", "anitaku")
+    private val threeD = setOf("nsfwr34", "porcore", "sfmcompile", "rule34video")
+
+    fun category(s: VideoSource): String = when (s.id) { in anime -> "Anime"; in threeD -> "3D & animations"; else -> "Hentai" }
 }
 
 /** Minors filter for videos: tag slugs, title words, and each source's own block lists on top. */

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -67,6 +68,7 @@ import kotlinx.coroutines.withTimeout
 fun SourcesScreen(nav: Nav) {
     val settings by Repo.settings.collectAsState()
     val list = Sources.all.filter { it.id !in settings.disabledSources }
+    var shelf by rememberSaveable { mutableStateOf("") }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             Column(Modifier.windowInsetsPadding(WindowInsets.statusBars).padding(16.dp)) {
@@ -82,10 +84,19 @@ fun SourcesScreen(nav: Nav) {
                 }
             }
         }
-        item { SectionHeader("Manga") }
-        items(list.filter { !it.nsfw }, key = { it.id }) { s -> SourceRow(s.name, s.blurb, Color(s.color)) { nav.browse(s.id) } }
-        item { SectionHeader("18+") }
-        items(list.filter { it.nsfw }, key = { it.id }) { s -> SourceRow(s.name, s.blurb, Color(s.color)) { nav.browse(s.id) } }
+        // one shelf per kind of site; the pills show just one
+        item {
+            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item { FilterPill("All", shelf.isEmpty()) { shelf = "" } }
+                items(Sources.categories.filter { c -> list.any { Sources.category(it) == c } }) { c -> FilterPill(c, shelf == c) { shelf = if (shelf == c) "" else c } }
+            }
+        }
+        Sources.categories.filter { shelf.isEmpty() || it == shelf }.forEach { c ->
+            val of = list.filter { Sources.category(it) == c }
+            if (of.isEmpty()) return@forEach
+            item(key = "shelf-$c") { SectionHeader("$c · ${of.size}") }
+            items(of, key = { it.id }) { s -> SourceRow(s.name, s.blurb, Color(s.color)) { nav.browse(s.id) } }
+        }
     }
 }
 
