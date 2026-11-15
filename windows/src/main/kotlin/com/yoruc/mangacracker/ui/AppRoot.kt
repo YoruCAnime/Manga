@@ -394,6 +394,12 @@ fun AppRoot(open: String?) {
                                 ReaderScreen(nav, b.arguments?.getString("key") ?: "", b.arguments?.getString("chapter") ?: "", b.arguments?.getString("grid") == "1")
                             }
                         }
+                        // the chapter's pages as small pictures in the free space on the right (click = go to that page)
+                        val side = (cfg.screenWidthDp - colW) / 2
+                        if (s.readerPageStrip && side >= 110) {
+                            ReaderPageStrip(Modifier.align(androidx.compose.ui.Alignment.CenterEnd).fillMaxHeight()
+                                .padding(end = 14.dp).width(minOf(side - 28, 150).dp))
+                        }
                     }
                 }
                 composable("web?url={url}") { b -> WebScreen(nav, b.arguments?.getString("url") ?: "") }

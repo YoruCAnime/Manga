@@ -236,6 +236,8 @@ private fun len(ms: Long) = "%d:%02d".format(ms / 60_000, ms / 1000 % 60)
 internal var galleryProbe: ((List<Gallery.Item>, Int?) -> Unit)? = null
 /** Test runs (MC_OPEN demo:gallery:<n>): open the viewer on the n-th item. */
 internal var galleryStartItem: Int? = null
+/** Tests: open (index) or close (null) the viewer, as a click on a tile / the X would. */
+internal var galleryOpen: ((Int?) -> Unit)? = null
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -244,6 +246,8 @@ fun GalleryScreen(nav: Nav) {
     var tick by remember { mutableIntStateOf(0) }
     var filter by remember { mutableStateOf<Gallery.Kind?>(null) }
     var open by remember { mutableStateOf<Int?>(galleryStartItem.also { galleryStartItem = null }) }
+    // kept here: the grid leaves the screen while a GIF / clip is open, and closing it comes back to the same place
+    val grid = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     LaunchedEffect(tick) {
         all = withContext(Dispatchers.IO) { Gallery.list() }
         // test runs: what was found, by kind and folder (no names), in cache\gallery_test.txt
@@ -254,6 +258,7 @@ fun GalleryScreen(nav: Nav) {
     }
     val shown = remember(all, filter) { all.orEmpty().filter { filter == null || it.kind == filter } }
     LaunchedEffect(shown, open) { galleryProbe?.invoke(shown, open) }
+    androidx.compose.runtime.SideEffect { galleryOpen = { open = it } }
     val scope = rememberCoroutineScope()
     fun delete(it: Gallery.Item) {
         if (Gallery.delete(it.file)) { Desktop.toast("Moved to the Recycle Bin"); tick++ } else Desktop.toast("Couldn't move it to the Recycle Bin")
@@ -284,7 +289,7 @@ fun GalleryScreen(nav: Nav) {
             list == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Mc.Blue) }
             shown.isEmpty() -> EmptyBox(if (list.isEmpty()) "Nothing made yet" else "None of these yet",
                 "GIFs, snapshots and recordings you make in the video player show up here.")
-            else -> LazyVerticalGrid(GridCells.Adaptive(230.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
+            else -> LazyVerticalGrid(GridCells.Adaptive(230.dp), Modifier.fillMaxSize(), state = grid, contentPadding = PaddingValues(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(shown, key = { it.file.absolutePath }) { it ->
                     Tile(it, onOpen = { open = shown.indexOf(it) }, onDelete = { scope.launch { delete(it) } })

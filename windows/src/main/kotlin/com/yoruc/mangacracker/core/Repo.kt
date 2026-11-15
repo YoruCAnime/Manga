@@ -107,9 +107,13 @@ data class Settings(
     val readerSidePaddingDp: Int = 0,
     /** Windows: the page column's width in the reader (wider = full window width). */
     val readerWidthDp: Int = 900,
+    /** Windows: small pictures of the chapter's pages in the free space beside the page column (click = go there). */
+    val readerPageStrip: Boolean = true,
     /** Windows: where Record clips and player snapshots are saved ("" = Videos\MangaCracker, Pictures\MangaCracker\Snapshots). */
     val clipFolder: String = "",
     val snapshotFolder: String = "",
+    /** Windows: where saved reader pages go, one folder per title ("" = Pictures\picif if it's there, else Pictures\MangaCracker). */
+    val pageFolder: String = "",
     /** Windows player picture: saturation / contrast (-100..100) */
     val videoSaturation: Int = 0,
     val videoContrast: Int = 0,

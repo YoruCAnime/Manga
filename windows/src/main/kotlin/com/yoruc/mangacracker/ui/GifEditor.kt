@@ -56,6 +56,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
@@ -86,6 +88,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.yoruc.mangacracker.gif.BlurBrush
+import com.yoruc.mangacracker.gif.BlurStroke
+import com.yoruc.mangacracker.gif.BlurredFrames
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import java.io.File
 import kotlin.math.roundToInt
 
@@ -126,6 +132,14 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
     var speed by remember { mutableStateOf(1f) }
     var pingPong by remember { mutableStateOf(false) }
     var gifFps by remember { mutableIntStateOf(0) }      // 0 = auto
+    var crop by remember { mutableStateOf<ClipRecorder.Crop?>(null) }   // the part of the picture in the GIF (null = all)
+    var cropShape by remember { mutableStateOf(0f) }     // the crop box's width / height in pixels, 0 = any
+    // the blur brush: painted strokes (shares of the whole picture), painting on / off, brush size, erase, how strong
+    var strokes by remember { mutableStateOf<List<BlurStroke>>(emptyList()) }
+    var painting by remember { mutableStateOf(false) }
+    var brush by remember { mutableStateOf(BRUSHES[1].second) }
+    var erasing by remember { mutableStateOf(false) }
+    var blurStrength by remember { mutableStateOf(BlurBrush.STRONG) }
     var making by remember { mutableStateOf<Pair<String, Float>?>(null) }
     var done by remember { mutableStateOf(savedDemo) }        // the saved GIF's box ([savedDemo]: tests open on it)
     var shown by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -169,6 +183,10 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
     }
     DisposableEffect(Unit) { onDispose { frames?.close() } }
 
+    // the preview with the painted areas blurred (the mask at the preview frames' size, the whole picture)
+    val previewMask = remember(frames, strokes) { frames?.let { BlurBrush.mask(strokes, it.width, it.height) } }
+    fun previewPx(f: FileFrames, i: Int) = BlurBrush.apply(f.frame(i), f.width, f.height, previewMask, blurStrength)
+
     // the row's frames (small)
     LaunchedEffect(Unit) {
         val end = (winStart + ROW_S).let { if (src.duration > 0) it.coerceAtMost(src.duration) else it }
@@ -182,7 +200,7 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
     }
 
     // the looping preview: speed and ping-pong as the GIF will have them, deleted frames skipped
-    LaunchedEffect(frames, kept, speed, pingPong, playing) {
+    LaunchedEffect(frames, kept, speed, pingPong, playing, previewMask, blurStrength) {
         val f = frames ?: return@LaunchedEffect
         val list = kept.ifEmpty { return@LaunchedEffect }
         var dir = 1
@@ -191,7 +209,7 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
         if (k < 0) { k = 0; if (playing) head = list[0] }
         while (true) {
             // a read that fails (the frames just replaced) keeps the last picture instead of closing the app
-            shown = withContext(Dispatchers.Default) { runCatching { Pixels.image(f.frame(head).withAlpha(), f.width, f.height) }.getOrNull() } ?: shown
+            shown = withContext(Dispatchers.Default) { runCatching { Pixels.image(previewPx(f, head).withAlpha(), f.width, f.height) }.getOrNull() } ?: shown
             if (!playing) return@LaunchedEffect
             delay((1000.0 / (f.fps * speed)).toLong().coerceAtLeast(10))
             if (pingPong && list.size > 1) {
@@ -201,8 +219,8 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
             head = list[k]
         }
     }
-    LaunchedEffect(head, playing) {
-        if (!playing) frames?.let { f -> shown = withContext(Dispatchers.Default) { runCatching { Pixels.image(f.frame(head).withAlpha(), f.width, f.height) }.getOrNull() } ?: shown }
+    LaunchedEffect(head, playing, previewMask, blurStrength) {
+        if (!playing) frames?.let { f -> shown = withContext(Dispatchers.Default) { runCatching { Pixels.image(previewPx(f, head).withAlpha(), f.width, f.height) }.getOrNull() } ?: shown }
     }
 
     fun secs(i: Int) = winStart + i / (frames?.fps ?: 24.0)
@@ -213,7 +231,10 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
         val first = kept.first(); val last = kept.last()
         val from = secs(first); val to = secs(last) + 1 / f.fps
         val cut = deleted.filter { it in first..last }.toSet(); val ws = winStart; val wfps = f.fps
-        note("make: kept ${kept.size}, #${first + 1}-#${last + 1}, $from to $to, fps $wfps, ${cut.size} cut inside")
+        val part = crop?.takeUnless { it.full }
+        val blurNow = strokes.takeIf { l -> l.any { !it.erase } }; val strengthNow = blurStrength
+        note("make: kept ${kept.size}, #${first + 1}-#${last + 1}, $from to $to, fps $wfps, ${cut.size} cut inside" + (part?.let { ", crop $it" } ?: "") +
+            (blurNow?.let { ", blur ${it.size} strokes" } ?: ""))
         val out =Desktop.freeFile(Desktop.clips, Desktop.clean("${src.title} ${clockS(from)}-${clockS(to)}".replace(':', '.')), "gif")
         making = "Getting the frames" to 0f
         scope.launch {
@@ -222,17 +243,22 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
                 // parts a little smaller), then the phone's GIF engine
                 val keep = if (speed < 1f || gifFps > 30) 60.0 else 30.0
                 val count = (to - from) * minOf(keep, if (src.fps > 1) src.fps else 30.0)
-                val aspect = maxOf(src.width, src.height).toDouble() / minOf(src.width, src.height).coerceAtLeast(1)
+                // a cropped part: its own shape, and never drawn bigger than the video has it
+                val pw = src.width * (part?.w ?: 1f).toDouble(); val ph = src.height * (part?.h ?: 1f).toDouble()
+                val aspect = maxOf(pw, ph) / minOf(pw, ph).coerceAtLeast(1.0)
                 val budgetLong = Math.sqrt(FRAMES_BUDGET / 3.0 / count * aspect).toInt()
-                val long = minOf(size.maxWidth.coerceAtLeast(PREVIEW_LONG), budgetLong).coerceAtLeast(240)
-                val big = ClipRecorder.frames(src.input, from, to, src.width, src.height, src.fps, long, "make", keep) { making = "Getting the frames" to it * 0.3f }
+                var long = minOf(size.maxWidth.coerceAtLeast(PREVIEW_LONG), budgetLong).coerceAtLeast(240)
+                if (part != null) long = minOf(long, maxOf(pw, ph).toInt().coerceAtLeast(64))
+                val big = ClipRecorder.frames(src.input, from, to, src.width, src.height, src.fps, long, "make", keep, part) { making = "Getting the frames" to it * 0.3f }
                 try {
                     // frames deleted in the list: the full-size frames that fall in them are left out (by time: the two
                     // readings can have different frame rates); the GIF draws nothing in between across the gaps
                     val keepIdx = if (cut.isEmpty()) null else keptBigFrames(big.count, big.fps, from, ws, wfps, cut)
                     if (keepIdx != null && keepIdx.isEmpty()) error("every frame of the part is deleted")
                     val picked = if (keepIdx == null) big else PickedFrames(big, keepIdx)
-                    ClipRecorder.gif(picked, GifOptions(speed, pingPong, size, gifFps), out) { what, p -> making = what to 0.3f + 0.7f * p }
+                    // the painted areas blurred on every frame (the frames show the crop: the strokes are placed in it)
+                    val final = blurNow?.let { BlurredFrames(picked, it, part?.let { c -> floatArrayOf(c.x, c.y, c.w, c.h) }, strengthNow) } ?: picked
+                    ClipRecorder.gif(final, GifOptions(speed, pingPong, size, gifFps), out) { what, p -> making = what to 0.3f + 0.7f * p }
                 } finally { big.close() }
             }.onSuccess { done = it; playing = false; gifDoneProbe?.invoke(it) }.onFailure {
                 // the editor closed while making: no message on the screen it left
@@ -254,7 +280,8 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
                     when (e.key) {
                         // the picked frames, or (nothing picked) the shown one: pressing it again deletes the next
                         Key.Delete -> if (sel.isEmpty() && playing) playing = false else deleteFrames(if (sel.isEmpty()) setOf(head) else sel)
-                        Key.Z -> if (e.isCtrlPressed) undoDelete() else return@onPreviewKeyEvent false
+                        Key.Z -> if (!e.isCtrlPressed) return@onPreviewKeyEvent false
+                            else if (painting && strokes.isNotEmpty()) strokes = strokes.dropLast(1) else undoDelete()
                         Key.DirectionLeft -> stepShown(-step)
                         Key.DirectionRight -> stepShown(step)
                         Key.Spacebar -> playing = !playing
@@ -273,7 +300,49 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
                         Spacer(Modifier.height(10.dp))
                         Text("Reading the video… ${((loading ?: 0f) * 100).toInt()}%", color = Mc.Text2)
                     }
-                    else -> shown?.let { Image(it, null, Modifier.fillMaxSize().padding(8.dp), contentScale = ContentScale.Fit) }
+                    else -> shown?.let { img ->
+                        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            // cropping: the box's shape, its size in the video, back to the whole picture
+                            crop?.let { c ->
+                                Row(Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp)).background(Mc.Card).padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("Crop: drag the box or its edges", color = Mc.Text2, fontSize = 12.sp)
+                                    Spacer(Modifier.width(4.dp))
+                                    CROP_SHAPES.forEach { (label, s) ->
+                                        Chip(label, cropShape == s) { cropShape = s; crop = startCrop(s, img.width.toFloat() / img.height); runCatching { keys.requestFocus() } }
+                                    }
+                                    Text("${(c.w * src.width).roundToInt()} × ${(c.h * src.height).roundToInt()} px", color = Mc.Text3, fontSize = 12.sp)
+                                    SmallBtn("No crop", enabled = true) { crop = null; runCatching { keys.requestFocus() } }
+                                }
+                            }
+                            // painting the blur: brush size, erase, how strong, undo / clear
+                            if (painting) {
+                                Row(Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp)).background(Mc.Card).padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("Blur: paint over what to hide · right-drag erases", color = Mc.Text2, fontSize = 12.sp)
+                                    Spacer(Modifier.width(4.dp))
+                                    BRUSHES.forEach { (label, v) -> Chip(label, brush == v) { brush = v; runCatching { keys.requestFocus() } } }
+                                    Chip("Erase", erasing) { erasing = !erasing; runCatching { keys.requestFocus() } }
+                                    Spacer(Modifier.width(4.dp))
+                                    Chip("Light", blurStrength == BlurBrush.LIGHT) { blurStrength = BlurBrush.LIGHT; runCatching { keys.requestFocus() } }
+                                    Chip("Strong", blurStrength == BlurBrush.STRONG) { blurStrength = BlurBrush.STRONG; runCatching { keys.requestFocus() } }
+                                    SmallBtn("Undo", enabled = strokes.isNotEmpty()) { strokes = strokes.dropLast(1); runCatching { keys.requestFocus() } }
+                                    SmallBtn("Clear", enabled = strokes.isNotEmpty()) { strokes = emptyList(); runCatching { keys.requestFocus() } }
+                                    SmallBtn("Done", enabled = true) { painting = false; runCatching { keys.requestFocus() } }
+                                }
+                            }
+                            // where the blur is, lightly tinted while painting (flat areas look the same blurred)
+                            val tint = remember(previewMask, painting) {
+                                val m = previewMask
+                                val pf = frames
+                                if (!painting || m == null || pf == null) null
+                                else Pixels.image(IntArray(m.size) { k -> ((m[k] * 70f).toInt().coerceIn(0, 255) shl 24) or 0x5CB8FF }, pf.width, pf.height)
+                            }
+                            CropView(img, crop, cropShape, Modifier.weight(1f).fillMaxWidth().padding(8.dp), cropEdit = !painting, tint = tint, paint = if (!painting) null else {
+                                { BlurPaint(strokes, brush, erasing) { strokes = it } }
+                            }) { crop = it }
+                        }
+                    }
                 }
             }
             val f = frames
@@ -314,6 +383,13 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("FPS", color = Mc.Text2, fontSize = 13.sp)
                     GIF_FPS.forEach { v -> Chip(if (v == 0) "Auto" else "$v", gifFps == v) { gifFps = v } }
+                    Spacer(Modifier.width(10.dp))
+                    Chip("✂ Crop", crop != null) {
+                        painting = false
+                        val f0 = frames
+                        crop = if (crop != null) null else startCrop(cropShape, if (f0 != null) f0.width.toFloat() / f0.height else src.width.toFloat() / src.height)
+                    }
+                    Chip(if (strokes.any { !it.erase }) "Blur brush · on" else "Blur brush", painting) { painting = !painting; runCatching { keys.requestFocus() } }
                     Text(when {
                         gifFps <= 30 && speed >= 1f -> ""
                         Rife.available -> "  in-between frames drawn by RIFE (graphics card): smooth"
@@ -340,6 +416,243 @@ fun GifEditor(src: GifSource, at: Double, savedDemo: File? = null, onClose: () -
         }, onMove = { dir ->
             Gallery.moveTo(f, dir)?.let { done = it; Desktop.toast("Moved to ${dir.name}") } ?: Desktop.toast("Couldn't move the GIF (is it open somewhere?)")
         }, onAnother = { done = null; playing = true }, onClose = onClose) }
+    }
+}
+
+/** The blur brush's sizes: its radius as a share of the picture's long side. */
+private val BRUSHES = listOf("Thin" to 0.015f, "Medium" to 0.035f, "Thick" to 0.07f, "Huge" to 0.12f)
+
+/**
+ * The blur brush over the preview: drag to paint (right-drag or [erasing] to erase), the brush shown as a ring at the
+ * mouse. Each drag is one stroke (one Undo step); points are shares of the whole picture.
+ */
+@Composable
+private fun BlurPaint(strokes: List<BlurStroke>, brush: Float, erasing: Boolean, onStrokes: (List<BlurStroke>) -> Unit) {
+    val now by rememberUpdatedState(strokes)
+    val set by rememberUpdatedState(onStrokes)
+    val br by rememberUpdatedState(brush)
+    val er by rememberUpdatedState(erasing)
+    var hover by remember { mutableStateOf<Offset?>(null) }
+    var rubbing by remember { mutableStateOf(false) }
+    Canvas(Modifier.fillMaxSize()
+        .pointerHoverIcon(PointerIcon(java.awt.Cursor(java.awt.Cursor.CROSSHAIR_CURSOR)))
+        .pointerInput(Unit) {
+            awaitPointerEventScope {
+                var drawing = false; var last = Offset.Zero
+                while (true) {
+                    val e = awaitPointerEvent()
+                    val p = e.changes.firstOrNull() ?: continue
+                    val w = size.width.toFloat(); val h = size.height.toFloat()
+                    if (w <= 0f || h <= 0f) continue
+                    val nx = (p.position.x / w).coerceIn(0f, 1f); val ny = (p.position.y / h).coerceIn(0f, 1f)
+                    hover = p.position
+                    when (e.type) {
+                        PointerEventType.Press -> {
+                            val erase = er || e.buttons.isSecondaryPressed
+                            rubbing = erase
+                            set(now + BlurStroke(floatArrayOf(nx), floatArrayOf(ny), br, erase))
+                            drawing = true; last = p.position
+                            p.consume()
+                        }
+                        PointerEventType.Move -> if (drawing && p.pressed) {
+                            val s = now.lastOrNull()
+                            if (s != null && (p.position - last).getDistance() >= 2f) {
+                                set(now.dropLast(1) + s.plus(nx, ny)); last = p.position
+                            }
+                            p.consume()
+                        }
+                        PointerEventType.Release -> { drawing = false; rubbing = false }
+                        PointerEventType.Exit -> if (!p.pressed) hover = null
+                    }
+                }
+            }
+        }) {
+        hover?.let { at ->
+            val r = br * maxOf(size.width, size.height)
+            drawCircle(if (er || rubbing) Color(0x40FF5C8A) else Color(0x405CB8FF), r, at)
+            drawCircle(Color.White.copy(alpha = 0.9f), r, at, style = Stroke(1.5f))
+        }
+    }
+}
+
+/** The crop box's shapes: width / height in pixels (0 = any). */
+internal val CROP_SHAPES = listOf("Free" to 0f, "1:1" to 1f, "4:3" to 4f / 3, "16:9" to 16f / 9, "9:16" to 9f / 16)
+
+/** A new crop box: [shape] as big as the picture (width / height [aspect]) allows, centred; any shape = 80 % of it. */
+internal fun startCrop(shape: Float, aspect: Float): ClipRecorder.Crop {
+    if (shape <= 0f) return ClipRecorder.Crop(0.1f, 0.1f, 0.8f, 0.8f)
+    // in a picture [aspect] wide and 1 high
+    var w = aspect; var h = aspect / shape
+    if (h > 1f) { h = 1f; w = shape }
+    val cw = (w / aspect).coerceAtMost(1f)
+    return ClipRecorder.Crop((1f - cw) / 2, (1f - h) / 2, cw, h)
+}
+
+internal const val CROP_L = 1
+internal const val CROP_T = 2
+internal const val CROP_R = 4
+internal const val CROP_B = 8
+internal const val CROP_MOVE = 16
+
+/** What a point is on: the box's edges / corners ([grab] px around them), inside it (move), or nothing (0). */
+internal fun cropHit(c: ClipRecorder.Crop, x: Float, y: Float, W: Float, H: Float, grab: Float): Int {
+    val l = c.x * W; val t = c.y * H; val r = (c.x + c.w) * W; val b = (c.y + c.h) * H
+    val inX = x in l - grab..r + grab; val inY = y in t - grab..b + grab
+    var f = 0
+    if (inY && kotlin.math.abs(x - l) < grab) f = f or CROP_L
+    else if (inY && kotlin.math.abs(x - r) < grab) f = f or CROP_R
+    if (inX && kotlin.math.abs(y - t) < grab) f = f or CROP_T
+    else if (inX && kotlin.math.abs(y - b) < grab) f = f or CROP_B
+    if (f == 0 && x in l..r && y in t..b) f = CROP_MOVE
+    return f
+}
+
+/**
+ * [c] after a drag of ([dx], [dy]) px on a picture [W] x [H] px holding [what] ([cropHit]'s): moved, or its edges /
+ * corners pulled, kept inside the picture and at least 6 % of it; with a [shape] the box keeps it (an edge pulls the
+ * other two sides along about the middle, a corner follows the larger pull).
+ */
+internal fun dragCrop(c: ClipRecorder.Crop, what: Int, dx: Float, dy: Float, W: Float, H: Float, shape: Float): ClipRecorder.Crop {
+    var l = c.x * W; var t = c.y * H; var r = (c.x + c.w) * W; var b = (c.y + c.h) * H
+    val min = minOf(W, H) * 0.06f
+    if (what == CROP_MOVE) {
+        val ox = dx.coerceIn(-l, W - r); val oy = dy.coerceIn(-t, H - b)
+        l += ox; r += ox; t += oy; b += oy
+    } else {
+        val left = what and CROP_L != 0; val top = what and CROP_T != 0
+        val sideX = what and (CROP_L or CROP_R) != 0; val sideY = what and (CROP_T or CROP_B) != 0
+        if (left) l = (l + dx).coerceIn(0f, r - min)
+        if (what and CROP_R != 0) r = (r + dx).coerceIn(l + min, W)
+        if (top) t = (t + dy).coerceIn(0f, b - min)
+        if (what and CROP_B != 0) b = (b + dy).coerceIn(t + min, H)
+        if (shape > 0f) {
+            var w = r - l; var h = b - t
+            when {
+                sideX && sideY -> {
+                    if (w / h > shape) h = w / shape else w = h * shape
+                    val maxW = if (left) r else W - l; val maxH = if (top) b else H - t
+                    if (w > maxW) { w = maxW; h = w / shape }
+                    if (h > maxH) { h = maxH; w = h * shape }
+                    if (left) l = r - w else r = l + w
+                    if (top) t = b - h else b = t + h
+                }
+                sideX -> {
+                    // the height follows about the box's middle
+                    val cy = (c.y + c.h / 2) * H
+                    h = w / shape
+                    val maxH = 2 * minOf(cy, H - cy)
+                    if (h > maxH) { h = maxH; w = h * shape; if (left) l = r - w else r = l + w }
+                    t = cy - h / 2; b = cy + h / 2
+                }
+                sideY -> {
+                    val cx = (c.x + c.w / 2) * W
+                    w = h * shape
+                    val maxW = 2 * minOf(cx, W - cx)
+                    if (w > maxW) { w = maxW; h = w / shape; if (top) t = b - h else b = t + h }
+                    l = cx - w / 2; r = cx + w / 2
+                }
+            }
+        }
+    }
+    val x = (l / W).coerceIn(0f, 1f); val y = (t / H).coerceIn(0f, 1f)
+    return ClipRecorder.Crop(x, y, ((r - l) / W).coerceIn(0.01f, 1f - x), ((b - t) / H).coerceIn(0.01f, 1f - y))
+}
+
+/**
+ * The preview picture, as big as fits; with [crop] the box over it: drag inside to move it, its edges / corners to size
+ * it, or anywhere outside to draw a new one. The rest of the picture is dimmed, and the mouse shows what a drag does.
+ */
+@Composable
+private fun CropView(
+    img: ImageBitmap, crop: ClipRecorder.Crop?, shape: Float, modifier: Modifier, cropEdit: Boolean = true,
+    tint: ImageBitmap? = null, paint: (@Composable () -> Unit)? = null, onCrop: (ClipRecorder.Crop) -> Unit,
+) {
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        val a = img.width.toFloat() / img.height.coerceAtLeast(1)
+        val fitW = if (maxHeight.value > 0f && maxWidth / maxHeight > a) maxHeight * a else maxWidth
+        val fitH = if (maxHeight.value > 0f && maxWidth / maxHeight > a) maxHeight else maxWidth / a
+        Box(Modifier.width(fitW).height(fitH)) {
+            Image(img, null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
+            tint?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
+            if (crop != null) CropBox(crop, shape, cropEdit, onCrop)
+            // the blur brush on top: it takes the mouse while painting (the crop box only shows)
+            paint?.invoke()
+        }
+    }
+}
+
+@Composable
+private fun CropBox(crop: ClipRecorder.Crop, shape: Float, edit: Boolean, onCrop: (ClipRecorder.Crop) -> Unit) {
+    val now by rememberUpdatedState(crop)
+    val set by rememberUpdatedState(onCrop)
+    val d = LocalDensity.current
+    val grab = with(d) { 12.dp.toPx() }
+    var over by remember { mutableIntStateOf(0) }
+    val cursor = when (over) {
+        CROP_L or CROP_T, CROP_R or CROP_B -> java.awt.Cursor.NW_RESIZE_CURSOR
+        CROP_R or CROP_T, CROP_L or CROP_B -> java.awt.Cursor.NE_RESIZE_CURSOR
+        CROP_L, CROP_R -> java.awt.Cursor.E_RESIZE_CURSOR
+        CROP_T, CROP_B -> java.awt.Cursor.N_RESIZE_CURSOR
+        CROP_MOVE -> java.awt.Cursor.MOVE_CURSOR
+        else -> java.awt.Cursor.CROSSHAIR_CURSOR
+    }
+    Canvas(Modifier.fillMaxSize().then(if (!edit) Modifier else Modifier
+        .pointerHoverIcon(PointerIcon(java.awt.Cursor(cursor)))
+        .pointerInput(shape) {
+            awaitPointerEventScope {
+                var what = 0; var start = now; var from = Offset.Zero; var fresh = false
+                while (true) {
+                    val e = awaitPointerEvent()
+                    val p = e.changes.firstOrNull() ?: continue
+                    val W = size.width.toFloat(); val H = size.height.toFloat()
+                    when (e.type) {
+                        PointerEventType.Press -> {
+                            from = p.position; start = now
+                            what = cropHit(now, p.position.x, p.position.y, W, H, grab)
+                            // outside the box: a new one, drawn from here once the mouse moves
+                            fresh = what == 0
+                            p.consume()
+                        }
+                        PointerEventType.Move -> if (p.pressed) {
+                            val dx = p.position.x - from.x; val dy = p.position.y - from.y
+                            if (fresh && (kotlin.math.abs(dx) > grab / 2 || kotlin.math.abs(dy) > grab / 2)) {
+                                // a tiny box at the press point, its far corner pulled to the mouse
+                                val m = minOf(W, H) * 0.06f
+                                val x0 = (if (dx < 0) from.x - m else from.x).coerceIn(0f, W - m)
+                                val y0 = (if (dy < 0) from.y - m else from.y).coerceIn(0f, H - m)
+                                start = ClipRecorder.Crop(x0 / W, y0 / H, m / W, m / H)
+                                what = (if (dx < 0) CROP_L else CROP_R) or (if (dy < 0) CROP_T else CROP_B)
+                                from = Offset(if (dx < 0) x0 else x0 + m, if (dy < 0) y0 else y0 + m)
+                                fresh = false
+                            }
+                            if (what != 0) { set(dragCrop(start, what, p.position.x - from.x, p.position.y - from.y, W, H, shape)); p.consume() }
+                        } else over = cropHit(now, p.position.x, p.position.y, W, H, grab)
+                        PointerEventType.Release -> { what = 0; fresh = false; over = cropHit(now, p.position.x, p.position.y, W, H, grab) }
+                        PointerEventType.Exit -> if (!p.pressed) over = 0
+                    }
+                }
+            }
+        })) {
+        val l = crop.x * size.width; val t = crop.y * size.height
+        val r = (crop.x + crop.w) * size.width; val b = (crop.y + crop.h) * size.height
+        val dim = Color(0xA6000000)
+        drawRect(dim, Offset.Zero, Size(size.width, t))
+        drawRect(dim, Offset(0f, b), Size(size.width, size.height - b))
+        drawRect(dim, Offset(0f, t), Size(l, b - t))
+        drawRect(dim, Offset(r, t), Size(size.width - r, b - t))
+        // thirds, the frame, and handles on the corners and edges
+        val thin = Color.White.copy(alpha = 0.28f)
+        for (k in 1..2) {
+            drawLine(thin, Offset(l + (r - l) * k / 3, t), Offset(l + (r - l) * k / 3, b), 1f)
+            drawLine(thin, Offset(l, t + (b - t) * k / 3), Offset(r, t + (b - t) * k / 3), 1f)
+        }
+        drawRect(Color.White, Offset(l, t), Size(r - l, b - t), style = Stroke(with(d) { 1.5.dp.toPx() }))
+        val hs = with(d) { 8.dp.toPx() }
+        for (hx in listOf(l, (l + r) / 2, r)) for (hy in listOf(t, (t + b) / 2, b)) {
+            if (hx == (l + r) / 2 && hy == (t + b) / 2) continue
+            drawRect(Color.White, Offset(hx - hs / 2, hy - hs / 2), Size(hs, hs))
+            drawRect(Mc.Blue, Offset(hx - hs / 2, hy - hs / 2), Size(hs, hs), style = Stroke(1.5f))
+        }
     }
 }
 

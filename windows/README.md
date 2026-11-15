@@ -16,7 +16,7 @@ version is just unzipped over the old folder.
 
 ## Using it
 
-Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.4.0).
+Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.4.5).
 
 - **Left rail**: Home, Library, Browse, Videos, Music, Updates, More (the phone's bottom bar).
 - **Going back**: Esc, Alt+←, the mouse's back button, or the ← arrows. **F11** = full screen.
@@ -34,6 +34,8 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
 - **Saved** (Library, fourth shelf): the ☆ next to an author, artist or circle on a title's page keeps them; "☆ Save"
   in a source's or the Videos tab's search keeps that search (a studio, a tag, some words). One click opens it again.
 - **Reader**: pages sit in a centred column (Reader settings › *Page width*, up to the whole window).
+  When there's room beside it, the chapter's pages show as small pictures on the right: the page you're on is outlined
+  and stays in view, and a click goes straight to that page (Reader settings › *Page previews beside the pages*).
   ↓ ↑ or J K scroll a little, Page Down / Space and Page Up / Shift+Space a screen, Home / End; ← / P previous
   chapter, → / N next chapter. A bar at the bottom is always there: **‹ Previous chapter** · page and % of this
   chapter · **Next chapter ›** (greyed when there's no chapter that way), and the end of every chapter has the same
@@ -50,6 +52,8 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
   **AnimeHeaven** (720p, English subs in the picture, no dub) and **Anitaku** (newer shows, English subs, no dub). Latest lists new episodes; Popular and search list
   whole shows: click one for all its episodes with **Sub** / **Dub** filters. The player line under the title says
   which one plays ("Episode 5 · Dub · Anikoto").
+- **Continue on <site>** (Videos tab): the site you have open (e.g. Anikoto) gets a row of just its own unfinished
+  shows on top; "Continue watching on other sites" under it has the rest.
 - **Recommended for you** (Videos tab, under Continue watching): picked from the genres of what you favourite, finish
   and watch for a while (quick peeks don't count), on every site you use plus similar sites you haven't tried;
   nothing you've seen, one card per show (seasons count as one). Refresh finds new ones (otherwise kept 3 hours).
@@ -67,7 +71,13 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
   the middle: the rest stay in order and the GIF never blends across where they were. Numbers never change when frames
   go. The row is the 30 s from where you paused; for other frames, close it, go to that spot in the video and press GIF.
   Size (Tiny 2 MB / Small 5 MB / Big 10 MB), speed (0.25× to 2×), ping-pong, FPS (Auto /
-  24 / 30 / 50: 50 makes smooth in-between frames), then the phone's GIF engine. The finished GIF then plays in a
+  24 / 30 / 50: 50 makes smooth in-between frames), **✂ Crop** (a box over the preview: drag inside to move it, its
+  edges / corners to size it, or outside to draw a new one; shapes Free / 1:1 / 4:3 / 16:9 / 9:16, its size in video
+  pixels, No crop; the GIF is only that part, cut from the full-size video so it stays sharp), **Blur brush** (paint
+  over the preview to blur what you want hidden: Thin / Medium / Thick / Huge, right-drag or Erase rubs it out, Light /
+  Strong, Undo (also Ctrl+Z) / Clear; the preview shows it live, every frame of the GIF gets it, and it stays in place
+  with a crop), then the phone's GIF
+  engine. The finished GIF then plays in a
   box (at most its own size, with its size / frames / length): Show in folder, Copy (paste into Discord, a chat,
   Explorer), **Move to <folder>** (a folder the recordings folder links to with a Windows shortcut, e.g. "old": the
   GIF moves there and the other buttons follow it), **Delete** (not happy with it: the file goes and you're back in the editor with the same frames), Make
@@ -113,7 +123,9 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
   connect the VPN, then close and reopen MangaCracker (an app that was open before the VPN connected keeps going
   around it). The app uses plain IPv4 connections, which such VPNs need (else every list says "Cannot assign
   requested address").
-- **Saved files**: pages and cutouts in Pictures\MangaCracker\<title>, snapshots in Pictures\MangaCracker\Snapshots,
+- **Saved files**: pages and cutouts in a folder for each title (Save image, Save chapter and picked pages all go into
+  the title's folder, named by chapter and page) inside the *Saved pages* folder of Settings › Downloads (default:
+  Pictures\picif when you have that folder, else Pictures\MangaCracker), snapshots in Pictures\MangaCracker\Snapshots,
   backups in Downloads\MangaCracker. The app's own data (library, downloads, cookies, crash.log) is in
   %LOCALAPPDATA%\MangaCracker.
 - **New chapters** are checked while the app is open; Windows notifications come from its tray icon.
