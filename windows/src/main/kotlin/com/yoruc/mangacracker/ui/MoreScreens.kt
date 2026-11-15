@@ -295,6 +295,9 @@ fun SettingsScreen(nav: Nav) {
                 FolderRow("Recordings (Record and GIF in the player)", s.clipFolder, com.yoruc.mangacracker.platform.Desktop.videos.path) { v ->
                     Repo.updateSettings { it.copy(clipFolder = v) }
                 }
+                FolderRow("Saved pages (a folder for each title)", s.pageFolder, com.yoruc.mangacracker.platform.Desktop.defaultPages.path) { v ->
+                    Repo.updateSettings { it.copy(pageFolder = v) }
+                }
                 FolderRow("Snapshots", s.snapshotFolder, java.io.File(com.yoruc.mangacracker.platform.Desktop.pictures, "Snapshots").path) { v ->
                     Repo.updateSettings { it.copy(snapshotFolder = v) }
                 }

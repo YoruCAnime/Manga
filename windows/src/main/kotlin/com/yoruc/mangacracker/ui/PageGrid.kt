@@ -157,7 +157,7 @@ fun PageGrid(
                                 runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), folder, "${p.chapter.name} - %03d".format(p.page.index + 1)) }.onSuccess { ok++ }
                             }
                             saving = null
-                            Toast.makeText(ctx, "Saved $ok picture${if (ok == 1) "" else "s"} to Pictures/MangaCracker", Toast.LENGTH_LONG).show()
+                            Toast.makeText(ctx, "Saved $ok picture${if (ok == 1) "" else "s"} to ${ImageSaver.folderOf(folder)}", Toast.LENGTH_LONG).show()
                             picking = false; picked.clear()
                         }
                     },

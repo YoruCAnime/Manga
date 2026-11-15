@@ -288,6 +288,17 @@ fun readerRows(items: List<ReaderItem>, twoPage: Boolean, wide: (ReaderItem.Page
 private val SPEEDS = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 2.5f, 3f, 4f, 5f)
 private fun speedLabel(v: Float) = String.format(java.util.Locale.US, "%.2f", v).trimEnd('0').trimEnd('.') + "×"
 
+/**
+ * Windows: the open chapter's pages and the page on screen, for the preview strip beside the page column
+ * ([ReaderPageStrip], drawn by AppRoot outside the reader's own column). Set by the reader on screen.
+ */
+object ReaderSide {
+    var pages by mutableStateOf<List<ReaderItem.PageItem>>(emptyList())
+    var current by androidx.compose.runtime.mutableIntStateOf(-1)
+    var vm: ReaderVM? = null
+    var jump: (ReaderItem.PageItem) -> Unit = {}
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = false) {
@@ -397,6 +408,18 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
         }
     }
     LaunchedEffect(vm) { snapshotFlow { current?.first?.key }.collect { if (it != null) lastKey = it } }
+
+    // the preview strip beside the pages: this chapter's pages, the one on screen, and how to go to one
+    val sideChapter = current?.first?.chapter?.id ?: (vm.items.firstOrNull { it is ReaderItem.PageItem } as? ReaderItem.PageItem)?.chapter?.id
+    LaunchedEffect(sideChapter, vm.items.size) {
+        ReaderSide.pages = vm.items.filterIsInstance<ReaderItem.PageItem>().filter { it.chapter.id == sideChapter }
+    }
+    androidx.compose.runtime.SideEffect {
+        ReaderSide.vm = vm
+        ReaderSide.current = current?.second ?: -1
+        ReaderSide.jump = { p -> rowOfKey(p.key).takeIf { it >= 0 }?.let { scope.launch { list.scrollToItem(it) } } }
+    }
+    DisposableEffect(vm) { onDispose { if (ReaderSide.vm === vm) { ReaderSide.vm = null; ReaderSide.pages = emptyList(); ReaderSide.current = -1 } } }
 
     // save progress while reading (the latest spot every 0.4 s: auto-scroll never stands still long enough for a
     // debounce) and pull in the next chapter near the end
@@ -659,10 +682,11 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                         var ok = 0
                         pages.forEachIndexed { i, p ->
                             savingAll = "Saving ${i + 1} / ${pages.size}"
-                            runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), "${ref.title}/${ch.name}", "%03d".format(p.page.index + 1)) }.onSuccess { ok++ }
+                            // the title's own folder, named by chapter and page (one folder per title)
+                            runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), ref.title, "${ch.name} - %03d".format(p.page.index + 1)) }.onSuccess { ok++ }
                         }
                         savingAll = null
-                        Toast.makeText(ctx, "Saved $ok pages to Pictures/MangaCracker", Toast.LENGTH_LONG).show()
+                        Toast.makeText(ctx, "Saved $ok pages to ${ImageSaver.folderOf(ref.title)}", Toast.LENGTH_LONG).show()
                     }
                 }) { Icon(Icons.Rounded.Download, "Save chapter", tint = Mc.Text) }
                 IconButton(onClick = { showSettings = true }) { Icon(Icons.Rounded.Settings, "Reader settings", tint = Mc.Text) }
@@ -964,6 +988,13 @@ fun ReaderSettings() {
         Text("Page width · ${if (s.readerWidthDp >= 1600) "whole window" else "${s.readerWidthDp} dp"}", color = Mc.Text2, fontSize = 13.sp)
         Slider(s.readerWidthDp.toFloat(), { v -> Repo.updateSettings { it.copy(readerWidthDp = (v / 50).roundToInt() * 50) } }, valueRange = 500f..1600f,
             colors = SliderDefaults.colors(thumbColor = Mc.Blue, activeTrackColor = Mc.Blue, inactiveTrackColor = Mc.Card2))
+        Text("Page previews beside the pages", color = Mc.Text2, fontSize = 13.sp)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterPill("Show", s.readerPageStrip) { Repo.updateSettings { it.copy(readerPageStrip = true) } }
+            FilterPill("Hide", !s.readerPageStrip) { Repo.updateSettings { it.copy(readerPageStrip = false) } }
+        }
+        Spacer(Modifier.height(14.dp))
         Text("Side margin · ${s.readerSidePaddingDp} dp", color = Mc.Text2, fontSize = 13.sp)
         Slider(s.readerSidePaddingDp.toFloat(), { v -> Repo.updateSettings { it.copy(readerSidePaddingDp = v.toInt()) } }, valueRange = 0f..64f,
             colors = SliderDefaults.colors(thumbColor = Mc.Blue, activeTrackColor = Mc.Blue, inactiveTrackColor = Mc.Card2))

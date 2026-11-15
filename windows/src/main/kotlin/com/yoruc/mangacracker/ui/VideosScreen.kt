@@ -203,7 +203,9 @@ class VideosVM {
 fun VideosScreen(nav: Nav) {
     val vm = VideosKeep.vm
     val watch by VideoRepo.watch.collectAsState()
-    val cont = remember(watch) { VideoRepo.continueList() }
+    val all = remember(watch) { VideoRepo.continueList() }
+    // the open site's own shows get a row of their own ("Continue on Anikoto"); the mixed row has the other sites'
+    val (here, cont) = remember(all, vm.source.id) { all.partition { it.ref.source == vm.source.id } }
     val favsNow by VideoRepo.favs.collectAsState()
     val savedNow = Repo.settings.collectAsState().value.saved
     // what you watched / favourited since leaves the row at once
@@ -307,10 +309,20 @@ fun VideosScreen(nav: Nav) {
             verticalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
+            if (here.isNotEmpty() && vm.mode != 2) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column {
+                        Text("Continue on ${vm.source.name}", color = Mc.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(here, key = { it.ref.key }) { w -> ContinueCard(w, onSeries = { nav.videoSeries(w.ref) }) { nav.player(w.ref) } }
+                        }
+                    }
+                }
+            }
             if (cont.isNotEmpty() && vm.mode != 2) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column {
-                        Text("Continue watching", color = Mc.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
+                        Text(if (here.isEmpty()) "Continue watching" else "Continue watching on other sites", color = Mc.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(cont, key = { it.ref.key }) { w -> ContinueCard(w, onSeries = { nav.videoSeries(w.ref) }) { nav.player(w.ref) } }
                         }
@@ -332,7 +344,7 @@ fun VideosScreen(nav: Nav) {
                     }
                 }
             }
-            if ((cont.isNotEmpty() || recs.isNotEmpty()) && vm.mode != 2) {
+            if ((here.isNotEmpty() || cont.isNotEmpty() || recs.isNotEmpty()) && vm.mode != 2) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Text(if (vm.mode == 1) "Popular on ${vm.source.name}" else "New on ${vm.source.name}", color = Mc.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
                 }

@@ -247,7 +247,7 @@ fun CutoutScreen(req: CutoutRequest, onClose: () -> Unit) {
                                 val c = cut ?: return@Button
                                 scope.launch {
                                     runCatching { ImageSaver.savePng(c.first, c.second, c.third, req.folder, req.name) }
-                                        .onSuccess { Toast.makeText(ctx, "Saved to Pictures\\MangaCracker\\${it.parentFile.name}", Toast.LENGTH_SHORT).show(); onClose() }
+                                        .onSuccess { Toast.makeText(ctx, "Saved to ${it.parentFile.path}", Toast.LENGTH_SHORT).show(); onClose() }
                                         .onFailure { Toast.makeText(ctx, "Couldn't save: ${it.message}", Toast.LENGTH_SHORT).show() }
                                 }
                             }, colors = ButtonDefaults.buttonColors(containerColor = Mc.Blue, contentColor = Mc.Bg)) {

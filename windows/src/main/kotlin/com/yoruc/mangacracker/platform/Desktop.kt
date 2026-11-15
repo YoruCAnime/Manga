@@ -34,6 +34,13 @@ object Desktop {
     val clips: File get() = com.yoruc.mangacracker.core.Repo.settings.value.clipFolder.takeIf { it.isNotBlank() }
         ?.let { File(it) }?.takeIf { it.isDirectory || it.mkdirs() } ?: videos
 
+    /** Saved reader pages when Settings names no folder: Pictures\picif when it's there, else Pictures\MangaCracker. */
+    val defaultPages: File get() = File(System.getProperty("user.home"), "Pictures/picif").takeIf { it.isDirectory } ?: pictures
+
+    /** Where saved reader pages go (a folder for each title inside): the folder chosen in Settings, else [defaultPages]. */
+    val pages: File get() = com.yoruc.mangacracker.core.Repo.settings.value.pageFolder.takeIf { it.isNotBlank() }
+        ?.let { File(it) }?.takeIf { it.isDirectory || it.mkdirs() } ?: defaultPages
+
     /** Where player snapshots go: the folder chosen in Settings, else Pictures\MangaCracker\Snapshots. */
     val snapshots: File get() = com.yoruc.mangacracker.core.Repo.settings.value.snapshotFolder.takeIf { it.isNotBlank() }
         ?.let { File(it) }?.takeIf { it.isDirectory || it.mkdirs() } ?: File(pictures, "Snapshots").apply { mkdirs() }

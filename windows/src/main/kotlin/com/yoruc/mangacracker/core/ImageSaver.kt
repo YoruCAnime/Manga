@@ -12,7 +12,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 
-/** Saves pictures to Pictures\MangaCracker\<title>\ ; "Share" puts the picture on the clipboard. */
+/** Saves pictures to <saved pages folder>\<title>\ ([Desktop.pages]); "Share" puts the picture on the clipboard. */
 object ImageSaver {
     private fun ext(bytes: ByteArray): String = when {
         bytes.size > 3 && bytes[0] == 0x89.toByte() && bytes[1] == 'P'.code.toByte() -> "png"
@@ -22,7 +22,10 @@ object ImageSaver {
         else -> "jpg"
     }
 
-    private fun folder(name: String) = File(Desktop.pictures, Desktop.clean(name)).apply { mkdirs() }
+    private fun folder(name: String) = File(Desktop.pages, Desktop.clean(name)).apply { mkdirs() }
+
+    /** The folder a title's pages go to (for the messages after saving). */
+    fun folderOf(title: String): File = File(Desktop.pages, Desktop.clean(title))
 
     /** Returns the saved file. */
     @Suppress("UNUSED_PARAMETER")
