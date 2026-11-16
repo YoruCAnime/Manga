@@ -135,6 +135,7 @@ import com.yoruc.mangacracker.core.Downloads
 import com.yoruc.mangacracker.core.SourceException
 import com.yoruc.mangacracker.video.GifClip
 import com.yoruc.mangacracker.video.GifDone
+import com.yoruc.mangacracker.video.GifFrames
 import com.yoruc.mangacracker.video.GifRequest
 import com.yoruc.mangacracker.video.VideoDetails
 import com.yoruc.mangacracker.video.VideoRef
@@ -199,6 +200,8 @@ internal object PlayerTestHooks {
     /** position, duration, buffered (ms) */
     var clock: (() -> LongArray)? = null
     var gifJob: (suspend (GifRequest, (String, Float) -> Unit) -> GifDone)? = null
+    /** Stand-in for reading the frame strip: (start ms, end ms, frames a second) -> frames. */
+    var gifFrames: (suspend (Long, Long, Double) -> GifFrames)? = null
     /** The player's repeat mode after the Loop button (tests read it back). */
     @Volatile var repeatMode = -1
 }
@@ -313,6 +316,7 @@ fun PlayerScreen(nav: Nav, key: String) {
             lifecycle.removeObserver(obs)
             vm.details?.let { VideoRepo.save(it.ref, player.currentPosition, player.duration.coerceAtLeast(0)) }
             player.release()
+            gif?.release()
             GifClip.cleanup(ctx)
             view.keepScreenOn = false
             ctl.show(WindowInsetsCompat.Type.systemBars())
@@ -440,7 +444,7 @@ fun PlayerScreen(nav: Nav, key: String) {
     fun grabThumb(g: GifEdit, which: Int) {
         val tv = texture ?: return
         val bmp = runCatching { tv.getBitmap(192, (192 / ratio).toInt().coerceAtLeast(2)) }.getOrNull() ?: return
-        if (which == 0) g.thumbA = bmp.asImageBitmap() else g.thumbB = bmp.asImageBitmap()
+        if (which == 0) g.thumbA = bmp.asImageBitmap() else if (which == 1) g.thumbB = bmp.asImageBitmap()
     }
     fun gifPreview(g: GifEdit, ms: Long, exact: Boolean, which: Int) {
         val t = android.os.SystemClock.uptimeMillis()
@@ -449,11 +453,13 @@ fun PlayerScreen(nav: Nav, key: String) {
             player.setSeekParameters(if (exact) SeekParameters.EXACT else SeekParameters.CLOSEST_SYNC)
             player.seekTo(ms)
         }
-        if (exact) scope.launch { delay(450); grabThumb(g, which) }
+        if (exact && which <= 1) scope.launch { delay(450); grabThumb(g, which) }
     }
     fun makeGif(g: GifEdit) {
         val d = vm.details ?: return
-        val req = GifRequest(g.a, g.b, GifOptions(g.speed, g.pingPong, g.size, g.fps))
+        val strip = g.strip
+        val req = GifRequest(g.a, g.b, GifOptions(g.speed, g.pingPong, g.size, g.fps),
+            cut = if (strip != null) g.deleted else emptySet(), stripMs = strip?.startMs ?: 0, stripFps = strip?.frames?.fps ?: 30.0)
         val main = android.os.Handler(android.os.Looper.getMainLooper())
         var lastPct = -1; var lastStage = ""
         val progress: (String, Float) -> Unit = { stage, f ->
@@ -463,7 +469,7 @@ fun PlayerScreen(nav: Nav, key: String) {
         g.result = null; g.working = "Getting the clip"; g.fraction = 0f
         g.job = scope.launch {
             try {
-                g.result = PlayerTestHooks.gifJob?.invoke(req, progress) ?: GifClip.make(ctx, src, d.stream, videoH, req, progress)
+                g.result = PlayerTestHooks.gifJob?.invoke(req, progress) ?: GifClip.make(ctx, src, d.stream, videoH, req, progress, strip)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -471,8 +477,36 @@ fun PlayerScreen(nav: Nav, key: String) {
             } finally { g.working = null }
         }
     }
+    /** "✂ Frames": the range's frames into the strip (read again only when the range changed). */
+    fun openFrames(g: GifEdit) {
+        val d = vm.details ?: return
+        g.framesOpen = true
+        val s = g.strip
+        if ((s != null && s.startMs == g.a && s.endMs == g.b) || g.stripLoading != null) return
+        val keep = GifClip.keepFps(GifOptions(g.speed, g.pingPong, g.size, g.fps))
+        val main = android.os.Handler(android.os.Looper.getMainLooper())
+        var lastPct = -1; var lastStage = ""
+        val progress: (String, Float) -> Unit = { stage, f ->
+            val pct = (f * 100).toInt()
+            if (pct != lastPct || stage != lastStage) { lastPct = pct; lastStage = stage; main.post { if (g.stripLoading != null) { g.stripStage = stage; g.stripLoading = f } } }
+        }
+        g.stripStage = "Getting the clip"; g.stripLoading = 0f
+        val a = g.a; val b = g.b
+        g.stripJob = scope.launch {
+            try {
+                val f = PlayerTestHooks.gifFrames?.invoke(a, b, keep) ?: GifClip.frames(ctx, src, d.stream, videoH, a, b, keep, progress)
+                if (gif === g) g.useStrip(f) else f.frames.close()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                toast("Couldn't read the frames: ${e.message ?: e.javaClass.simpleName}")
+                g.framesOpen = false
+            } finally { g.stripLoading = null }
+        }
+    }
     fun closeGif() {
         gif?.job?.cancel()
+        gif?.release()
         gif = null
         GifClip.cleanup(ctx)
         show()
@@ -488,7 +522,10 @@ fun PlayerScreen(nav: Nav, key: String) {
     }
 
     BackHandler(enabled = showSpeeds || showQuality) { showSpeeds = false; showQuality = false }
-    BackHandler(enabled = gif != null) { val g = gif; if (g?.working != null) { g.job?.cancel(); g.working = null } else closeGif() }
+    BackHandler(enabled = gif != null) {
+        val g = gif
+        if (g?.working != null) { g.job?.cancel(); g.working = null } else if (g?.framesOpen == true && g.result == null) g.framesOpen = false else closeGif()
+    }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         // ---- picture ----
@@ -741,6 +778,8 @@ fun PlayerScreen(nav: Nav, key: String) {
                         }
                     },
                     onClose = { closeGif() },
+                    onFrames = { openFrames(g) },
+                    onCancelFrames = { g.stripJob?.cancel(); g.stripLoading = null; if (g.strip == null) g.framesOpen = false },
                 )
             }
         }

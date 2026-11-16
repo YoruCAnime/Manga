@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.click
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import org.junit.Rule
@@ -61,6 +62,7 @@ class VideoScreensTest {
         rule.mainClock.autoAdvance = false
         pump(3000)
         rule.onAllNodesWithContentDescription("Videos", useUnmergedTree = true)[0].performClick(); pump(3000)
+        text("Anime")[0].performClick(); pump(2000)
         text("Anikoto")[0].performClick(); pump(25000)
         shot("40_anime_latest")
         text("Popular")[0].performClick(); pump(20000)
@@ -83,10 +85,12 @@ class VideoScreensTest {
         pump(3000)
         rule.onAllNodesWithContentDescription("Videos", useUnmergedTree = true)[0].performClick(); pump(30000)
         shot("20_videos_hentaigasm")
+        // the sites sit under their kind: Anime / Hentai / 3D & animations
+        text("Hentai")[0].performClick(); pump(2000)
         text("MuchoHentai")[0].performClick(); pump(30000)
         shot("21_videos_mucho")
         // favourite the first MuchoHentai video (long-press), then its series page
-        text("Episode")[0].performTouchInput { longClick() }; pump(1500)
+        text("Episode ")[0].performTouchInput { longClick() }; pump(1500)
         shot("21a_videos_mucho_fav")
         text(" ›")[0].performClick(); pump(15000)
         shot("25_series")
@@ -99,7 +103,8 @@ class VideoScreensTest {
         box.performTextClearance(); pump(500)
         text("Popular")[0].performClick(); pump(8000)
         // open the first video
-        text("Episode")[0].performClick(); pump(9000)
+        // the picture plays (its Episodes button and the name under it open the show): a point of the picture above the button
+        text("Episodes")[0].performTouchInput { click(androidx.compose.ui.geometry.Offset(width * 1.5f, -height * 1.5f)) }; pump(9000)
         shot("23_player")
         text("1×")[0].performClick(); pump(600)
         shot("24_player_speeds")

@@ -4,7 +4,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
@@ -134,6 +136,70 @@ class GifScreensTest {
         shot("56_gif_done")
         desc("Close GIF maker").performClick(); pump(1200)
         shot("57_player_after_gif")
+    }
+
+    /** Drawn frames for the strip: a ball moving across a gradient, the frame's number as a bar at the top. */
+    private fun stripFrames(a: Long, b: Long, fps: Double): com.yoruc.mangacracker.video.GifFrames {
+        val w = 320; val h = 180
+        val n = ((b - a) / 1000.0 * fps).toInt()
+        val f = com.yoruc.mangacracker.gif.FileFrames(File(out, "../gif/strip_test.bin").apply { parentFile.mkdirs() }, w, h, fps)
+        for (k in 0 until n) {
+            val cx = 20 + k * (w - 40) / n; val cy = 100 + (50 * sin(k / 8.0)).toInt()
+            f.add(IntArray(w * h) { i ->
+                val x = i % w; val y = i / w
+                val dx = x - cx; val dy = y - cy
+                if (y < 8 && x < k * w / n) 0xFFFFFF else if (dx * dx + dy * dy < 400) 0xFF5C8A else ((30 + x / 3) shl 16) or ((40 + y / 2) shl 8) or 110
+            })
+        }
+        return com.yoruc.mangacracker.video.GifFrames(f, a, b, fps)
+    }
+
+    /** ✂ Frames: delete all before / after a frame, frames picked in between, undo; the GIF gets only what's left. */
+    @Test fun gifFrames() {
+        openPlayer()
+        text("GIF", sub = false)[0].performClick(); pump(400)
+        fakePos += 4300; pump(800)
+        text("Stop GIF", sub = false)[0].performClick(); pump(1500)
+        shot("53b_gif_frames_button")
+        PlayerTestHooks.gifFrames = { a, b, fps -> delay(300); stripFrames(a, b, fps) }
+        text("Frames")[0].performClick(); pump(150)
+        shot("60_gif_frames_loading")
+        pump(1500)
+        shot("61_gif_frames")
+        val strip = checkNotNull(text("Your GIF:").fetchSemanticsNodes().firstOrNull()) { "the strip shows" }
+        println("[frames] header: " + strip.config.toString().take(120))
+        // tap frame 6, delete everything before it
+        desc("Frame 6").performClick(); pump(400)
+        text("Delete all before #6")[0].performClick(); pump(500)
+        shot("62_gif_frames_before_deleted")
+        // frames 10 and 14 picked, everything between them, delete those
+        desc("Frame 10").performClick(); pump(200)
+        desc("Frame 14").performClick(); pump(200)
+        text("Select between")[0].performClick(); pump(300)
+        shot("63_gif_frames_between_picked")
+        text("Delete 5 picked")[0].performClick(); pump(500)
+        // the ✕ on frame 16 deletes just that one, then Undo brings it back
+        desc("Delete frame 16").performClick(); pump(400)
+        text("Undo", sub = false)[0].performClick(); pump(400)
+        // scroll on to frame 100, delete all after it
+        // frame #100 is the 90th left in the row (10 deleted before it)
+        rule.onNodeWithContentDescription("GIF frames", useUnmergedTree = true).performScrollToIndex(87)
+        pump(600)
+        desc("Frame 100").performClick(); pump(300)
+        text("Delete all after #100")[0].performClick(); pump(600)
+        shot("64_gif_frames_after_deleted")
+        var asked: com.yoruc.mangacracker.video.GifRequest? = null
+        PlayerTestHooks.gifJob = { req, _ -> asked = req; delay(200); sampleGif() }
+        text("Make GIF", sub = false)[0].performClick(); pump(2500)
+        val cut = checkNotNull(asked).cut
+        val n = ((asked!!.endMs - asked!!.startMs) / 1000.0 * 30).toInt()
+        assertEquals("before #6", true, (0..4).all { it in cut })
+        assertEquals("10..14 between", true, (9..13).all { it in cut })
+        assertEquals("16 came back with Undo", false, 15 in cut)
+        assertEquals("after #100", true, (100 until n).all { it in cut })
+        assertEquals("nothing else", 5 + 5 + (n - 100), cut.size)
+        println("[frames] strip $n frames, ${cut.size} deleted, ${n - cut.size} go into the GIF")
+        shot("65_gif_frames_done")
     }
 
     @Config(qualifiers = "w400dp-h860dp-xhdpi")
