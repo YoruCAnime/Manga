@@ -8,6 +8,8 @@ import com.yoruc.mangacracker.gif.FileFrames
 import com.yoruc.mangacracker.gif.GifCancelled
 import com.yoruc.mangacracker.gif.GifMaker
 import com.yoruc.mangacracker.gif.GifOptions
+import com.yoruc.mangacracker.gif.PickedFrames
+import com.yoruc.mangacracker.gif.keptFrames
 import com.yoruc.mangacracker.gif.Resample
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -21,8 +23,17 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.roundToInt
 
-/** What the GIF panel asks for: a range of the video (ms) and how to make it. */
-data class GifRequest(val startMs: Long, val endMs: Long, val opts: GifOptions)
+/**
+ * What the GIF panel asks for: a range of the video (ms) and how to make it; [cut] = frames deleted in the frame strip
+ * (its frame numbers, the strip starting at [stripMs] with [stripFps] frames a second).
+ */
+data class GifRequest(
+    val startMs: Long, val endMs: Long, val opts: GifOptions,
+    val cut: Set<Int> = emptySet(), val stripMs: Long = 0, val stripFps: Double = 30.0,
+)
+
+/** The frames of [startMs]..[endMs] read for the frame strip (at most [keepFps] a second), kept while the panel is open. */
+class GifFrames(val frames: FileFrames, val startMs: Long, val endMs: Long, val keepFps: Double)
 
 /** A finished GIF in the app's cache. */
 data class GifDone(val file: File, val bytes: Long, val width: Int, val height: Int, val durationMs: Long, val fps: Double)
@@ -40,34 +51,73 @@ object GifClip {
 
     private fun dir(ctx: Context) = File(ctx.cacheDir, "gif").apply { mkdirs() }
 
-    /** Removes everything the GIF maker left in the cache (closing the panel). */
-    fun cleanup(ctx: Context) { dir(ctx).listFiles()?.forEach { it.delete() } }
+    /** The range in cut.mp4 now (it stays while the panel is open: the frame strip and Make GIF share it). */
+    @Volatile private var cutRange: Pair<Long, Long>? = null
 
+    /** Removes everything the GIF maker left in the cache (closing the panel). */
+    fun cleanup(ctx: Context) { cutRange = null; dir(ctx).listFiles()?.forEach { it.delete() } }
+
+    /** Slow motion and 50 fps use every frame of a 60 fps video; otherwise about 30 a second are enough. */
+    fun keepFps(opts: GifOptions) = if (opts.speed < 0.999f || opts.fps > 30) 60.0 else 30.0
+
+    /** cut.mp4 holding [a]..[b] (cut again only when the range changed). */
+    private suspend fun clip(ctx: Context, src: VideoSource, stream: VideoStream, videoHeight: Int, a: Long, b: Long, progress: (String, Float) -> Unit): File {
+        val cut = File(dir(ctx), "cut.mp4")
+        if (cutRange == (a to b) && cut.length() > 0) return cut
+        cutRange = null
+        // a download plays from the phone: no key unlock needed (and maybe no network)
+        if (stream.local.isEmpty()) withContext(Dispatchers.IO) { src.beforePlay() }
+        progress("Getting the clip", 0f)
+        cutClip(ctx, src, stream, a, b, if (videoHeight > 720) 720 else 0, cut) { progress("Getting the clip", it / 100f) }
+        cutRange = a to b
+        return cut
+    }
+
+    /** The frames of [a]..[b] for the frame strip ("Frames" in the panel). */
+    suspend fun frames(
+        ctx: Context, src: VideoSource, stream: VideoStream, videoHeight: Int, a: Long, b: Long, keepFps: Double, progress: (String, Float) -> Unit,
+    ): GifFrames {
+        try {
+            val cut = clip(ctx, src, stream, videoHeight, a, b, progress)
+            val job = currentCoroutineContext()[Job]
+            val f = withContext(Dispatchers.Default) { read(cut, File(dir(ctx), "strip_${System.nanoTime()}.bin"), keepFps, progress) { job?.isActive == false } }
+            return GifFrames(f, a, b, keepFps)
+        } catch (e: GifCancelled) { throw CancellationException("cancelled") }
+    }
+
+    /**
+     * Makes the GIF. The frame strip's frames ([strip]) are used as they are when they hold the same range at the
+     * frame rate needed; otherwise the clip is read again (frames deleted in the strip are matched by time).
+     */
     suspend fun make(
         ctx: Context, src: VideoSource, stream: VideoStream, videoHeight: Int, req: GifRequest, progress: (String, Float) -> Unit,
+        strip: GifFrames? = null,
     ): GifDone {
         val dir = dir(ctx)
-        val cut = File(dir, "cut.mp4")
         try {
-            // a download plays from the phone: no key unlock needed (and maybe no network)
-            if (stream.local.isEmpty()) withContext(Dispatchers.IO) { src.beforePlay() }
-            progress("Getting the clip", 0f)
-            cutClip(ctx, src, stream, req.startMs, req.endMs, if (videoHeight > 720) 720 else 0, cut) { progress("Getting the clip", it / 100f) }
             val job = currentCoroutineContext()[Job]
-            // slow motion and 50 fps use every frame of a 60 fps video; otherwise about 30 a second are enough
-            val keepFps = if (req.opts.speed < 0.999f || req.opts.fps > 30) 60.0 else 30.0
-            val frames = withContext(Dispatchers.Default) { read(cut, File(dir, "frames.bin"), keepFps, progress) { job?.isActive == false } }
+            val keepFps = keepFps(req.opts)
+            val same = strip != null && strip.startMs == req.startMs && strip.endMs == req.endMs && strip.keepFps == keepFps
+            val frames = if (same) strip!!.frames else {
+                val cut = clip(ctx, src, stream, videoHeight, req.startMs, req.endMs, progress)
+                withContext(Dispatchers.Default) { read(cut, File(dir, "frames.bin"), keepFps, progress) { job?.isActive == false } }
+            }
             try {
+                val picked = if (req.cut.isEmpty()) frames else {
+                    val keep = keptFrames(frames.count, frames.fps, req.startMs, req.stripMs, req.stripFps, req.cut)
+                    if (keep.isEmpty()) throw SourceException("Every frame is deleted")
+                    PickedFrames(frames, keep)
+                }
                 val r = withContext(Dispatchers.Default) {
-                    GifMaker(frames, req.opts).apply { this.progress = progress; cancelled = { job?.isActive == false } }.make()
+                    GifMaker(picked, req.opts).apply { this.progress = progress; cancelled = { job?.isActive == false } }.make()
                 }
                 dir.listFiles { f -> f.name.startsWith("gif_") }?.forEach { it.delete() }
                 val out = File(dir, "gif_${System.currentTimeMillis()}.gif").apply { writeBytes(r.bytes) }
                 return GifDone(out, r.bytes.size.toLong(), r.width, r.height, r.durationMs, r.fps)
-            } finally { frames.close() }
+            } finally { if (!same) frames.close() }
         } catch (e: GifCancelled) {
             throw CancellationException("cancelled")
-        } finally { cut.delete() }
+        }
     }
 
     private suspend fun cutClip(ctx: Context, src: VideoSource, stream: VideoStream, a: Long, b: Long, maxHeight: Int, out: File, onProgress: (Int) -> Unit) =

@@ -10,6 +10,8 @@ interface Source {
     /** Brand-ish colour for the source badge. */
     val color: Long
     val nsfw: Boolean
+    /** A site that asks visitors to confirm they are adults: its words. The app asks once and stays away from the site until then. */
+    val ageNotice: String? get() = null
     /** false = every title is a single gallery (doujins, booru pools / posts). */
     val hasChapters: Boolean get() = true
     /** Picture shape in grids: 2:3 posters for manga, free for booru posts. */

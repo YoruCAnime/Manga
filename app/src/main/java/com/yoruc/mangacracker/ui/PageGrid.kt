@@ -156,7 +156,10 @@ fun PageGrid(
                                 runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), folder, "${p.chapter.name} - %03d".format(p.page.index + 1)) }.onSuccess { ok++ }
                             }
                             saving = null
-                            Toast.makeText(ctx, "Saved $ok picture${if (ok == 1) "" else "s"} to Pictures/MangaCracker", Toast.LENGTH_LONG).show()
+                            // back on the main thread whatever thread the last save ended on
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                Toast.makeText(ctx, "Saved $ok picture${if (ok == 1) "" else "s"} to Pictures/MangaCracker", Toast.LENGTH_LONG).show()
+                            }
                             picking = false; picked.clear()
                         }
                     },

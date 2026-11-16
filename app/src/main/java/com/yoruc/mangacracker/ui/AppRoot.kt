@@ -101,7 +101,7 @@ class Nav(val c: NavHostController) {
     fun openTab(t: com.yoruc.mangacracker.core.OpenTab) {
         val tabs = com.yoruc.mangacracker.core.Tabs
         val route = tabs.latestRoute(t)
-        if (tabs.active.value == t.id && tabs.here.value == route) return
+        if (tabs.active.value == t.id && (t.isPlace || tabs.here.value == route)) return
         t.manga?.let { Repo.remember(it) }
         t.video?.let { com.yoruc.mangacracker.video.VideoRepo.remember(it) }
         tabs.activate(t.id)
@@ -109,7 +109,12 @@ class Nav(val c: NavHostController) {
         // a main screen keeps its scroll for coming back; a title page is let go
         val keep = tabs.here.value == null
         val m = t.manga
-        if (m != null && route.startsWith("reader/")) {
+        if (t.isPlace) {
+            // a list: the Videos tab as it was left, a source with its search and place in the grid
+            if (route == tabs.VIDEOS) return tab(route)
+            BrowseKeep.resume = route
+            c.navigate(route) { popUpTo(start) { saveState = keep } }
+        } else if (m != null && route.startsWith("reader/")) {
             // Back from the reader goes to the title's page, as it always does
             c.navigate(tabs.detailsRoute(m.key)) { popUpTo(start) { saveState = keep } }
             c.navigate(route)
@@ -118,6 +123,7 @@ class Nav(val c: NavHostController) {
     fun closeTab(t: com.yoruc.mangacracker.core.OpenTab) {
         val tabs = com.yoruc.mangacracker.core.Tabs
         val showing = tabs.active.value == t.id
+        if (t.isPlace) BrowseKeep.drop(t.route)
         val next = tabs.close(t.id)
         if (next != null) openTab(next) else if (showing) home()
     }
@@ -154,7 +160,13 @@ fun AppRoot(open: String?) {
     var updateAsked by remember { mutableStateOf(open == "appupdate") }
     LaunchedEffect(entry) {
         val a = entry?.arguments
-        com.yoruc.mangacracker.core.Tabs.noteScreen(entry?.destination?.route, a?.getString("key").orEmpty(), a?.getString("chapter").orEmpty(), a?.getString("grid") == "1")
+        val source = a?.getString("source").orEmpty()
+        val place = when (entry?.destination?.route) {
+            "videos" -> "Videos"
+            else -> com.yoruc.mangacracker.sources.Sources.byId(source)?.name.orEmpty().let { if (a?.getString("search") == "1") "$it search" else it }
+        }
+        com.yoruc.mangacracker.core.Tabs.noteScreen(entry?.destination?.route, a?.getString("key").orEmpty(), a?.getString("chapter").orEmpty(), a?.getString("grid") == "1",
+            source, a?.getString("search") == "1", place)
     }
 
     LaunchedEffect(open) {

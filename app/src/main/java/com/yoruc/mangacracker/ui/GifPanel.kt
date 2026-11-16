@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContentCut
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.GifBox
@@ -60,8 +61,10 @@ import coil.compose.AsyncImage
 import com.yoruc.mangacracker.gif.GIF_FPS
 import com.yoruc.mangacracker.gif.GifSize
 import com.yoruc.mangacracker.ui.theme.Mc
+import com.yoruc.mangacracker.gif.keptFrames
 import com.yoruc.mangacracker.video.GifClip
 import com.yoruc.mangacracker.video.GifDone
+import com.yoruc.mangacracker.video.GifFrames
 import com.yoruc.mangacracker.video.clock
 import kotlinx.coroutines.Job
 import kotlin.math.abs
@@ -83,8 +86,57 @@ class GifEdit(val spanStart: Long, val spanEnd: Long) {
     var result by mutableStateOf<GifDone?>(null)
     var job: Job? = null
 
-    /** Seconds the GIF will last. */
-    val gifSeconds get() = (b - a) / 1000.0 / speed * (if (pingPong) 2 else 1)
+    /** Seconds the GIF will last (frames deleted in the strip left out). */
+    val gifSeconds get() = (strip?.let { s -> keptCount / s.frames.fps } ?: ((b - a) / 1000.0)) / speed * (if (pingPong) 2 else 1)
+
+    // ---- "✂ Frames": the range's frames one by one, delete what you don't want (before, after, in between) ----
+    /** The frames read for the strip (null = not read yet). */
+    var strip by mutableStateOf<GifFrames?>(null)
+    var framesOpen by mutableStateOf(false)
+    /** Reading the strip (null = not reading) and what it is doing. */
+    var stripLoading by mutableStateOf<Float?>(null)
+    var stripStage by mutableStateOf("Getting the clip")
+    var stripJob: Job? = null
+    /** Strip frames left out of the GIF, undo steps, picked frames, the frame tapped last. */
+    var deleted by mutableStateOf<Set<Int>>(emptySet())
+    var undo by mutableStateOf<List<Set<Int>>>(emptyList())
+    var sel by mutableStateOf<Set<Int>>(emptySet())
+    var head by mutableIntStateOf(0)
+    /** A short word in the strip's header (e.g. "keep at least one frame"). */
+    var note by mutableStateOf<String?>(null)
+
+    /** Where strip frame [i] is in the video (ms). */
+    fun stripMs(i: Int): Long = strip?.let { it.startMs + (i * 1000.0 / it.frames.fps).toLong() } ?: a
+    /** Strip frames in the picked range that are still in. */
+    val keptCount: Int get() = strip?.let { s -> (0 until s.frames.count).count { it !in deleted && stripMs(it) in a until b } } ?: 0
+    /** Leaves [these] strip frames out (undo-able); never every frame. */
+    fun deleteFrames(these: Set<Int>) {
+        val n = strip?.frames?.count ?: return
+        val d = these - deleted
+        if (d.isEmpty()) return
+        val now = deleted + d
+        if ((0 until n).all { it in now }) { note = "Keep at least one frame"; return }
+        note = null
+        undo = undo + listOf(deleted); deleted = now; sel = sel - d
+        if (head in now) head = (head + 1 until n).firstOrNull { it !in now } ?: (head downTo 0).firstOrNull { it !in now } ?: head
+    }
+    fun undoDelete() { val u = undo.lastOrNull() ?: return; deleted = u; undo = undo.dropLast(1); note = null }
+    fun restoreAll() { if (deleted.isEmpty()) return; undo = undo + listOf(deleted); deleted = emptySet(); note = null }
+    /** A newly read strip (another range): the frames deleted before stay deleted, matched by time. */
+    fun useStrip(new: GifFrames) {
+        val old = strip
+        val n = new.frames.count
+        deleted = if (old != null && deleted.isNotEmpty()) {
+            val keep = keptFrames(n, new.frames.fps, new.startMs, old.startMs, old.frames.fps, deleted).toHashSet()
+            (0 until n).filter { it !in keep }.toSet()
+        } else emptySet()
+        undo = emptyList(); sel = emptySet(); note = null
+        head = (0 until n).firstOrNull { it !in deleted } ?: 0
+        strip = new
+        old?.frames?.close()
+    }
+    /** Closing the panel: the strip's frames go. */
+    fun release() { stripJob?.cancel(); strip?.frames?.close() }
 
     /** Moves one end ([which] 0 = start, 1 = end), keeping the range between 0.3 s and [GifClip.MAX_RANGE_MS]. */
     fun move(which: Int, ms: Long) {
@@ -129,6 +181,7 @@ fun GifPanel(
     g: GifEdit, modifier: Modifier = Modifier,
     onPreview: (ms: Long, exact: Boolean, which: Int) -> Unit, onMake: () -> Unit, onCancelMake: () -> Unit,
     onSave: () -> Unit, onShare: () -> Unit, onClose: () -> Unit,
+    onFrames: () -> Unit = {}, onCancelFrames: () -> Unit = {},
 ) {
     Column(modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)).background(Color(0xF2151F2E))
         .padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -138,7 +191,8 @@ fun GifPanel(
             Spacer(Modifier.width(6.dp))
             Text("Make a GIF", color = Mc.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             Spacer(Modifier.width(14.dp))
-            Text("${secs((g.b - g.a) / 1000.0)} picked  →  GIF ${secs(g.gifSeconds)}" + if (g.speed != 1f) "  (${speedText(g.speed)})" else "",
+            Text("${secs((g.b - g.a) / 1000.0)} picked  →  GIF ${secs(g.gifSeconds)}" + (if (g.speed != 1f) "  (${speedText(g.speed)})" else "") +
+                (if (g.strip != null && g.deleted.isNotEmpty()) "  · ${g.deleted.size} frames deleted" else ""),
                 color = Mc.Text2, fontSize = 13.sp)
             Spacer(Modifier.weight(1f))
             IconButton(onClick = onClose) { Icon(Icons.Rounded.Close, "Close GIF maker", tint = Mc.Text2) }
@@ -174,6 +228,7 @@ fun GifPanel(
                     }
                 }
             }
+            g.framesOpen -> GifFramesView(g, onShow = { onPreview(it, true, 2) }, onMake = onMake, onCancel = onCancelFrames)
             else -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Thumb(g.thumbA, "Start ${tenths(g.a)}")
@@ -196,6 +251,9 @@ fun GifPanel(
                     Text("Size", color = Mc.Text3, fontSize = 12.sp, modifier = Modifier.width(44.dp))
                     GifSize.entries.forEach { s -> Chip("${s.label} · ${s.maxBytes / 1_000_000} MB", g.size == s) { g.size = s } }
                     Spacer(Modifier.weight(1f))
+                    // every frame one by one: delete the ones before / after / in between
+                    BigChip(Icons.Rounded.ContentCut, if (g.strip != null && g.deleted.isNotEmpty()) "Frames (${g.deleted.size} out)" else "Frames", Mc.Card2, onFrames)
+                    Spacer(Modifier.width(10.dp))
                     BigChip(Icons.Rounded.GifBox, "Make GIF", Mc.Blue, onMake)
                 }
             }

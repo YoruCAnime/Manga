@@ -95,6 +95,14 @@ below.
   anywhere for 2×, speeds 0.25× to 3×, previous / next episode of the same series (and "Up next" at the end),
   subtitles on / off, quality for streams with several sizes (**Best** = the highest there is, 1080p on these sites, or at most 1080p / 720p / 480p; your pick is remembered), **Snapshot** (the current frame to Pictures/MangaCracker/Snapshots) and
   **Record** (tap to start, tap to stop: that part is saved as an MP4 clip to Movies/MangaCracker).
+- **Tabs keep the list you came from**: hold a title in a source's list or in Videos › *Open in new tab*: it joins your
+  tabs without leaving the list, and the list itself becomes a tab (its titles lined up after it), so you come back to
+  it exactly as you left it. **Browse** is sorted into Manga, Manhwa 18+, Doujinshi 18+ and Pictures 18+; **Videos**
+  into Anime / Hentai / 3D & animations. Every video card has an **Episodes** button on its picture (the name under it
+  opens the show too; the picture plays). **Library › Saved** keeps the authors, artists and circles you star (☆ next
+  to the name on a title's page) and searches you save ("☆ Save" in a source's or the Videos search: a studio, a tag).
+  The reader always shows **‹ Prev · page and % of the chapter · Next ›** at the bottom, and both buttons again at the
+  end of every chapter. New sites: MangaDex, Toonily, Pururin, IMHentai; videos Anitaku, Hstream, HentaiHaven.
 - **Music** (own tab): type an anime and pick it from the suggestions (AniList, as you type: covers, format, year).
   Its page plays **every opening and ending in full**: **This season** or **All seasons** (the whole show in one
   list, season after season, each song once), all of them or only Openings / Endings, in order or **Shuffle**. The
@@ -119,6 +127,11 @@ below.
   **Change** to try other settings. The GIF always fits the size you picked: if it would be bigger the app makes it
   a bit smaller or lowers the frame rate (a frame rate you picked is kept), keeping it as sharp as it can. Long GIFs
   come out smaller in picture size, so pick a short part for big, sharp slow motion.
+  **✂ Frames** (next to Make GIF) shows the part's frames one by one, each with its number and time: tap a frame
+  (the video behind shows it), then **Delete all before #N** / **Delete all after #N**; tap two frames and **Select
+  between** to delete everything in the middle; the ✕ on a frame deletes just that one; **Undo** and **Restore all**.
+  What's left is the GIF (no blending across a cut-out gap). Moving the handles afterwards keeps the deleted frames
+  deleted (they go by their time); open ✂ Frames again to see the new part.
 - **My GIFs & clips** (More): every GIF, snapshot and recording you made in the player, newest first, with All / GIFs /
   Snapshots / Clips filters. Tap one to see it full screen (GIFs play) and swipe for the next one; **Share**, **Open**
   (clips play in your video player) and **Delete** (tap twice). Only what the app saved itself is listed.
@@ -185,6 +198,7 @@ below.
 | hitomi.la | its data server (the website itself answers "not found" in the UK; its gallery files and pictures do not); lists, popular today / week / month / year, word and tag search (include / exclude), tag suggestions with counts |
 | Hentai2Read | its search (tags include / exclude, type, status, sort); chapters |
 | HentaiFox | galleries; search with tags (include / exclude) and language |
+| nhentai.xxx | galleries; search, tags and language; asks you once to confirm you are 18 or older |
 | Jestful (JF) | Japanese raw manga; genres include / exclude, status, sort; chapters |
 | Hentai20 | adult webtoons; genres include / exclude, sort; chapters |
 | Manhwa18.net | adult manhwa; genres include / exclude, status, sort, tags, artists |
