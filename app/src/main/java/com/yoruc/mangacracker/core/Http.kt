@@ -115,12 +115,32 @@ object Http {
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(40, TimeUnit.SECONDS)
             .addInterceptor(HeaderInterceptor)
-            .addInterceptor(RateLimitInterceptor)
-        client = base
+            .build()
+        client = base.newBuilder()
+            .addInterceptor(RateLimitInterceptor(pictures = false))
             .cache(Cache(cacheDir, 30L * 1024 * 1024))
             .addInterceptor(CloudflareInterceptor)
             .build()
-        imageClient = client.newBuilder().cache(null).addInterceptor(RetryBusyInterceptor).build()
+        // pictures: a site's own gap is for its pages and API (a grid of covers one at a time took 10 s on a fast line);
+        // they come a few at a time per host instead, and only the rules written for a picture path still count
+        imageClient = base.newBuilder()
+            .addInterceptor(RateLimitInterceptor(pictures = true))
+            .addInterceptor(HostGateInterceptor)
+            .addInterceptor(CloudflareInterceptor)
+            .addInterceptor(RetryBusyInterceptor)
+            .build()
+    }
+
+    /** At most [PER_HOST] picture requests to one host at a time (the rest wait their turn). */
+    private const val PER_HOST = 6
+    private object HostGateInterceptor : Interceptor {
+        private val gates = ConcurrentHashMap<String, java.util.concurrent.Semaphore>()
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val gate = gates.getOrPut(chain.request().url.host) { java.util.concurrent.Semaphore(PER_HOST, true) }
+            gate.acquire()
+            // the turn is given back once the answer's headers are in: the body downloads beside the next ones
+            try { return chain.proceed(chain.request()) } finally { gate.release() }
+        }
     }
 
     /** Pictures: a server that says 429 "too many requests" gets up to 3 calm retries instead of an empty cover. */
@@ -159,14 +179,15 @@ object Http {
         }
     }
 
-    private object RateLimitInterceptor : Interceptor {
+    /** [pictures] = the picture client: only rules with a path count there (a site-wide gap is for pages and API calls). */
+    private class RateLimitInterceptor(private val pictures: Boolean) : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response {
             val url = chain.request().url
             val host = url.host
             val full = host + url.encodedPath
             // the most specific rule wins: "nhentai.net/api/v2/search" before "nhentai.net"
             val rule = rateLimits.entries.filter { r ->
-                if ('/' in r.key) full.startsWith(r.key) || full.contains("." + r.key) else host == r.key || host.endsWith("." + r.key)
+                if ('/' in r.key) full.startsWith(r.key) || full.contains("." + r.key) else !pictures && (host == r.key || host.endsWith("." + r.key))
             }.maxByOrNull { it.key.length }
             if (rule != null) {
                 val wait: Long
