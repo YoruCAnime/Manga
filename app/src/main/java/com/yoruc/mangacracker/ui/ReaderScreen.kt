@@ -18,6 +18,7 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -543,6 +544,12 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
             })
         }
 
+        // always there: back to the title's chapters without opening the bar first
+        if (!overlay) Box(
+            Modifier.align(Alignment.TopStart).statusBarsPadding().padding(10.dp).size(40.dp).clip(RoundedCornerShape(50)).background(Color(0xB30B1622)).clickable { nav.back() },
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back to the chapters", tint = Color.White, modifier = Modifier.size(22.dp)) }
+
         // always-on small bar: ‹ previous chapter · page and % of this chapter · next chapter ›
         val cur = current
         if (!overlay && cur != null) {
@@ -607,7 +614,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                         var ok = 0
                         pages.forEachIndexed { i, p ->
                             savingAll = "Saving ${i + 1} / ${pages.size}"
-                            runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), "${ref.title}/${ch.name}", "%03d".format(p.page.index + 1)) }.onSuccess { ok++ }
+                            runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), "${ref.title}/${ch.name}", "%03d".format(p.page.index + 1), p.page.original) }.onSuccess { ok++ }
                         }
                         savingAll = null
                         Toast.makeText(ctx, "Saved $ok pages to Pictures/MangaCracker", Toast.LENGTH_LONG).show()
@@ -705,7 +712,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                 SheetAction(Icons.Rounded.Download, "Save image") {
                     pageMenu = null
                     scope.launch {
-                        runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), ref.title, "${p.chapter.name} - %03d".format(p.page.index + 1)) }
+                        runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), ref.title, "${p.chapter.name} - %03d".format(p.page.index + 1), p.page.original) }
                             .onSuccess { Toast.makeText(ctx, "Saved to $it", Toast.LENGTH_SHORT).show() }
                             .onFailure { Toast.makeText(ctx, "Couldn't save: ${it.message}", Toast.LENGTH_SHORT).show() }
                     }

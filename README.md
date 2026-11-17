@@ -44,6 +44,8 @@ below.
   the bar (page n of N · %, a page slider, previous / next chapter, save the whole chapter, reader settings:
   background, page gap, side margin). Long-press a page to save or share it (Pictures/MangaCracker/<title>),
   or to **save a cutout of the character** you pressed on (see below).
+  A round **back arrow** at the top left is always there (back to the chapters without opening the bar). Saved
+  pictures are the best the site has: on Danbooru and Gelbooru the full-size original, not the reduced reading copy.
   The grid button shows every page: tap one to jump there, hold to pick several and save them at once (galleries
   have the same Gallery button on their title page). Animated GIFs play (Danbooru / Gelbooru animated posts load the
   original moving file).

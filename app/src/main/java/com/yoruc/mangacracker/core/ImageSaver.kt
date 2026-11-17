@@ -22,8 +22,9 @@ object ImageSaver {
         else -> "jpg" to "image/jpeg"
     }
 
-    suspend fun save(ctx: Context, url: String, folder: String, name: String): String = withContext(Dispatchers.IO) {
-        val bytes = Http.bytes(url)
+    /** [best] = the full-size original when [url] is a reduced copy for reading (booru samples): tried first. */
+    suspend fun save(ctx: Context, url: String, folder: String, name: String, best: String = ""): String = withContext(Dispatchers.IO) {
+        val bytes = best.takeIf { it.isNotEmpty() }?.let { runCatching { Http.bytes(it) }.getOrNull() } ?: Http.bytes(url)
         val (e, mime) = ext(bytes)
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, "${clean(name)}.$e")
