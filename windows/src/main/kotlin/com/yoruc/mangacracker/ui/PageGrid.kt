@@ -150,16 +150,9 @@ fun PageGrid(
                     onClick = {
                         if (saving != null) return@Button
                         val chosen = picked.sorted().map { pages[it] }
-                        scope.launch {
-                            var ok = 0
-                            chosen.forEachIndexed { n, p ->
-                                saving = "Saving ${n + 1} / ${chosen.size}"
-                                runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), folder, "${p.chapter.name} - %03d".format(p.page.index + 1)) }.onSuccess { ok++ }
-                            }
-                            saving = null
-                            Toast.makeText(ctx, "Saved $ok picture${if (ok == 1) "" else "s"} to ${ImageSaver.folderOf(folder)}", Toast.LENGTH_LONG).show()
-                            picking = false; picked.clear()
-                        }
+                        // saved in the background (the best size each site has); the grid is free again at once
+                        ImageSaver.enqueue(chosen.map { p -> ImageSaver.Job(folder, "${p.chapter.name} - %03d".format(p.page.index + 1), p.page.original) { vm.urlOf(p.page) } })
+                        picking = false; picked.clear()
                     },
                     modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp).fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = Mc.Blue, contentColor = Mc.Bg),

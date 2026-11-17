@@ -154,7 +154,7 @@ object GelbooruSource : Source {
         ) return listOf(Page(0, original, sec?.attr("data-width")?.toIntOrNull() ?: 0, sec?.attr("data-height")?.toIntOrNull() ?: 0))
         val w = sec?.attr("data-large-width")?.toIntOrNull() ?: 0
         val h = sec?.attr("data-large-height")?.toIntOrNull() ?: 0
-        return listOf(Page(0, url, w, h))
+        return listOf(Page(0, url, w, h, original = original.orEmpty()))
     }
 
     override suspend fun related(ref: MangaRef, details: MangaDetails): List<MangaRef> {

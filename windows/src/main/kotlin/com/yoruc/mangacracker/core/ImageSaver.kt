@@ -3,6 +3,7 @@ package com.yoruc.mangacracker.core
 import android.content.Context
 import com.yoruc.mangacracker.platform.Desktop
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
@@ -32,6 +33,50 @@ object ImageSaver {
     suspend fun save(ctx: Context, url: String, folder: String, name: String): File = withContext(Dispatchers.IO) {
         val bytes = Http.bytes(url)
         Desktop.freeFile(folder(folder), Desktop.clean(name), ext(bytes)).apply { writeBytes(bytes) }
+    }
+
+    /** One picture waiting to be saved: where it goes, and how to find its address ([best] = the full-size original, if the site has one). */
+    class Job(val folder: String, val name: String, val best: String, val url: suspend () -> String)
+
+    private val queue = kotlinx.coroutines.channels.Channel<List<Job>>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+    private val worker = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+    /** Pictures still to save (for a "saving n" hint). */
+    val waiting = kotlinx.coroutines.flow.MutableStateFlow(0)
+    @Volatile private var started = false
+
+    /**
+     * Saves in the background, one after another, so nothing waits on a big download and leaving the reader doesn't
+     * stop it. Each picture is the best the site has: the original where the reader shows a reduced copy, the page's
+     * own file otherwise (never a re-compressed one). A message says when a batch is done.
+     */
+    fun enqueue(jobs: List<Job>) {
+        if (jobs.isEmpty()) return
+        waiting.value += jobs.size
+        if (jobs.size > 1) Desktop.toast("Saving ${jobs.size} pictures in the background")
+        queue.trySend(jobs)
+        if (started) return
+        synchronized(this) { if (started) return; started = true }
+        worker.launch {
+            for (batch in queue) {
+                var ok = 0; var full = 0; var last: File? = null
+                for (j in batch) {
+                    val file = runCatching {
+                        // the original first; if the site won't give it, the page as it was read
+                        val bytes = j.best.takeIf { it.isNotEmpty() }?.let { runCatching { Http.bytes(it) }.getOrNull() }?.also { full++ } ?: Http.bytes(j.url())
+                        Desktop.freeFile(folder(j.folder), Desktop.clean(j.name), ext(bytes)).apply { writeBytes(bytes) }
+                    }.getOrNull()
+                    if (file != null) { ok++; last = file }
+                    waiting.value = (waiting.value - 1).coerceAtLeast(0)
+                }
+                val size = if (full > 0) " (full size)" else ""
+                Desktop.toast(when {
+                    ok == 0 -> "Couldn't save: the site didn't send the picture"
+                    batch.size == 1 -> "Saved$size to $last"
+                    ok < batch.size -> "Saved $ok of ${batch.size} pictures$size to ${last?.parentFile}"
+                    else -> "Saved $ok pictures$size to ${last?.parentFile}"
+                })
+            }
+        }
     }
 
     /** A picture made in the app (ARGB pixels, e.g. a character cutout) as PNG next to the title's saved pages. */

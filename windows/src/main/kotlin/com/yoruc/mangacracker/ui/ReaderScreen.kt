@@ -33,6 +33,7 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -143,6 +144,7 @@ import com.yoruc.mangacracker.core.Source
 import com.yoruc.mangacracker.sources.Sources
 import com.yoruc.mangacracker.ui.theme.Mc
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -261,12 +263,22 @@ class ReaderVM(val src: Source, val ref: MangaRef, startId: String) : ViewModel(
     fun ratioOf(page: Page): Float? =
         ratios[page.pageUrl.ifEmpty { page.url }] ?: if (page.width > 0 && page.height > 0) page.width.toFloat() / page.height else null
 
+    /** Goes up each time a page's address is found (the side strip shows a page's picture from then on). */
+    val resolvedTick = androidx.compose.runtime.mutableIntStateOf(0)
+    private val finding = ConcurrentHashMap<String, kotlinx.coroutines.Deferred<String>>()
+
+    /** A page's picture address. Sites that need a page load to find it (E-Hentai) are asked once per page, whoever asks. */
     suspend fun urlOf(page: Page): String {
         if (page.url.isNotEmpty()) return page.url
-        resolved[page.pageUrl]?.let { return it }
-        val u = withContext(Dispatchers.IO) { src.imageUrl(page) }
-        resolved[page.pageUrl] = u
-        return u
+        val key = page.pageUrl
+        resolved[key]?.let { return it }
+        val job = finding.computeIfAbsent(key) { viewModelScope.async(Dispatchers.IO) { src.imageUrl(page) } }
+        try {
+            val u = job.await()
+            resolved[key] = u
+            resolvedTick.intValue++
+            return u
+        } finally { finding.remove(key, job) }
     }
 }
 
@@ -297,6 +309,8 @@ object ReaderSide {
     var current by androidx.compose.runtime.mutableIntStateOf(-1)
     var vm: ReaderVM? = null
     var jump: (ReaderItem.PageItem) -> Unit = {}
+    /** Scrolls the pages by this many pixels (the mouse wheel over the bars beside the page column). */
+    var scroll: (Float) -> Unit = {}
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -418,6 +432,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
         ReaderSide.vm = vm
         ReaderSide.current = current?.second ?: -1
         ReaderSide.jump = { p -> rowOfKey(p.key).takeIf { it >= 0 }?.let { scope.launch { list.scrollToItem(it) } } }
+        ReaderSide.scroll = { px -> list.dispatchRawDelta(px / scale) }
     }
     DisposableEffect(vm) { onDispose { if (ReaderSide.vm === vm) { ReaderSide.vm = null; ReaderSide.pages = emptyList(); ReaderSide.current = -1 } } }
 
@@ -619,6 +634,12 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
             })
         }
 
+        // always there: back to the title's chapters without opening the bar first
+        if (!overlay) Box(
+            Modifier.align(Alignment.TopStart).statusBarsPadding().padding(10.dp).size(40.dp).clip(RoundedCornerShape(50)).background(Color(0xB30B1622)).clickable { nav.back() },
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back to the chapters", tint = Color.White, modifier = Modifier.size(22.dp)) }
+
         // always-on small bar (Windows): ‹ previous chapter · page counter · next chapter ›
         val cur = current
         if (!overlay && cur != null) {
@@ -678,16 +699,8 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                 IconButton(onClick = {
                     val ch = cur?.first?.chapter ?: return@IconButton
                     val pages = vm.items.filterIsInstance<ReaderItem.PageItem>().filter { it.chapter.id == ch.id }
-                    scope.launch {
-                        var ok = 0
-                        pages.forEachIndexed { i, p ->
-                            savingAll = "Saving ${i + 1} / ${pages.size}"
-                            // the title's own folder, named by chapter and page (one folder per title)
-                            runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), ref.title, "${ch.name} - %03d".format(p.page.index + 1)) }.onSuccess { ok++ }
-                        }
-                        savingAll = null
-                        Toast.makeText(ctx, "Saved $ok pages to ${ImageSaver.folderOf(ref.title)}", Toast.LENGTH_LONG).show()
-                    }
+                    // the title's own folder, named by chapter and page (one folder per title); saved in the background
+                    ImageSaver.enqueue(pages.map { p -> ImageSaver.Job(ref.title, "${ch.name} - %03d".format(p.page.index + 1), p.page.original) { vm.urlOf(p.page) } })
                 }) { Icon(Icons.Rounded.Download, "Save chapter", tint = Mc.Text) }
                 IconButton(onClick = { showSettings = true }) { Icon(Icons.Rounded.Settings, "Reader settings", tint = Mc.Text) }
             }
@@ -792,11 +805,7 @@ fun ReaderScreen(nav: Nav, key: String, chapterId: String, openGrid: Boolean = f
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
                 MenuAction(Icons.Rounded.Download, "Save image", bold = true) {
                     pageMenu = null
-                    scope.launch {
-                        runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), ref.title, "${p.chapter.name} - %03d".format(p.page.index + 1)) }
-                            .onSuccess { Toast.makeText(ctx, "Saved to $it", Toast.LENGTH_SHORT).show() }
-                            .onFailure { Toast.makeText(ctx, "Couldn't save: ${it.message}", Toast.LENGTH_SHORT).show() }
-                    }
+                    ImageSaver.enqueue(listOf(ImageSaver.Job(ref.title, "${p.chapter.name} - %03d".format(p.page.index + 1), p.page.original) { vm.urlOf(p.page) }))
                 }
                 MenuAction(Icons.Rounded.ContentCut, "Save a cutout of this character") {
                     pageMenu = null

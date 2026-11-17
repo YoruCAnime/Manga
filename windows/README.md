@@ -16,7 +16,7 @@ version is just unzipped over the old folder.
 
 ## Using it
 
-Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.4.5).
+Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.4.10).
 
 - **Left rail**: Home, Library, Browse, Videos, Music, Updates, More (the phone's bottom bar).
 - **Going back**: Esc, Alt+←, the mouse's back button, or the ← arrows. **F11** = full screen.
@@ -40,6 +40,14 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
   chapter, → / N next chapter. A bar at the bottom is always there: **‹ Previous chapter** · page and % of this
   chapter · **Next chapter ›** (greyed when there's no chapter that way), and the end of every chapter has the same
   two buttons.
+  The **mouse wheel** scrolls the pages from anywhere in the window, the bars beside the page column too.
+  E-Hentai / ExHentai: each page needs its own page load there, and the site only allows so many, so the page strip
+  on the right shows a page's picture once you have reached it (it no longer takes page loads away from reading).
+  A gallery's page has an **Uploader** line: the name opens everything they uploaded (☆ saves them).
+  A round **back arrow** at the top left is always there: back to the title's chapters without opening the bar.
+  **Saving** (one page, a whole chapter, or picked pages) runs in the background, so you can keep reading or leave
+  the reader; a message says when it is done. Saved pictures are the best the site has: on the picture boards
+  (Danbooru, Gelbooru) the full-size original instead of the reduced copy shown for reading.
   **Right-click** a page (or press and hold): a small menu opens right at the mouse - **Save image** (first), *Save a
   cutout of this character*, Copy image (to the clipboard).
 - **Videos** play in mpv inside the window, with the controls under the picture: volume on the left (the app's own,

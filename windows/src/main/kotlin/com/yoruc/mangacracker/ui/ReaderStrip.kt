@@ -72,8 +72,10 @@ fun ReaderPageStrip(modifier: Modifier = Modifier) {
                     .then(if (here) Modifier.border(2.dp, Mc.Blue, RoundedCornerShape(6.dp)) else Modifier)
                     .pointerInput(p.key) { detectTapGestures(onTap = { ReaderSide.jump(p) }) },
             ) {
-                var url by remember(p.key) { mutableStateOf(p.page.url) }
-                LaunchedEffect(p.key) { if (url.isEmpty()) url = runCatching { vm.urlOf(p.page) }.getOrDefault("") }
+                // a page whose address takes a page load to find (E-Hentai) shows its picture once the reader has
+                // found it: the strip never spends the site's page loads itself, so the pages you read come first
+                val tick = vm.resolvedTick.intValue
+                val url = remember(p.key, tick) { p.page.url.ifEmpty { vm.resolved[p.page.pageUrl].orEmpty() } }
                 if (url.isNotEmpty()) {
                     AsyncImage(
                         model = ImageRequest.Builder(coil3.PlatformContext.INSTANCE).data(com.yoruc.mangacracker.core.Downloads.model(url))

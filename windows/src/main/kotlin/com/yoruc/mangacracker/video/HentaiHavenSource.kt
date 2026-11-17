@@ -1,6 +1,7 @@
 package com.yoruc.mangacracker.video
 
 import com.yoruc.mangacracker.core.Http
+import com.yoruc.mangacracker.core.Safety
 import com.yoruc.mangacracker.core.SearchQuery
 import com.yoruc.mangacracker.core.SourceException
 import com.yoruc.mangacracker.core.Tag
@@ -73,7 +74,7 @@ object HentaiHavenSource : VideoSource {
 
     // ---------- genres + minors filter ----------
 
-    // id|slug|name of the /genres/ page (2026-11-10); the two hidden ones are left out
+    // id|slug|name of the /genres/ page (2026-11-10); "Young Hentai" (67) is left out, "Teen Hentai" (66) follows Settings "Hide teen"
     private val GENRES = ("2245|3d-hentai|3D Hentai;11709|ahegao|Ahegao;222|anal|Anal;2433|bbw|BBW;133|bdsm|BDSM;11713|big-boobs|Big Boobs;" +
         "11719|big-breasts|Big Breasts;11730|big-tits|Big Tits;11711|blow-job|Blow Job;11720|blowjob|Blowjob;11712|censored|Censored;" +
         "11729|cheating|Cheating;11725|comedy|Comedy;11726|corruption|Corruption;11710|creampie|Creampie;2594|ecchi|Ecchi;11734|elf|Elf;" +
@@ -83,7 +84,7 @@ object HentaiHavenSource : VideoSource {
         "64|incest|Incest;11715|masturbation|Masturbation;208|milf|Milf;11733|mind-break|Mind Break;11746|mind-control|Mind Control;" +
         "290|monster|Monster;11741|monster-girl|Monster Girl;11744|netorare|Netorare;11728|ntr|NTR;11717|nudity|Nudity;" +
         "11727|office-lady|Office Lady;11722|paizuri|Paizuri;103|romance|Romance;11714|school|School;11732|schoolgirl|Schoolgirl;" +
-        "11731|sex-toys|Sex Toys;2627|softcore|Softcore;244|tentacle|Tentacle;11742|threesome|Threesome;106|tsundere|Tsundere;" +
+        "11731|sex-toys|Sex Toys;2627|softcore|Softcore;66|teen-hentai|Teen Hentai;244|tentacle|Tentacle;11742|threesome|Threesome;106|tsundere|Tsundere;" +
         "2605|umemaro-3d|Umemaro 3D;107|uncensored|Uncensored;11745|virgin|Virgin;104|yaoi|Yaoi;102|yuri|Yuri")
         .split(';').map { it.split('|') }.map { Triple(it[0].toInt(), it[1], it[2]) }
     private val slugById = GENRES.associate { it.first to it.second }
@@ -95,7 +96,8 @@ object HentaiHavenSource : VideoSource {
     /** Series seen with a hidden genre (their episode pages show no genres). */
     private val blockedSlugs = ConcurrentHashMap.newKeySet<String>()
 
-    override suspend fun genres(): List<Tag> = GENRES.map { Tag(it.second, it.third, "Genre") }
+    /** The genre list, minus the ones a Settings switch hides (futanari, furry, teen while switched on). */
+    override suspend fun genres(): List<Tag> = GENRES.filterNot { Safety.optTag(it.second, ai = false) }.map { Tag(it.second, it.third, "Genre") }
 
     // ---------- lists ----------
 

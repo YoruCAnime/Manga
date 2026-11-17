@@ -47,6 +47,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -386,7 +387,20 @@ fun AppRoot(open: String?) {
                     val cfg = androidx.compose.ui.platform.LocalConfiguration.current
                     val colW = if (s.readerWidthDp >= 1600) cfg.screenWidthDp else minOf(cfg.screenWidthDp, s.readerWidthDp)
                     val bg = when (s.readerBackground) { 1 -> Mc.Bg; 2 -> Color(0xFFF4F1EA); else -> Color.Black }
-                    Box(Modifier.fillMaxSize().background(bg), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
+                    // the mouse wheel scrolls the pages from anywhere in the window, the bars beside the page column too
+                    val wheel = Modifier.pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val e = awaitPointerEvent()
+                                val c = e.changes.firstOrNull() ?: continue
+                                if (e.type == androidx.compose.ui.input.pointer.PointerEventType.Scroll && !c.isConsumed) {
+                                    ReaderSide.scroll(c.scrollDelta.y * 96.dp.toPx())
+                                    c.consume()
+                                }
+                            }
+                        }
+                    }
+                    Box(Modifier.fillMaxSize().background(bg).then(wheel), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
                         androidx.compose.runtime.CompositionLocalProvider(
                             androidx.compose.ui.platform.LocalConfiguration provides android.content.res.Configuration(colW, cfg.screenHeightDp)
                         ) {

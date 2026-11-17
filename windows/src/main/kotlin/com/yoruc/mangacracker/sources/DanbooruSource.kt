@@ -227,7 +227,7 @@ object DanbooruSource : Source {
         val animated = ext == "gif" || "animated" in tags || "animated_png" in tags || "animated_gif" in tags
         val original = p.str("file_url")
         return if (animated && original.isNotEmpty()) Page(i, original, p.int("image_width"), p.int("image_height"))
-        else Page(i, p.str("large_file_url").ifEmpty { original }, sampleW(p), sampleH(p))
+        else Page(i, p.str("large_file_url").ifEmpty { original }, sampleW(p), sampleH(p), original = original)
     }
 
     private fun sampleW(p: JsonElement) = p["media_asset"]?.get("variants").arr.firstOrNull { it.str("type") == "sample" }?.int("width") ?: p.int("image_width")

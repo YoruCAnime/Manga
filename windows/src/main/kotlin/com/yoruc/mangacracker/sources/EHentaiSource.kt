@@ -139,6 +139,8 @@ object EHentaiSource : Source {
     private fun term(tag: String): String {
         val ns = tag.substringBefore(':', "")
         val t = tag.substringAfter(':')
+        // an uploader's name is not a tag: no exact-match mark
+        if (ns == "uploader") return "uploader:\"$t\""
         return if (ns.isNotEmpty()) "$ns:\"$t$\"" else "\"$t$\""
     }
 
