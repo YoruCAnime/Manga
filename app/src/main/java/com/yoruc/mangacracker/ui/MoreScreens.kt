@@ -368,6 +368,9 @@ fun SettingsScreen(nav: Nav) {
                 SwitchRow("Hide furry", s.hideFurry, sub = "Manga, pictures and videos with a furry / anthro tag or \"furry\" in the title (not animal ears)") { v ->
                     Repo.updateSettings { it.copy(hideFurry = v) }
                 }
+                SwitchRow("Hide teen", s.hideTeen, sub = "Manga, pictures and videos with a teen tag (like HentaiHaven's Teen) or \"teen\" in the title. Loli / shota stay hidden always") { v ->
+                    Repo.updateSettings { it.copy(hideTeen = v) }
+                }
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TextField(

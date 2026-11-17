@@ -63,15 +63,27 @@ object Safety {
     fun isFutaTag(tag: String): Boolean = FUTA_TAG.containsMatchIn(norm(tag))
     fun isFurryTag(tag: String): Boolean = FURRY_TAG.containsMatchIn(norm(tag))
 
+    /**
+     * Settings "Hide teen" (off by default): the sites' "teen" tags and categories (HentaiHaven's "Teen Hentai") and
+     * "teen" in a title. Loli / shota and the other minors' tags are not part of it: [HARD] hides them always.
+     */
+    @Volatile var hideTeen: Boolean = false
+
+    /** teen, teens, teenage, teenaged, teenager(s) as a whole word ("eighteen", "canteen" don't count). */
+    private val TEEN = Regex("\\bteen(?:s|age|aged|ager|agers)?\\b", RegexOption.IGNORE_CASE)
+
+    fun isTeenTag(tag: String): Boolean = TEEN.containsMatchIn(norm(tag))
+
     /** A tag hidden by one of the switches. [ai] = false for videos (the AI switch is for reading only). */
     fun optTag(tag: String, ai: Boolean = true): Boolean =
-        (ai && hideAi && isAiTag(tag)) || (hideFuta && isFutaTag(tag)) || (hideFurry && isFurryTag(tag))
+        (ai && hideAi && isAiTag(tag)) || (hideFuta && isFutaTag(tag)) || (hideFurry && isFurryTag(tag)) || (hideTeen && isTeenTag(tag))
 
     /** A title hidden by one of the switches (the same words as the tags, plus AI's own title phrases). */
     fun optTitle(title: String, ai: Boolean = true): Boolean =
-        (ai && hideAi && isAiTitle(title)) || (hideFuta && FUTA_TITLE.containsMatchIn(title)) || (hideFurry && FURRY_TITLE.containsMatchIn(title))
+        (ai && hideAi && isAiTitle(title)) || (hideFuta && FUTA_TITLE.containsMatchIn(title)) || (hideFurry && FURRY_TITLE.containsMatchIn(title)) ||
+            (hideTeen && TEEN.containsMatchIn(title))
 
-    /** What a switch hides a title for ("AI-generated", "futanari", "furry"), for the title page's message; null if none. */
+    /** What a switch hides a title for ("AI-generated", "futanari", "furry", "teen"), for the title page's message; null if none. */
     fun switchReason(d: MangaDetails): String? {
         val titles = listOf(d.ref.title) + d.altTitles
         val tags = d.genres + d.ref.tags + d.tagGroups.flatMap { it.tags }
@@ -79,6 +91,7 @@ object Safety {
             hideAi && (titles.any { isAiTitle(it) } || tags.any { isAiTag(it) }) -> "AI-generated"
             hideFuta && (titles.any { FUTA_TITLE.containsMatchIn(it) } || tags.any { isFutaTag(it) }) -> "futanari"
             hideFurry && (titles.any { FURRY_TITLE.containsMatchIn(it) } || tags.any { isFurryTag(it) }) -> "furry"
+            hideTeen && (titles.any { TEEN.containsMatchIn(it) } || tags.any { isTeenTag(it) }) -> "teen"
             else -> null
         }
     }

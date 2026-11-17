@@ -153,7 +153,7 @@ fun PageGrid(
                             var ok = 0
                             chosen.forEachIndexed { n, p ->
                                 saving = "Saving ${n + 1} / ${chosen.size}"
-                                runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), folder, "${p.chapter.name} - %03d".format(p.page.index + 1)) }.onSuccess { ok++ }
+                                runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), folder, "${p.chapter.name} - %03d".format(p.page.index + 1), p.page.original) }.onSuccess { ok++ }
                             }
                             saving = null
                             // back on the main thread whatever thread the last save ended on

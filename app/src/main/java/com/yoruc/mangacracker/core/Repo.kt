@@ -145,6 +145,8 @@ data class Settings(
     /** Hide futanari / furry manga, pictures and videos (tags and title words). */
     val hideFuta: Boolean = true,
     val hideFurry: Boolean = true,
+    /** Hide teen-tagged manga, pictures and videos (off: shown). Loli / shota are hidden always, not a setting. */
+    val hideTeen: Boolean = false,
     /** Videos tab: the source picked last; player subtitles on / off. */
     val lastVideoSource: String = "",
     val videoSubtitles: Boolean = true,
@@ -208,6 +210,7 @@ object Repo {
         Safety.hideAi = _settings.value.hideAi
         Safety.hideFuta = _settings.value.hideFuta
         Safety.hideFurry = _settings.value.hideFurry
+        Safety.hideTeen = _settings.value.hideTeen
         (_library.value.values.map { it.ref } + _history.value.values.map { it.ref }).forEach { refs[it.key] = it }
     }
 
@@ -445,6 +448,7 @@ object Repo {
         Safety.hideAi = _settings.value.hideAi
         Safety.hideFuta = _settings.value.hideFuta
         Safety.hideFurry = _settings.value.hideFurry
+        Safety.hideTeen = _settings.value.hideTeen
         saveSettings()
     }
 
