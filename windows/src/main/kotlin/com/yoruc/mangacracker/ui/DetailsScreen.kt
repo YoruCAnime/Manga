@@ -234,6 +234,10 @@ fun DetailsScreen(nav: Nav, key: String) {
                         if (authors.isNotEmpty()) PeopleRow(if (circles) "Circle" else "Author", authors, src.id) { nav.browse(src.id, if (circles) src.groupQuery(it) else src.artistQuery(it)) }
                         if (artists.isNotEmpty()) PeopleRow("Artist", artists, src.id) { nav.browse(src.id, src.artistQuery(it)) }
                     }
+                    // galleries: who uploaded it; the name opens everything they uploaded
+                    d?.extra?.firstOrNull { it.first == "Uploader" }?.second?.takeIf { it.isNotBlank() }?.let { up ->
+                        PeopleRow("Uploader", listOf(up), src.id) { nav.browse(src.id, src.tagQuery("uploader:$it")) }
+                    }
                     if (d != null && authors.isEmpty() && artists.isEmpty()) Text("Author not listed on this site", color = Mc.Text3, fontSize = 12.5.sp)
                     val meta = listOfNotNull(src.name, d?.type?.ifEmpty { null }, d?.status?.ifEmpty { null },
                         d?.pageCount?.takeIf { it > 0 }?.let { "$it pages" }, d?.rating?.ifEmpty { null })
@@ -503,7 +507,8 @@ private fun PeopleRow(label: String, names: List<String>, source: String, open: 
         Text(label, color = Mc.Text3, fontSize = 12.5.sp, modifier = Modifier.padding(top = 4.dp, end = 7.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             names.take(6).forEach { p ->
-                val entry = com.yoruc.mangacracker.core.Saved(if (label == "Story & art") "Author" else label, p, source, artist = p, group = label == "Circle", added = System.currentTimeMillis())
+                val entry = if (label == "Uploader") com.yoruc.mangacracker.core.Saved(label, p, source, include = listOf(com.yoruc.mangacracker.core.Tag("uploader:$p", p)), added = System.currentTimeMillis())
+                    else com.yoruc.mangacracker.core.Saved(if (label == "Story & art") "Author" else label, p, source, artist = p, group = label == "Circle", added = System.currentTimeMillis())
                 val on = saved.any { it.key == entry.key }
                 androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(p, color = Mc.Blue, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,

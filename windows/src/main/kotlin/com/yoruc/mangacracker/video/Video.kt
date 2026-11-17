@@ -112,7 +112,7 @@ object VideoSafety {
 
     fun badText(s: String): Boolean = WORDS.containsMatchIn(s)
 
-    /** Settings "Hide futanari" / "Hide furry" (not the AI switch: that one is for reading only). */
+    /** Settings "Hide futanari" / "Hide furry" / "Hide teen" (not the AI switch: that one is for reading only). */
     private fun switched(r: VideoRef): Boolean =
         Safety.optTitle(r.title, ai = false) || Safety.optTitle(r.series, ai = false) || r.tags.any { Safety.optTag(it, ai = false) }
 
@@ -120,7 +120,7 @@ object VideoSafety {
 
     fun check(d: VideoDetails) {
         if (badText(d.ref.title) || badText(d.ref.series) || (d.ref.tags + d.tags).any { badTag(it) }) throw SourceException("This video is hidden")
-        if (switched(d.ref) || d.tags.any { Safety.optTag(it, ai = false) }) throw SourceException("This video has a kind you've hidden in Settings (futanari / furry)")
+        if (switched(d.ref) || d.tags.any { Safety.optTag(it, ai = false) }) throw SourceException("This video has a kind you've hidden in Settings (futanari / furry / teen)")
     }
 }
 
