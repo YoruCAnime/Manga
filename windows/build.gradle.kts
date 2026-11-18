@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.yoruc.mangacracker"
-version = "1.4.10"
+version = "1.4.13"
 
 kotlin { jvmToolchain(21) }
 
@@ -50,11 +50,11 @@ compose.desktop {
             appResourcesRootDir.set(project.layout.projectDirectory.dir("appResources"))
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "MangaCracker"
-            packageVersion = "1.4.10"
+            packageVersion = "1.4.13"
             windows { menu = true; shortcut = true; perUserInstall = true; dirChooser = true; iconFile.set(project.file("appIcon/icon.ico")) }
             modules("java.net.http", "java.sql", "jdk.unsupported", "java.naming", "java.management", "jdk.management", "jdk.httpserver")
         }
     }
 }
 
-tasks.test { useJUnit(); testLogging { showStandardStreams = true }; maxHeapSize = "2g"; systemProperty("cutoutData", (project.findProperty("cutoutData") ?: "").toString()); systemProperty("sources", (project.findProperty("sources") ?: "").toString()); project.properties.filterKeys { it.startsWith("crop.") }.forEach { (k, v) -> systemProperty(k, v.toString()) } }
+tasks.test { useJUnit(); testLogging { showStandardStreams = true }; maxHeapSize = "2g"; systemProperty("cutoutData", (project.findProperty("cutoutData") ?: "").toString()); systemProperty("sources", (project.findProperty("sources") ?: "").toString()); systemProperty("tags", (project.findProperty("tags") ?: "").toString()); project.properties.filterKeys { it.startsWith("crop.") }.forEach { (k, v) -> systemProperty(k, v.toString()) } }

@@ -164,7 +164,8 @@ object EHentaiSource : Source {
         "female:x-ray", "female:mind break", "female:tentacles", "female:monster girl", "female:demon girl", "female:catgirl",
         "female:muscle", "female:tall girl", "female:huge breasts", "female:small breasts", "female:tanlines", "female:bunny girl",
         "other:full color", "other:uncensored", "other:mosaic censorship", "other:multi-work series", "other:story arc",
-        "other:artbook", "language:translated", "language:english", "male:dilf", "mixed:group", "female:vanilla",
+        "other:artbook", "language:translated", "language:english", "male:dilf", "mixed:group",
+        "mixed:ffm threesome", "mixed:mmf threesome", "female:urethra insertion", "female:double penetration", "female:bukkake", "male:pegging", "female:kissing", "female:impregnation", "female:leg lock", "female:business suit", "female:bondage", "female:squirting", "female:lactation", "female:big ass", "female:footjob", "female:handjob", "female:deepthroat", "female:rimjob", "female:facesitting", "female:sex toys", "female:collar",
     ).map { Tag(it, it.substringAfter(':'), it.substringBefore(':')) }
 
     override suspend fun suggestTags(query: String): List<Tag> {

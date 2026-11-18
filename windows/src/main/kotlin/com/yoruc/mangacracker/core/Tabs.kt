@@ -16,7 +16,9 @@ import java.io.File
  * you were browsing (a source, the Videos tab) instead: it keeps that list while its titles open in tabs beside it.
  */
 @Serializable
-data class OpenTab(val id: Long, val route: String, val manga: MangaRef? = null, val video: VideoRef? = null, val place: String = "") {
+data class OpenTab(val id: Long, val route: String, val manga: MangaRef? = null, val video: VideoRef? = null, val place: String = "",
+    /** A list opened as a tab from a tag / artist name: the search it shows (so it is still that list after a restart). */
+    val query: SearchQuery? = null) {
     val title: String get() = place.ifEmpty { manga?.title ?: video?.title.orEmpty() }
     val cover: String get() = manga?.cover ?: video?.cover.orEmpty()
     val isPlace: Boolean get() = place.isNotEmpty()
@@ -70,7 +72,28 @@ object Tabs {
     fun readerRoute(key: String, chapterId: String, grid: Boolean = false) = "reader/${Uri.encode(key)}/${Uri.encode(chapterId)}?grid=${if (grid) 1 else 0}"
     fun playerRoute(key: String) = "player/${Uri.encode(key)}"
     fun seriesRoute(key: String) = "vseries/${Uri.encode(key)}"
-    fun browseRoute(source: String, search: Boolean = false) = "browse/$source?search=${if (search) 1 else 0}"
+    /** [tag] = the mark of a list opened as its own tab (a tag, an artist): each one is a list of its own. */
+    fun browseRoute(source: String, search: Boolean = false, tag: String = "") = "browse/$source?search=${if (search) 1 else 0}" + if (tag.isEmpty()) "" else "&t=$tag"
+
+    /** The search a tag's tab shows (null = not such a tab). */
+    fun queryOf(route: String): SearchQuery? = _list.value.firstOrNull { it.route == route }?.query
+
+    /**
+     * A tag, artist or uploader as a tab of its own ([name] = what the tab is called), not shown yet: it goes right
+     * after the tab on screen. The same search twice gives the same tab. Null = no room left.
+     */
+    fun addSearch(source: String, name: String, q: SearchQuery): OpenTab? {
+        val route = browseRoute(source, true, Integer.toHexString(q.hashCode()))
+        _list.value.firstOrNull { it.route == route }?.let { return it }
+        if (_list.value.size >= MAX) return null
+        val t = OpenTab(++lastId, route, place = name, query = q)
+        val l = _list.value
+        val i = l.indexOfFirst { it.id == _active.value }
+        val at = if (i < 0) l.size else i + 1
+        _list.value = l.subList(0, at) + t + l.subList(at, l.size)
+        persist()
+        return t
+    }
     const val VIDEOS = "videos"
 
     /**
@@ -156,10 +179,10 @@ object Tabs {
      * From the app's navigation: this screen is now showing. [source] and [place] = the source and its name when the
      * screen is a source's list (the Videos tab needs only its name).
      */
-    fun noteScreen(pattern: String?, key: String, chapter: String, grid: Boolean, source: String = "", search: Boolean = false, place: String = "") {
+    fun noteScreen(pattern: String?, key: String, chapter: String, grid: Boolean, source: String = "", search: Boolean = false, place: String = "", tag: String = "") {
         val p = pattern.orEmpty()
         placeRoute = when {
-            p.startsWith("browse/") && source.isNotEmpty() -> browseRoute(source, search)
+            p.startsWith("browse/") && source.isNotEmpty() -> browseRoute(source, search, tag)
             p == VIDEOS -> VIDEOS
             else -> null
         }

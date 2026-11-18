@@ -176,12 +176,16 @@ fun AppRoot(open: String?) {
     LaunchedEffect(entry) {
         val a = entry?.arguments
         val source = a?.getString("source").orEmpty()
+        val tag = a?.getString("t").orEmpty()
+        val tabs = com.yoruc.mangacracker.core.Tabs
         val place = when (entry?.destination?.route) {
             "videos" -> "Videos"
-            else -> com.yoruc.mangacracker.sources.Sources.byId(source)?.name.orEmpty().let { if (a?.getString("search") == "1") "$it search" else it }
+            // a tag's own tab keeps the name it was opened with
+            else -> tabs.list.value.firstOrNull { tag.isNotEmpty() && it.route == tabs.browseRoute(source, true, tag) }?.place
+                ?: com.yoruc.mangacracker.sources.Sources.byId(source)?.name.orEmpty().let { if (a?.getString("search") == "1") "$it search" else it }
         }
-        com.yoruc.mangacracker.core.Tabs.noteScreen(entry?.destination?.route, a?.getString("key").orEmpty(), a?.getString("chapter").orEmpty(), a?.getString("grid") == "1",
-            source, a?.getString("search") == "1", place)
+        tabs.noteScreen(entry?.destination?.route, a?.getString("key").orEmpty(), a?.getString("chapter").orEmpty(), a?.getString("grid") == "1",
+            source, a?.getString("search") == "1", place, tag)
     }
 
     LaunchedEffect(open) {
@@ -275,6 +279,42 @@ fun AppRoot(open: String?) {
                 note("on the first title: " + state())
                 nav.openTab(tabs.list.value.first { it.isPlace }); kotlinx.coroutines.delay(4000)
                 note("back on the list: " + state() + " | same list ${BrowseKeep.peek(route) === vm}, mode ${vm.mode}, ${vm.paged.items.size} titles")
+                return@LaunchedEffect
+            }
+            // test runs: MC_OPEN=demo:tagtab:<source> opens an author's / tag's list, a title from it and goes Back; then a tag as a tab of its own (cache: tagtab_test.txt)
+            if (what == "tagtab") {
+                val tabs = com.yoruc.mangacracker.core.Tabs
+                val src = com.yoruc.mangacracker.sources.Sources.byId(srcId) ?: return@LaunchedEffect
+                val log = java.io.File(com.yoruc.mangacracker.platform.Desktop.ctx.cacheDir, "tagtab_test.txt").apply { writeText("") }
+                fun note(s: String) = log.appendText(s + System.lineSeparator())
+                fun state() = "active ${tabs.active.value} here ${tabs.here.value?.substringBefore('/')} tabs " + tabs.list.value.joinToString(" | ") { (if (it.isPlace) "[" + it.title + "]" else it.title.take(18)) + "#" + it.id }
+                val d = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { val first = src.popular(1).items; src.details(first[0]) }.getOrNull() } ?: return@LaunchedEffect
+                val person = (d.authors + d.artists).firstOrNull()
+                val genre = d.genres.firstOrNull() ?: d.tagGroups.firstOrNull()?.let { it.name.lowercase() + ":" + it.tags.first() }
+                note("title ${d.ref.title.take(30)}: person $person, tag $genre")
+                val q = if (person != null) src.artistQuery(person) else src.tagQuery(genre!!)
+                nav.tab("sources"); kotlinx.coroutines.delay(1000)
+                nav.browse(srcId, q); kotlinx.coroutines.delay(9000)
+                val route = tabs.browseRoute(srcId, true)
+                val vm = BrowseKeep.peek(route) ?: return@LaunchedEffect
+                note("their list: mode ${vm.mode}, ${vm.paged.items.size} titles, first ${vm.paged.items.firstOrNull()?.title?.take(30)}")
+                nav.details(vm.paged.items.first()); kotlinx.coroutines.delay(6000)
+                nav.back(); kotlinx.coroutines.delay(4000)
+                val now = BrowseKeep.peek(route)
+                note("after Back: same list ${now === vm}, mode ${now?.mode}, ${now?.paged?.items?.size} titles, artist '${now?.query?.artist}' tags ${now?.query?.include?.map { it.label }}")
+                if (genre != null) {
+                    val t = tabs.addSearch(srcId, "$genre · ${src.name}", src.tagQuery(genre))!!
+                    kotlinx.coroutines.delay(1500)
+                    note("tag added as a tab (still on the list): " + state())
+                    nav.openTab(t); kotlinx.coroutines.delay(9000)
+                    val tv = BrowseKeep.peek(t.route)
+                    note("on the tag's tab: " + state() + " | mode ${tv?.mode}, ${tv?.paged?.items?.size} titles, tags ${tv?.query?.include?.map { it.label }}")
+                    tv?.paged?.items?.getOrNull(1)?.let { tabs.addManga(it) }; kotlinx.coroutines.delay(1500)
+                    note("a title from it in a tab: " + state())
+                    nav.openTab(tabs.list.value.first { !it.isPlace }); kotlinx.coroutines.delay(6000)
+                    nav.openTab(t); kotlinx.coroutines.delay(4000)
+                    note("back on the tag's tab: " + state() + " | same list ${BrowseKeep.peek(t.route) === tv}")
+                }
                 return@LaunchedEffect
             }
             if (what == "gallery" || what == "stats") {
@@ -376,8 +416,11 @@ fun AppRoot(open: String?) {
                 composable("settings") { SettingsScreen(nav) }
                 composable("sourcetest") { SourceTestScreen(nav) }
                 composable("exlogin") { ExLoginScreen(nav) }
-                composable("browse/{source}?search={search}") { b ->
-                    BrowseScreen(nav, b.arguments?.getString("source") ?: "", b.arguments?.getString("search") == "1")
+                composable("browse/{source}?search={search}&t={t}", arguments = listOf(
+                    androidx.navigation.navArgument("search") { type = androidx.navigation.NavType.StringType; defaultValue = "0" },
+                    androidx.navigation.navArgument("t") { type = androidx.navigation.NavType.StringType; defaultValue = "" },
+                )) { b ->
+                    BrowseScreen(nav, b.arguments?.getString("source") ?: "", b.arguments?.getString("search") == "1", b.arguments?.getString("t").orEmpty())
                 }
                 composable("search?q={q}") { b -> GlobalSearchScreen(nav, b.arguments?.getString("q") ?: "") }
                 composable("details/{key}") { b -> DetailsScreen(nav, b.arguments?.getString("key") ?: "") }

@@ -16,7 +16,7 @@ version is just unzipped over the old folder.
 
 ## Using it
 
-Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.4.10).
+Start it from MangaCracker.exe (or your shortcut). The title bar shows the version (MangaCracker 1.4.13).
 
 - **Left rail**: Home, Library, Browse, Videos, Music, Updates, More (the phone's bottom bar).
 - **Going back**: Esc, Alt+←, the mouse's back button, or the ← arrows. **F11** = full screen.
@@ -192,7 +192,7 @@ ext` (`current.txt` says so) and the running copy switches by itself
 
 ## Tabs and who made it
 
-- **Tabs:** right-click any manga, manhwa, doujin, chapter or video and choose *Open in new tab* (or Ctrl+click / middle-click). They sit in a strip along the top.
+- **Tabs:** right-click any manga, manhwa, doujin, chapter or video and choose *Open in new tab* (or Ctrl+click / middle-click). They sit in a strip along the top. On a title's page the same works on a tag, genre, artist, circle or uploader name: its list opens as a tab of its own.
 - Only the tab on screen is loaded. The others keep your page or second, and come back after you restart the app.
 - **Keys:** Ctrl+1 to 9 jump to a tab, Ctrl+Tab goes to the next, Ctrl+W closes, Ctrl+T keeps the page you're on as a tab.
 - **Author, Artist, Circle:** shown on each title's page. Click a name to see their other works on that site.

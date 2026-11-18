@@ -211,7 +211,11 @@ fun VideosScreen(nav: Nav) {
     // what you watched / favourited since leaves the row at once
     val recs = remember(watch, favsNow, vm.recs) { VideoRecommender.fresh(vm.recs) }
     var text by remember { mutableStateOf(vm.query.text) }
+    // the box's focus, kept a moment after it goes: a click on a suggestion takes the focus first, and the list
+    // must still be there when the click lands (it used to vanish under the mouse and nothing was picked)
+    var focusNow by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
+    LaunchedEffect(focusNow) { if (focusNow) focused = true else { kotlinx.coroutines.delay(350); focused = false } }
     var showGenres by remember { mutableStateOf(false) }
     val grid = remember { androidx.compose.foundation.lazy.grid.LazyGridState(vm.scrollIndex, vm.scrollOffset) }
     LaunchedEffect(grid) { snapshotFlow { grid.firstVisibleItemIndex to grid.firstVisibleItemScrollOffset }.collect { (i, o) -> vm.scrollIndex = i; vm.scrollOffset = o } }
@@ -241,7 +245,7 @@ fun VideosScreen(nav: Nav) {
                 trailingIcon = { if (text.isNotEmpty()) IconButton(onClick = { text = ""; vm.search(vm.query.copy(text = "")) }) { Icon(Icons.Rounded.Close, "Clear", tint = Mc.Text3) } },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { vm.search(vm.query.copy(text = text.trim())) }),
-                modifier = Modifier.weight(1f).heightIn(min = 50.dp).onFocusChanged { focused = it.isFocused },
+                modifier = Modifier.weight(1f).heightIn(min = 50.dp).onFocusChanged { focusNow = it.isFocused },
                 shape = RoundedCornerShape(10.dp),
                 colors = TextFieldDefaults.colors(focusedContainerColor = Mc.Card, unfocusedContainerColor = Mc.Card, focusedIndicatorColor = Mc.Bg, unfocusedIndicatorColor = Mc.Bg),
             )

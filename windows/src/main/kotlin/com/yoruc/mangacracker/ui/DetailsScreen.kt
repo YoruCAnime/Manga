@@ -229,14 +229,14 @@ fun DetailsScreen(nav: Nav, key: String) {
                     // who made it, each name opening their other works on this site
                     val authors = d?.authors.orEmpty(); val artists = d?.artists.orEmpty()
                     val circles = src.authorsAreGroups
-                    if (authors.isNotEmpty() && !circles && authors.toSet() == artists.toSet()) PeopleRow("Story & art", authors, src.id) { nav.browse(src.id, src.artistQuery(it)) }
+                    if (authors.isNotEmpty() && !circles && authors.toSet() == artists.toSet()) PeopleRow("Story & art", authors, src, nav) { src.artistQuery(it) }
                     else {
-                        if (authors.isNotEmpty()) PeopleRow(if (circles) "Circle" else "Author", authors, src.id) { nav.browse(src.id, if (circles) src.groupQuery(it) else src.artistQuery(it)) }
-                        if (artists.isNotEmpty()) PeopleRow("Artist", artists, src.id) { nav.browse(src.id, src.artistQuery(it)) }
+                        if (authors.isNotEmpty()) PeopleRow(if (circles) "Circle" else "Author", authors, src, nav) { if (circles) src.groupQuery(it) else src.artistQuery(it) }
+                        if (artists.isNotEmpty()) PeopleRow("Artist", artists, src, nav) { src.artistQuery(it) }
                     }
                     // galleries: who uploaded it; the name opens everything they uploaded
                     d?.extra?.firstOrNull { it.first == "Uploader" }?.second?.takeIf { it.isNotBlank() }?.let { up ->
-                        PeopleRow("Uploader", listOf(up), src.id) { nav.browse(src.id, src.tagQuery("uploader:$it")) }
+                        PeopleRow("Uploader", listOf(up), src, nav) { src.tagQuery("uploader:$it") }
                     }
                     if (d != null && authors.isEmpty() && artists.isEmpty()) Text("Author not listed on this site", color = Mc.Text3, fontSize = 12.5.sp)
                     val meta = listOfNotNull(src.name, d?.type?.ifEmpty { null }, d?.status?.ifEmpty { null },
@@ -350,7 +350,7 @@ fun DetailsScreen(nav: Nav, key: String) {
                 if (!d?.genres.isNullOrEmpty()) {
                     Spacer(Modifier.height(12.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        d!!.genres.forEach { g -> GenrePill(g) { nav.browse(src.id, src.tagQuery(g)) } }
+                        d!!.genres.forEach { g -> GenrePill(g, Modifier.tabClick { added(com.yoruc.mangacracker.core.Tabs.addSearch(src.id, "$g · ${src.name}", src.tagQuery(g))) }) { nav.browse(src.id, src.tagQuery(g)) } }
                     }
                 }
                 d?.tagGroups?.forEach { grp ->
@@ -359,12 +359,13 @@ fun DetailsScreen(nav: Nav, key: String) {
                         Text(grp.name, color = Mc.Text3, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(76.dp).padding(top = 5.dp))
                         FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             grp.tags.forEach { t ->
+                                val g = grp.name.lowercase()
+                                val q = if (g == "artist") src.artistQuery(t) else src.tagQuery("$g:$t")
                                 Text(
                                     t, color = Mc.Text2, fontSize = 12.5.sp,
-                                    modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(Mc.Card).clickable {
-                                        val g = grp.name.lowercase()
-                                        nav.browse(src.id, if (g == "artist") src.artistQuery(t) else src.tagQuery("$g:$t"))
-                                    }.padding(horizontal = 9.dp, vertical = 4.dp)
+                                    modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(Mc.Card)
+                                        .tabClick { added(com.yoruc.mangacracker.core.Tabs.addSearch(src.id, "$t · ${src.name}", q)) }
+                                        .clickable { nav.browse(src.id, q) }.padding(horizontal = 9.dp, vertical = 4.dp)
                                 )
                             }
                         }
@@ -501,7 +502,9 @@ private fun RoundIcon(onClick: () -> Unit, content: @Composable () -> Unit) {
 /** One line of the header: what they did, then their names; a name opens their other works, its star keeps them (Library › Saved). */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun PeopleRow(label: String, names: List<String>, source: String, open: (String) -> Unit) {
+/** [query] = the search that lists a name's other works: a click opens it, a right click offers it as a tab of its own. */
+private fun PeopleRow(label: String, names: List<String>, src: com.yoruc.mangacracker.core.Source, nav: Nav, query: (String) -> com.yoruc.mangacracker.core.SearchQuery) {
+    val source = src.id
     val saved = Repo.settings.collectAsState().value.saved
     androidx.compose.foundation.layout.Row(Modifier.padding(vertical = 1.dp)) {
         Text(label, color = Mc.Text3, fontSize = 12.5.sp, modifier = Modifier.padding(top = 4.dp, end = 7.dp))
@@ -512,7 +515,7 @@ private fun PeopleRow(label: String, names: List<String>, source: String, open: 
                 val on = saved.any { it.key == entry.key }
                 androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(p, color = Mc.Blue, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.clickable { open(p) }.padding(vertical = 3.dp))
+                        modifier = Modifier.tabClick { added(com.yoruc.mangacracker.core.Tabs.addSearch(source, "$p · ${src.name}", query(p))) }.clickable { nav.browse(source, query(p)) }.padding(vertical = 3.dp))
                     Text(if (on) "★" else "☆", color = if (on) Mc.Orange else Mc.Text3, fontSize = 15.sp,
                         modifier = Modifier.clip(RoundedCornerShape(5.dp)).clickable { Notes.show(if (Repo.toggleSaved(entry)) "Saved $p: find them in Library › Saved" else "Removed $p from Saved") }
                             .padding(horizontal = 5.dp, vertical = 1.dp))
