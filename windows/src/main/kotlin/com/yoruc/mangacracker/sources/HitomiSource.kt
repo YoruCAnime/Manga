@@ -374,6 +374,14 @@ object HitomiSource : Source {
             val term = if (':' in t) tagTerm(t) else Term(null, "", t)
             if (term != null) { if (minus) neg.add(term) else pos.add(term) }
         }
+        // typed without picking a suggestion: words that are exactly a tag's name ("femdom", "urethra insertion") mean
+        // that tag. As plain words they would only match titles, which gives a handful where the tag has thousands.
+        val plain = pos.filter { it.word.isNotEmpty() }
+        if (plain.isNotEmpty()) {
+            val whole = if (neg.none { it.word.isNotEmpty() }) exactTag(plain.joinToString(" ") { it.word }) else null
+            if (whole != null) { pos.removeAll(plain); tagTerm(whole)?.let { pos += it } }
+            else plain.forEach { w -> exactTag(w.word)?.let { id -> tagTerm(id)?.let { t -> pos[pos.indexOf(w)] = t } } }
+        }
 
         // simple case: at most one list and nothing to subtract -> Range paging, no big downloads
         if (neg.isEmpty() && pos.size <= 1 && pos.none { it.word.isNotEmpty() }) {
@@ -415,6 +423,20 @@ object HitomiSource : Source {
         return PageResult(items(all.copyOfRange(from, to).toList()), to < all.size)
     }
 
+    private val exact = ConcurrentHashMap<String, String>()
+
+    /** The tag whose name is exactly [words] (the most used one when several kinds share the name), or null. */
+    private suspend fun exactTag(words: String): String? {
+        val w = words.trim().lowercase()
+        if (w.length < 3) return null
+        exact[w]?.let { return it.ifEmpty { null } }
+        val got = runCatching { suggestTags(w) }.getOrNull() ?: return null
+        val best = got.filter { it.id.substringAfter(':') == w && it.group in setOf("female", "male", "tag") }.maxByOrNull { it.count }?.id.orEmpty()
+        if (exact.size > 300) exact.clear()
+        exact[w] = best
+        return best.ifEmpty { null }
+    }
+
     // ---------- tags ----------
 
     private fun label(ns: String, name: String) = when (ns) { "female" -> "$name ♀"; "male" -> "$name ♂"; else -> name }
@@ -427,7 +449,8 @@ object HitomiSource : Source {
         "female:monster girl", "female:elf", "female:kemonomimi", "female:catgirl", "female:bunny girl", "female:huge breasts",
         "female:small breasts", "female:pantyhose", "female:ponytail", "female:twintails", "tag:uncensored", "tag:story arc",
         "female:harem", "female:cheating", "tag:group", "female:muscle", "female:tall girl", "female:tanlines", "female:demon girl",
-        "female:nurse", "female:teacher", "female:office lady", "female:kimono", "female:cosplaying", "tag:multi-work series",
+        "female:nurse", "female:teacher", "female:business suit", "female:kimono", "female:cosplaying", "tag:multi-work series",
+        "tag:ffm threesome", "tag:mmf threesome", "female:urethra insertion", "female:double penetration", "female:bukkake", "male:pegging", "female:kissing", "female:impregnation", "female:leg lock", "female:bondage", "female:squirting", "female:lactation", "female:big ass", "female:footjob", "female:handjob", "female:deepthroat", "female:rimjob", "female:facesitting", "female:sex toys", "female:collar",
     ).map { val ns = it.substringBefore(':'); val n = it.substringAfter(':'); Tag(it, label(ns, n), ns) }
 
     override suspend fun suggestTags(query: String): List<Tag> {

@@ -71,6 +71,7 @@ data class Tag(val id: String, val label: String, val group: String = "", val co
 
 data class SelectDef(val key: String, val label: String, val options: List<Pair<String, String>>)
 
+@Serializable
 data class SearchQuery(
     val text: String = "",
     val include: List<Tag> = emptyList(),

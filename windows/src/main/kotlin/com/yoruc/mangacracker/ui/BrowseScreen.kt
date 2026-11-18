@@ -167,16 +167,19 @@ internal fun AgeConfirm(id: String, notice: String, onBack: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BrowseScreen(nav: Nav, sourceId: String, startSearch: Boolean) {
+fun BrowseScreen(nav: Nav, sourceId: String, startSearch: Boolean, tag: String = "") {
     val src = Sources.byId(sourceId) ?: return
     val notice = src.ageNotice
     if (notice != null && src.id !in Repo.settings.collectAsState().value.ageConfirmed) {
         AgeConfirm(src.id, notice) { nav.back() }
         return
     }
-    val start = remember { if (startSearch) Pending.query.also { Pending.query = null } else null }
-    val vm: BrowseVM = viewModel(key = "browse-$sourceId-${start?.hashCode()}") {
-        BrowseHolder(BrowseKeep.get(com.yoruc.mangacracker.core.Tabs.browseRoute(sourceId, startSearch)) { BrowseVM(src, start) })
+    val route = com.yoruc.mangacracker.core.Tabs.browseRoute(sourceId, startSearch, tag)
+    // made once for this screen: coming Back from a title finds the same list (the artist's, the tag's) where it was,
+    // not the source's first page (the search handed over is only there the first time)
+    val vm: BrowseVM = viewModel(key = "browse-$route") {
+        val start = if (tag.isNotEmpty()) com.yoruc.mangacracker.core.Tabs.queryOf(route) else if (startSearch) Pending.query.also { Pending.query = null } else null
+        BrowseHolder(BrowseKeep.get(route) { BrowseVM(src, start) })
     }.vm
     val lib by Repo.library.collectAsState()
     val settings by Repo.settings.collectAsState()
@@ -185,7 +188,11 @@ fun BrowseScreen(nav: Nav, sourceId: String, startSearch: Boolean) {
     val grid = remember { androidx.compose.foundation.lazy.grid.LazyGridState(vm.scrollIndex, vm.scrollOffset) }
     LaunchedEffect(grid) { snapshotFlow { grid.firstVisibleItemIndex to grid.firstVisibleItemScrollOffset }.collect { (i, o) -> vm.scrollIndex = i; vm.scrollOffset = o } }
     // autocomplete for the word being typed (ignore it by typing on)
+    // the box's focus, kept a moment after it goes: a click on a suggestion takes the focus first, and the list
+    // must still be there when the click lands (it used to vanish under the mouse and nothing was picked)
+    var focusNow by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
+    LaunchedEffect(focusNow) { if (focusNow) focused = true else { delay(350); focused = false } }
     var suggestions by remember { mutableStateOf<List<Tag>>(emptyList()) }
     val word = text.substringAfterLast(' ')
     LaunchedEffect(word, focused) {
@@ -210,7 +217,7 @@ fun BrowseScreen(nav: Nav, sourceId: String, startSearch: Boolean) {
 
     // load more as the end comes near (also when a whole page was hidden)
     LaunchedEffect(grid) {
-        snapshotFlow { (grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) to vm.paged.items.size }.collectLatest { (last, _) ->
+        snapshotFlow { Triple(grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0, vm.paged.items.size, vm.paged.loading) }.collectLatest { (last, _, _) ->
             if (last >= shown.size - 9) vm.paged.more()
         }
     }
@@ -225,7 +232,7 @@ fun BrowseScreen(nav: Nav, sourceId: String, startSearch: Boolean) {
                 trailingIcon = { if (text.isNotEmpty()) IconButton(onClick = { text = ""; vm.search(vm.query.copy(text = "", artist = "")) }) { Icon(Icons.Rounded.Close, "Clear", tint = Mc.Text3) } },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { suggestions = emptyList(); vm.search(vm.query.copy(text = text, artist = if (text == vm.query.artist) text else "")) }),
-                modifier = Modifier.weight(1f).heightIn(min = 50.dp).onFocusChanged { focused = it.isFocused }, shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.weight(1f).heightIn(min = 50.dp).onFocusChanged { focusNow = it.isFocused }, shape = RoundedCornerShape(10.dp),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Mc.Card, unfocusedContainerColor = Mc.Card,
                     focusedIndicatorColor = Mc.Bg, unfocusedIndicatorColor = Mc.Bg,

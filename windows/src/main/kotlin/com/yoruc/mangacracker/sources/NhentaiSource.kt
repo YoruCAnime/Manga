@@ -156,8 +156,9 @@ object NhentaiSource : Source {
         "ahegao", "anal", "milf", "paizuri", "blowjob", "x-ray", "defloration", "dark skin", "swimsuit", "bikini", "maid",
         "netorare", "mind break", "femdom", "yuri", "yaoi", "futanari", "tentacles", "monster girl", "elf", "kemonomimi",
         "catgirl", "bunny girl", "huge breasts", "small breasts", "pantyhose", "ponytail", "twintails", "uncensored",
-        "mosaic censorship", "story arc", "harem", "cheating", "vanilla", "group", "muscle", "tall girl", "tanlines",
+        "mosaic censorship", "story arc", "harem", "cheating", "group", "muscle", "tall girl", "tanlines",
         "demon girl", "nurse", "teacher", "office lady", "kimono", "cosplaying",
+        "ffm threesome", "mmf threesome", "urethra insertion", "double penetration", "bukkake", "pegging", "kissing", "impregnation", "leg lock", "business suit", "bondage", "squirting", "lactation", "big ass", "footjob", "handjob", "deepthroat", "rimjob", "facesitting", "sex toys", "collar",
     ).map { Tag(it, it) }
 
     override suspend fun suggestTags(query: String): List<Tag> {
