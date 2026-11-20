@@ -78,6 +78,8 @@ class GifEdit(val spanStart: Long, val spanEnd: Long) {
     var size by mutableStateOf(GifSize.SMALL)
     /** Frames per second picked (0 = auto: the size's own, lowered when needed to fit). */
     var fps by mutableIntStateOf(0)
+    /** One frame of the video in ms (from the player; 24 fps when it doesn't say), for the -1 / +1 frame buttons. */
+    var frameMs by mutableLongStateOf(42L)
     var thumbA by mutableStateOf<ImageBitmap?>(null)
     var thumbB by mutableStateOf<ImageBitmap?>(null)
     /** What the maker is doing (null = not working) and how far it is (0..1). */
@@ -158,6 +160,9 @@ val GIF_SPEEDS = listOf(0.25f, 0.5f, 0.75f, 1f, 1.5f, 2f)
 /** "1:02.4" */
 fun tenths(ms: Long) = "${clock(ms / 1000)}.${(ms % 1000) / 100}"
 
+/** "1:02.43": fine enough to see a one-frame step. */
+fun hundredths(ms: Long) = "${clock(ms / 1000)}.${"%02d".format((ms % 1000) / 10)}"
+
 private fun secs(s: Double) = if (s < 10) String.format("%.1f s", s) else "${s.toInt()} s"
 
 /** Red dot + running time while the GIF button is capturing. */
@@ -231,9 +236,9 @@ fun GifPanel(
             g.framesOpen -> GifFramesView(g, onShow = { onPreview(it, true, 2) }, onMake = onMake, onCancel = onCancelFrames)
             else -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Thumb(g.thumbA, "Start ${tenths(g.a)}")
+                    EndPick(g, 0, onPreview)
                     RangeBar(g, onPreview, Modifier.weight(1f).padding(horizontal = 10.dp))
-                    Thumb(g.thumbB, "End ${tenths(g.b)}")
+                    EndPick(g, 1, onPreview)
                 }
                 Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Speed", color = Mc.Text3, fontSize = 12.sp, modifier = Modifier.width(44.dp))
@@ -280,6 +285,29 @@ private fun BigChip(icon: ImageVector, text: String, bg: Color, onClick: () -> U
         Icon(icon, null, tint = fg, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(6.dp))
         Text(text, color = fg, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+/**
+ * One end of the range: its picture and time, and -1 / +1 frame buttons to land on the exact frame (the player shows it
+ * and the picture follows).
+ */
+@Composable
+private fun EndPick(g: GifEdit, which: Int, onPreview: (Long, Boolean, Int) -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Thumb(if (which == 0) g.thumbA else g.thumbB, (if (which == 0) "Start " else "End ") + hundredths(if (which == 0) g.a else g.b))
+        Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (d in listOf(-1, 1)) {
+                Text(if (d < 0) "‹ −1" else "+1 ›", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(Mc.Card2)
+                        .semantics { contentDescription = (if (which == 0) "Start" else "End") + (if (d < 0) " one frame back" else " one frame on") }
+                        .clickable {
+                            g.move(which, (if (which == 0) g.a else g.b) + d * g.frameMs)
+                            onPreview(if (which == 0) g.a else g.b, true, which)
+                        }
+                        .padding(horizontal = 10.dp, vertical = 7.dp))
+            }
+        }
     }
 }
 
