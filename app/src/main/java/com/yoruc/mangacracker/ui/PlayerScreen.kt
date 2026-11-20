@@ -431,7 +431,10 @@ fun PlayerScreen(nav: Nav, key: String) {
         if (b - a < 500) { toast("Too short: capture at least half a second"); return }
         player.pause()
         controls = false; showSpeeds = false; showQuality = false; note = null
-        gif = GifEdit(a, b)
+        gif = GifEdit(a, b).also { g ->
+            // the video's own frame length, for the -1 / +1 frame buttons
+            player.videoFormat?.frameRate?.takeIf { it in 5f..240f }?.let { g.frameMs = Math.round(1000.0 / it) }
+        }
     }
     fun gifButton() {
         if (vm.details == null || gif != null) return

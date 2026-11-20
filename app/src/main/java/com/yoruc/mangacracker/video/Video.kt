@@ -85,15 +85,16 @@ interface VideoSource {
 }
 
 object VideoSources {
-    val all: List<VideoSource> = listOf(AnikotoSource, AnimeHeavenSource, AnitakuSource, HentaigasmSource, OppaiStreamSource, MuchoHentaiSource, HentaiMamaSource, HstreamSource, HentaiHavenSource, NsfwR34Source, PorcoreSource, SfmCompileSource, Rule34VideoSource)
+    val all: List<VideoSource> = listOf(AnikotoSource, AnimeHeavenSource, AnitakuSource, HentaigasmSource, OppaiStreamSource, MuchoHentaiSource, HentaiMamaSource, HstreamSource, HentaiHavenSource, NsfwR34Source, PorcoreSource, SfmCompileSource, Rule34VideoSource, SpankBangSource, MissAvSource, SupJavSource, JavGuruSource, XvSource, XnSource)
     fun byId(id: String) = all.firstOrNull { it.id == id }
 
     /** The groups of the Videos tab, in order. */
-    val categories = listOf("Anime", "Hentai", "3D & animations")
+    val categories = listOf("Anime", "Hentai", "3D & animations", "Live action")
     private val anime = setOf("anikoto", "animeheaven", "animepahe", "allanime", "anitaku")
     private val threeD = setOf("nsfwr34", "porcore", "sfmcompile", "rule34video")
+    private val live = setOf("xvideos", "xnxx", "spankbang", "missav", "supjav", "javguru")
 
-    fun category(s: VideoSource): String = when (s.id) { in anime -> "Anime"; in threeD -> "3D & animations"; else -> "Hentai" }
+    fun category(s: VideoSource): String = when (s.id) { in anime -> "Anime"; in threeD -> "3D & animations"; in live -> "Live action"; else -> "Hentai" }
 }
 
 /** Minors filter for videos: tag slugs, title words, and each source's own block lists on top. */
