@@ -27,7 +27,9 @@ Start it from MangaCracker.exe (or your shortcut). The title bar shows the versi
 - **Home**: the ⟳ button at the top right checks for new chapters and reloads the recommendations and rows. The
   "Popular on …" rows load as you scroll down to them, so opening the app doesn't ask every site at once.
 - **Browse** is sorted into shelves: Manga, Manhwa 18+, Doujinshi 18+ and Pictures 18+ (the pills at the top show
-  one shelf). **Videos** has Anime / Hentai / 3D & animations above its list of sites.
+  one shelf). **Videos** has Anime / Hentai / 3D & animations / Live action above its list of sites. Some Live action
+  sites ask for an age check in some countries (they then say to turn your VPN on) or a browser check (the app's check
+  window); titles and tags that put a minor in a video (school girl, JK and the like) are never shown there.
 - **Episodes / chapters in one click**: every video card has an **Episodes** button on its picture, and the whole
   name area under the picture opens the show too (the picture itself plays). On Home's Continue reading cards the
   cover and the list button open the title's page with every chapter; the rest of the card reads on.
