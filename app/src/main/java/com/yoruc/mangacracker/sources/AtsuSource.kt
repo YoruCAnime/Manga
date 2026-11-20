@@ -39,8 +39,10 @@ object AtsuSource : Source {
     private val HIDDEN = listOf("28", "35", "1769", "1770", "3255", "6205", "6711", "3992", "4006", "5178", "6121", "5516",
         "6779", "2190", "4731", "4075", "4455", "3636", "6608")
 
-    /** Excluded from every list / search: [HIDDEN], plus "AI Generated" (1061) while Settings hides AI. */
-    private val excluded get() = if (Safety.hideAi) HIDDEN + "1061" else HIDDEN
+    /** Excluded from every list / search: [HIDDEN], plus "AI Generated" (1061), the futanari tags and "Furry" while Settings hides them. */
+    private val excluded get() = HIDDEN + (if (Safety.hideAi) listOf("1061") else emptyList()) +
+        (if (Safety.hideFuta) listOf("386", "6106", "7299", "6746", "4551", "5399", "4609") else emptyList()) +
+        (if (Safety.hideFurry) listOf("3818") else emptyList())
 
     init { Http.rateLimits["atsu.moe"] = 450L }
 

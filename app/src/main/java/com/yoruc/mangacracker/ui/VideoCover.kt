@@ -15,7 +15,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import coil.compose.SubcomposeAsyncImage
+import coil.compose.AsyncImage
+import androidx.compose.runtime.mutableStateOf
 import coil.request.ImageRequest
 import com.yoruc.mangacracker.ui.theme.Mc
 import com.yoruc.mangacracker.video.SeriesCovers
@@ -39,14 +40,14 @@ fun VideoCover(v: VideoRef, modifier: Modifier = Modifier) {
         Box(modifier.background(Mc.Card2), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.SmartDisplay, null, tint = Mc.Text3) }
         return
     }
-    SubcomposeAsyncImage(
-        model = ImageRequest.Builder(ctx).data(url).crossfade(220).build(),
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
-        modifier = modifier,
-        loading = { Shimmer(Modifier.fillMaxSize()) },
-        error = { Box(Modifier.fillMaxSize().background(Mc.Card2)) },
-        onSuccess = { if (i < own.size) SeriesCovers.put(v.series, url) },
-        onError = { i++ },
-    )
+    var loaded by remember(url) { mutableStateOf(false) }
+    val request = remember(url) { ImageRequest.Builder(ctx).data(url).crossfade(220).build() }
+    Box(modifier) {
+        if (!loaded) Shimmer(Modifier.fillMaxSize())
+        AsyncImage(
+            model = request, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+            onSuccess = { loaded = true; if (i < own.size) SeriesCovers.put(v.series, url) },
+            onError = { i++ },
+        )
+    }
 }

@@ -6,6 +6,7 @@ import com.yoruc.mangacracker.core.MangaDetails
 import com.yoruc.mangacracker.core.MangaRef
 import com.yoruc.mangacracker.core.Page
 import com.yoruc.mangacracker.core.PageResult
+import com.yoruc.mangacracker.core.Safety
 import com.yoruc.mangacracker.core.SearchQuery
 import com.yoruc.mangacracker.core.SelectDef
 import com.yoruc.mangacracker.core.Source
@@ -39,8 +40,15 @@ object NhentaiSource : Source {
 
     /** Minor-related tag ids and names, never shown. */
     private val HIDDEN_IDS = setOf("19440", "32341", "159421", "25663", "14362", "27598", "152252")
+    /** Tag ids the switches care about: AI, futanari, dickgirl on male / dickgirl, human on furry. */
+    private val NAMED = mapOf("145703" to "ai generated", "779" to "futanari", "35968" to "dickgirl on male",
+        "35970" to "dickgirl on dickgirl", "36616" to "human on furry")
     private val GUARD = listOf("lolicon", "shotacon", "toddlercon", "oppai loli", "low lolicon", "low shotacon", "kodomo doushi")
         .joinToString(" ") { "-tag:\"$it\"" }
+    /** [GUARD] plus the tags Settings hides (the site drops them, so pages stay full). */
+    private val guard get() = GUARD +
+        (if (Safety.hideFuta) " -tag:\"futanari\" -tag:\"dickgirl on male\" -tag:\"dickgirl on dickgirl\"" else "") +
+        (if (Safety.hideFurry) " -tag:\"furry\" -tag:\"human on furry\"" else "")
 
     init {
         Http.userAgents["nhentai.net"] = "MangaCracker/1.0 (personal Android reader)"
@@ -94,8 +102,8 @@ object NhentaiSource : Source {
             source = id, id = j.str("id"),
             title = j.str("english_title").ifEmpty { j.str("japanese_title") },
             cover = thumb(j.str("thumbnail")),
-            // 145703 = "ai generated" (lists only carry tag ids; the name lets Safety's AI switch see it)
-            tags = tagIds.map { "nh:$it" } + (if ("145703" in tagIds) listOf("ai generated") else emptyList()),
+            // lists only carry tag ids; the names let Safety's switches see them
+            tags = tagIds.map { "nh:$it" } + tagIds.mapNotNull { NAMED[it] },
             subtitle = "${j.int("num_pages")} pages",
         )
     }
@@ -107,7 +115,7 @@ object NhentaiSource : Source {
     }
 
     override suspend fun popular(page: Int): PageResult =
-        list(api("/search?query=${GUARD.urlEncode()}&sort=popular-week&page=$page", 15 * 60_000L), page)
+        list(api("/search?query=${guard.urlEncode()}&sort=popular-week&page=$page", 15 * 60_000L), page)
 
     override suspend fun latest(page: Int): PageResult = list(api("/galleries?page=$page&per_page=25", 2 * 60_000L), page)
 
@@ -118,7 +126,7 @@ object NhentaiSource : Source {
         query.include.forEach { parts += part(it.id) }
         query.exclude.forEach { parts += "-" + part(it.id) }
         query.selects["lang"]?.takeIf { it.isNotEmpty() }?.let { parts += "language:$it" }
-        parts += GUARD
+        parts += guard
         val sort = query.selects["sort"] ?: "date"
         return list(api("/search?query=${parts.joinToString(" ").urlEncode()}&sort=$sort&page=$page"), page)
     }
@@ -140,6 +148,8 @@ object NhentaiSource : Source {
     }
 
     override fun artistQuery(name: String) = SearchQuery(include = listOf(Tag("artist:$name", name)))
+    override val authorsAreGroups get() = true
+    override fun groupQuery(name: String) = SearchQuery(include = listOf(Tag("group:$name", name)))
 
     override suspend fun tags(): List<Tag> = listOf(
         "big breasts", "sole female", "sole male", "nakadashi", "stockings", "glasses", "schoolgirl uniform", "full color",

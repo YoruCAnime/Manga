@@ -73,7 +73,7 @@ fun LibraryScreen(nav: Nav) {
     var sourceFilter by rememberSaveable { mutableStateOf("") }
     var sort by rememberSaveable { mutableStateOf(0) }
     var sortMenu by remember { mutableStateOf(false) }
-    /** 0 = manga favourites, 1 = favourite videos, 2 = watched videos */
+    /** 0 = manga favourites, 1 = favourite videos, 2 = watched videos, 3 = saved authors / studios / searches */
     var tab by rememberSaveable { mutableStateOf(0) }
     var clearAsk by remember { mutableStateOf(false) }
     val favs by VideoRepo.favs.collectAsState()
@@ -113,7 +113,7 @@ fun LibraryScreen(nav: Nav) {
                 Text("Library", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Mc.Text, modifier = Modifier.weight(1f))
                 IconButton(onClick = { searching = true }) { Icon(Icons.Rounded.Search, "Search library", tint = Mc.Text2) }
                 if (tab == 0) IconButton(onClick = { sortMenu = true }) { Icon(Icons.Rounded.Sort, "Sort", tint = Mc.Text2) }
-                if (tab == 2 && watch.isNotEmpty()) IconButton(onClick = { clearAsk = true }) { Icon(Icons.Rounded.DeleteSweep, "Clear watched", tint = Mc.Text2) }
+                if (tab == 2 && watch.isNotEmpty()) IconButton(onClick = { clearAsk = !clearAsk }) { Icon(Icons.Rounded.DeleteSweep, "Clear watched", tint = if (clearAsk) Mc.Pink else Mc.Text2) }
                 DropdownMenu(sortMenu, onDismissRequest = { sortMenu = false }, containerColor = Mc.Card2) {
                     SORTS.forEachIndexed { i, s ->
                         DropdownMenuItem(text = { Text(s, color = if (i == sort) Mc.Blue else Mc.Text) }, onClick = { sort = i; sortMenu = false })
@@ -123,7 +123,7 @@ fun LibraryScreen(nav: Nav) {
         }
         // the three shelves
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(12.dp)).background(Mc.Card).padding(4.dp)) {
-            listOf("Manga" to lib.size, "Fav videos" to favs.size, "Watched" to watch.size).forEachIndexed { i, (label, n) ->
+            listOf("Manga" to lib.size, "Fav videos" to favs.size, "Watched" to watch.size, "Saved" to settings.saved.size).forEachIndexed { i, (label, n) ->
                 val on = tab == i
                 Row(
                     Modifier.weight(1f).clip(RoundedCornerShape(9.dp)).background(if (on) Mc.Blue else androidx.compose.ui.graphics.Color.Transparent)
@@ -136,7 +136,27 @@ fun LibraryScreen(nav: Nav) {
             }
         }
         if (tab == 1) { FavVideos(nav, favs.values.toList(), watch, query); return@Column }
-        if (tab == 2) { WatchedVideos(nav, watch, query); return@Column }
+        if (tab == 3) { SavedList(nav, settings.saved, query); return@Column }
+        if (tab == 2) {
+            // in-window confirm (no pop-up): the sweep button opens this row
+            if (clearAsk && watch.isNotEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(12.dp)).background(Mc.Card).padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Clear watched videos?", color = Mc.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text("Removes the list and every resume point. Favourite videos stay.", color = Mc.Text3, fontSize = 12.sp)
+                    }
+                    Text("Keep", color = Mc.Text2, fontWeight = FontWeight.Bold, fontSize = 13.5.sp,
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { clearAsk = false }.padding(horizontal = 10.dp, vertical = 9.dp))
+                    Text("Clear", color = Mc.Pink, fontWeight = FontWeight.Bold, fontSize = 13.5.sp,
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { VideoRepo.clearWatched(); clearAsk = false; Notes.show("Watched videos cleared") }
+                            .padding(horizontal = 10.dp, vertical = 9.dp))
+                }
+            }
+            WatchedVideos(nav, watch, query); return@Column
+        }
         if (usedSources.size > 1) {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { FilterPill("All", sourceFilter.isEmpty()) { sourceFilter = "" } }
@@ -165,25 +185,66 @@ fun LibraryScreen(nav: Nav) {
                         badge = if (unread > 0) "$unread new" else null,
                         progress = h?.state?.percent?.let { it / 100f },
                         showSource = sourceFilter.isEmpty() && usedSources.size > 1,
-                        onLongClick = { if (h != null) nav.reader(e.ref, h.chapter) },
+                        menu = listOfNotNull(h?.let { last -> "Continue reading" to { nav.reader(e.ref, last.chapter) } }),
                     ) { nav.details(e.ref) }
                 }
             }
         }
     }
 
-    if (clearAsk) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { clearAsk = false }, containerColor = Mc.Card,
-            title = { Text("Clear watched videos?", color = Mc.Text) },
-            text = { Text("Removes the list and every resume point. Favourite videos stay.", color = Mc.Text2) },
-            confirmButton = { androidx.compose.material3.TextButton(onClick = { VideoRepo.clearWatched(); clearAsk = false }) { Text("Clear", color = Mc.Pink) } },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { clearAsk = false }) { Text("Keep", color = Mc.Text2) } },
-        )
-    }
 }
 
 private fun matches(r: VideoRef, q: String) = q.isBlank() || r.title.contains(q, true) || r.series.contains(q, true)
+
+/** Opens a saved author / studio / search again: the source's list for manga, the Videos tab for videos. */
+fun openSaved(nav: Nav, s: com.yoruc.mangacracker.core.Saved) {
+    val q = com.yoruc.mangacracker.core.SearchQuery(text = s.text, include = s.include, exclude = s.exclude, artist = s.artist)
+    if (s.video) {
+        val src = VideoSources.byId(s.source) ?: return
+        VideosKeep.vm.pick(src)
+        VideosKeep.vm.search(q)
+        nav.tab("videos")
+    } else {
+        val src = Sources.byId(s.source) ?: return
+        nav.browse(src.id, when { s.group -> src.groupQuery(s.name); s.artist.isNotEmpty() -> src.artistQuery(s.artist); else -> q })
+    }
+}
+
+/** Library → Saved: the authors, artists, circles, studios and searches you starred, manga first, newest first. */
+@Composable
+private fun SavedList(nav: Nav, saved: List<com.yoruc.mangacracker.core.Saved>, query: String) {
+    val list = remember(saved, query) { saved.filter { query.isBlank() || it.name.contains(query, true) || it.kind.contains(query, true) } }
+    if (list.isEmpty()) {
+        EmptyBox(
+            if (saved.isEmpty()) "Nothing saved yet" else "Nothing matches",
+            if (saved.isEmpty()) "Tap ☆ next to an author on a title's page, or ☆ Save on a search (a studio, a tag) in Browse or Videos." else "Try another word.",
+        )
+        return
+    }
+    LazyColumn(contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp), modifier = Modifier.fillMaxSize()) {
+        listOf(false to "Manga", true to "Videos").forEach { (video, head) ->
+            val part = list.filter { it.video == video }
+            if (part.isEmpty()) return@forEach
+            item(key = "head-$head") { SectionHeader("$head · ${part.size}") }
+            items(part, key = { it.key }) { s ->
+                val site = if (s.video) VideoSources.byId(s.source)?.let { it.name to it.color } else Sources.byId(s.source)?.let { it.name to it.color }
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(RoundedCornerShape(10.dp)).background(Mc.Card).clickable { openSaved(nav, s) }
+                        .padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(s.kind, color = Mc.Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(Mc.Blue.copy(alpha = 0.14f)).padding(horizontal = 7.dp, vertical = 3.dp))
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                        Text(s.name, color = Mc.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.5.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Text(site?.first ?: s.source, color = site?.let { androidx.compose.ui.graphics.Color(it.second) } ?: Mc.Text3, fontSize = 12.sp, maxLines = 1)
+                    }
+                    IconButton(onClick = { Repo.toggleSaved(s) }) { Icon(Icons.Rounded.Close, "Remove", tint = Mc.Text3) }
+                }
+            }
+        }
+    }
+}
 
 /** Library → Favourite videos: newest first, long-press a card to remove it. */
 @Composable

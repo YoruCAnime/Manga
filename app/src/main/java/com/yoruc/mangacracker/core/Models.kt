@@ -56,6 +56,8 @@ data class Page(
     val width: Int = 0,
     val height: Int = 0,
     val pageUrl: String = "",
+    /** The full-size original when [url] is a reduced copy for reading (booru samples); saving takes this one. */
+    val original: String = "",
 )
 
 data class PageResult(val items: List<MangaRef>, val hasNext: Boolean)

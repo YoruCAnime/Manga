@@ -1,6 +1,7 @@
 package com.yoruc.mangacracker.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -78,7 +79,14 @@ class VideoSeriesVM(key: String) : ViewModel() {
 @Composable
 fun VideoSeriesScreen(nav: Nav, key: String) {
     val vm: VideoSeriesVM = viewModel(key = "vseries-$key") { VideoSeriesVM(key) }
-    val ref = vm.ref ?: return
+    val ref = vm.ref ?: run {
+        // the show isn't known any more (an old link after a restore): say so, with a way back
+        Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("This show couldn't be opened again. Find it in Videos.", color = Mc.Text)
+            Text("Back", color = Mc.Blue, modifier = Modifier.clickable { nav.back() })
+        }
+        return
+    }
     val src = VideoSources.byId(ref.source)
     val watch by VideoRepo.watch.collectAsState()
     var lang by rememberSaveable { mutableStateOf("") }

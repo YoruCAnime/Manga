@@ -128,7 +128,7 @@ fun PageGrid(
                         LaunchedEffect(p.key) { if (url.isEmpty()) url = runCatching { vm.urlOf(p.page) }.getOrDefault("") }
                         if (url.isNotEmpty()) {
                             AsyncImage(
-                                model = ImageRequest.Builder(ctx).data(url).size(320, (320 / ratio).toInt()).build(),
+                                model = ImageRequest.Builder(ctx).data(com.yoruc.mangacracker.core.Downloads.model(url)).size(320, (320 / ratio).toInt()).build(),
                                 contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                             )
                         }
@@ -153,10 +153,13 @@ fun PageGrid(
                             var ok = 0
                             chosen.forEachIndexed { n, p ->
                                 saving = "Saving ${n + 1} / ${chosen.size}"
-                                runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), folder, "${p.chapter.name} - %03d".format(p.page.index + 1)) }.onSuccess { ok++ }
+                                runCatching { ImageSaver.save(ctx, vm.urlOf(p.page), folder, "${p.chapter.name} - %03d".format(p.page.index + 1), p.page.original) }.onSuccess { ok++ }
                             }
                             saving = null
-                            Toast.makeText(ctx, "Saved $ok picture${if (ok == 1) "" else "s"} to Pictures/MangaCracker", Toast.LENGTH_LONG).show()
+                            // back on the main thread whatever thread the last save ended on
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                Toast.makeText(ctx, "Saved $ok picture${if (ok == 1) "" else "s"} to Pictures/MangaCracker", Toast.LENGTH_LONG).show()
+                            }
                             picking = false; picked.clear()
                         }
                     },

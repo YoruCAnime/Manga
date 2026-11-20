@@ -1,0 +1,9 @@
+build/
+.gradle/
+.kotlin/
+_dev_tools/out/
+*.log
+local.properties
+appResources/windows/libmpv-2.dll
+MangaCracker App/
+appResources/windows/rife/
