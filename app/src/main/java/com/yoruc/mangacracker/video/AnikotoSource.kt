@@ -27,7 +27,10 @@ import javax.crypto.spec.SecretKeySpec
 object AnikotoSource : VideoSource {
     override val id = "anikoto"
     override val name = "Anikoto"
-    override val baseUrl = "https://anikototv.to"
+    /** The site moves now and then (anikototv.to -> .bz, 2026-11); its old address's redirect loses the ajax answers. */
+    @Volatile private var base = "https://anikototv.bz"
+    override val baseUrl: String get() = base
+    @Volatile private var baseChecked = false
     override val blurb = "Anime · 1080p · sub and dub · subtitles in 9 languages"
     override val color = 0xFF29B6F6L
 
@@ -63,11 +66,29 @@ object AnikotoSource : VideoSource {
     private fun enc(s: String) = URLEncoder.encode(s, Charsets.UTF_8)
     private fun slugOf(href: String) = href.substringAfter("/watch/", "").substringBefore('/').substringBefore('?')
 
-    private suspend fun doc(url: String, headers: Map<String, String> = emptyMap()): Document = pace.run { Http.getDoc(url, headers) }
+    /** Once a run: where the old address sends us now (a later move is followed without an update). */
+    private suspend fun ensureBase() {
+        if (baseChecked) return
+        baseChecked = true
+        runCatching {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                Http.client.newCall(okhttp3.Request.Builder().url("https://anikototv.to/").build()).execute().use { it.request.url }
+            }
+        }.getOrNull()?.takeIf { it.host.startsWith("anikototv.") }?.let { base = "${it.scheme}://${it.host}" }
+    }
+
+    /** Any address of the site -> the current one (saved links keep the old name). */
+    private fun here(url: String) = url.replace(Regex("^https?://(www\\.)?anikototv\\.[a-z]+"), base)
+
+    private suspend fun doc(url: String, headers: Map<String, String> = emptyMap()): Document {
+        ensureBase()
+        return pace.run { Http.getDoc(here(url), headers.mapValues { (k, v) -> if (k == "Referer") here(v) else v }) }
+    }
 
     /** `{"status":200,"result":...}` of an ajax call */
     private suspend fun ajax(url: String): kotlinx.serialization.json.JsonElement {
-        val j = pace.run { Http.getJson(url, XHR + ("Referer" to "$baseUrl/")) }
+        ensureBase()
+        val j = pace.run { Http.getJson(here(url), XHR + ("Referer" to "$baseUrl/")) }
         if (j.str("status") != "200") throw SourceException("Anikoto answered: ${j.str("result").take(60).ifEmpty { j.str("status") }}")
         return j["result"] ?: throw SourceException("Anikoto sent nothing")
     }
