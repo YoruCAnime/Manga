@@ -471,6 +471,8 @@ object HitomiSource : Source {
     }
 
     override fun artistQuery(name: String) = SearchQuery(include = listOf(Tag("artist:$name", name, "artist")))
+    override val authorsAreGroups get() = true
+    override fun groupQuery(name: String) = SearchQuery(include = listOf(Tag("group:$name", name, "group")))
 
     // ---------- gallery ----------
 

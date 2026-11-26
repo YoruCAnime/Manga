@@ -33,7 +33,7 @@ object Recommender {
         fun add(src: String, tags: Collection<String>, w: Int) {
             val m = taste.getOrPut(src) { HashMap() }
             // never steer towards minor tags, nor AI tags while those are hidden
-            tags.forEach { t -> if (!Safety.isMinorTag(t) && !(Safety.hideAi && Safety.isAiTag(t))) m[t.lowercase()] = (m[t.lowercase()] ?: 0) + w }
+            tags.forEach { t -> if (!Safety.isMinorTag(t) && !Safety.optTag(t)) m[t.lowercase()] = (m[t.lowercase()] ?: 0) + w }
         }
         lib.forEach { add(it.ref.source, it.genres.ifEmpty { it.ref.tags }, 2) }
         hist.take(30).forEach { h -> add(h.ref.source, Repo.detailsCache[h.ref.key]?.genres ?: h.ref.tags, 1) }
@@ -62,7 +62,7 @@ object Recommender {
             // more like the last three things read
             // (an AI title read earlier would bring "more like it": skipped while AI is hidden)
             hist.filter { h ->
-                h.ref.source !in IMAGE_BOARDS && !Safety.blocked(h.ref) && Repo.detailsCache[h.ref.key]?.let { Safety.isAi(it) } != true
+                h.ref.source !in IMAGE_BOARDS && !Safety.blocked(h.ref) && Repo.detailsCache[h.ref.key]?.let { Safety.switchReason(it) } == null
             }.take(3).forEach { h ->
                 val src = Sources.byId(h.ref.source) ?: return@forEach
                 val d = Repo.detailsCache[h.ref.key]

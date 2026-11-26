@@ -10,6 +10,8 @@ interface Source {
     /** Brand-ish colour for the source badge. */
     val color: Long
     val nsfw: Boolean
+    /** A site that asks visitors to confirm they are adults: its words. The app asks once and stays away from the site until then. */
+    val ageNotice: String? get() = null
     /** false = every title is a single gallery (doujins, booru pools / posts). */
     val hasChapters: Boolean get() = true
     /** Picture shape in grids: 2:3 posters for manga, free for booru posts. */
@@ -50,6 +52,9 @@ interface Source {
     /** A search for one genre / tag name as shown on the details page. */
     fun tagQuery(name: String): SearchQuery = SearchQuery(include = listOf(Tag(name, name)))
     fun artistQuery(name: String): SearchQuery = SearchQuery(artist = name)
+    /** true = this site's "authors" are circles / groups, which it searches differently from artists. */
+    val authorsAreGroups: Boolean get() = false
+    fun groupQuery(name: String): SearchQuery = artistQuery(name)
 
     /** Web page of a title (open in the in-app browser). */
     fun webUrl(ref: MangaRef): String

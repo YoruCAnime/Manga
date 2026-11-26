@@ -3,6 +3,7 @@ build/
 app/build/
 local.properties
 keystore/
+*.jks
 *.apk
 _dev_tools/out/
 _dev_tools/**/__pycache__/

@@ -49,6 +49,53 @@ object Safety {
     fun isAiTag(tag: String): Boolean = norm(tag) in AI_TAGS
     fun isAiTitle(title: String): Boolean = AI_TITLE.containsMatchIn(title) || AI_BRACKET.containsMatchIn(title)
 
+    /** Settings "Hide futanari" / "Hide furry" (on by default), for manga, pictures and videos. */
+    @Volatile var hideFuta: Boolean = true
+    @Volatile var hideFurry: Boolean = true
+
+    /** Tags (after [norm]): futanari / dickgirl in any form ("futa on male", "female:futanari"); not "futari" (= two people). */
+    private val FUTA_TAG = Regex("\\bfuta(?:nari)?s?\\b|\\bdickgirls?\\b")
+    /** furry / anthro / yiff in any form ("human on furry", "furry female"); not animal ears (kemonomimi) or "anthropomorphic". */
+    private val FURRY_TAG = Regex("\\bfurry\\b|\\bfurries\\b|\\banthro\\b|\\byiff\\b")
+    private val FUTA_TITLE = Regex("\\bfutanari\\b|\\bfuta\\b|\\bdickgirls?\\b|ふたなり|扶他", RegexOption.IGNORE_CASE)
+    private val FURRY_TITLE = Regex("\\bfurry\\b|\\bfurries\\b|\\byiff\\b", RegexOption.IGNORE_CASE)
+
+    fun isFutaTag(tag: String): Boolean = FUTA_TAG.containsMatchIn(norm(tag))
+    fun isFurryTag(tag: String): Boolean = FURRY_TAG.containsMatchIn(norm(tag))
+
+    /**
+     * Settings "Hide teen" (off by default): the sites' "teen" tags and categories (HentaiHaven's "Teen Hentai") and
+     * "teen" in a title. Loli / shota and the other minors' tags are not part of it: [HARD] hides them always.
+     */
+    @Volatile var hideTeen: Boolean = false
+
+    /** teen, teens, teenage, teenaged, teenager(s) as a whole word ("eighteen", "canteen" don't count). */
+    private val TEEN = Regex("\\bteen(?:s|age|aged|ager|agers)?\\b", RegexOption.IGNORE_CASE)
+
+    fun isTeenTag(tag: String): Boolean = TEEN.containsMatchIn(norm(tag))
+
+    /** A tag hidden by one of the switches. [ai] = false for videos (the AI switch is for reading only). */
+    fun optTag(tag: String, ai: Boolean = true): Boolean =
+        (ai && hideAi && isAiTag(tag)) || (hideFuta && isFutaTag(tag)) || (hideFurry && isFurryTag(tag)) || (hideTeen && isTeenTag(tag))
+
+    /** A title hidden by one of the switches (the same words as the tags, plus AI's own title phrases). */
+    fun optTitle(title: String, ai: Boolean = true): Boolean =
+        (ai && hideAi && isAiTitle(title)) || (hideFuta && FUTA_TITLE.containsMatchIn(title)) || (hideFurry && FURRY_TITLE.containsMatchIn(title)) ||
+            (hideTeen && TEEN.containsMatchIn(title))
+
+    /** What a switch hides a title for ("AI-generated", "futanari", "furry", "teen"), for the title page's message; null if none. */
+    fun switchReason(d: MangaDetails): String? {
+        val titles = listOf(d.ref.title) + d.altTitles
+        val tags = d.genres + d.ref.tags + d.tagGroups.flatMap { it.tags }
+        return when {
+            hideAi && (titles.any { isAiTitle(it) } || tags.any { isAiTag(it) }) -> "AI-generated"
+            hideFuta && (titles.any { FUTA_TITLE.containsMatchIn(it) } || tags.any { isFutaTag(it) }) -> "futanari"
+            hideFurry && (titles.any { FURRY_TITLE.containsMatchIn(it) } || tags.any { isFurryTag(it) }) -> "furry"
+            hideTeen && (titles.any { TEEN.containsMatchIn(it) } || tags.any { isTeenTag(it) }) -> "teen"
+            else -> null
+        }
+    }
+
     fun norm(tag: String): String =
         tag.substringAfter(':').lowercase().replace('_', ' ').replace('-', ' ').replace(Regex("\\s+"), " ").trim()
 
@@ -61,13 +108,13 @@ object Safety {
         val strictSoft = source !in MAINSTREAM || isAdult(tags)
         return tags.any { t ->
             val n = norm(t)
-            n in HARD || n in userHidden || (strictSoft && n in SOFT) || (hideAi && n in AI_TAGS)
+            n in HARD || n in userHidden || (strictSoft && n in SOFT) || optTag(t)
         }
     }
 
-    fun blocked(ref: MangaRef): Boolean = blocked(ref.tags, ref.source) || (hideAi && isAiTitle(ref.title))
+    fun blocked(ref: MangaRef): Boolean = blocked(ref.tags, ref.source) || optTitle(ref.title)
 
-    fun blocked(d: MangaDetails): Boolean = blocked(d.genres + d.ref.tags + d.tagGroups.flatMap { it.tags }, d.ref.source) || isAi(d)
+    fun blocked(d: MangaDetails): Boolean = blocked(d.genres + d.ref.tags + d.tagGroups.flatMap { it.tags }, d.ref.source) || switchReason(d) != null
 
     /** Hidden only because it is AI made (for the title page's message). */
     fun isAi(d: MangaDetails): Boolean = hideAi &&
@@ -76,7 +123,7 @@ object Safety {
     fun filter(items: List<MangaRef>): List<MangaRef> = items.filterNot { blocked(it) }
     fun filter(r: PageResult): PageResult = r.copy(items = filter(r.items))
 
-    /** Tags offered in filter sheets: never list the minor ones (nor the AI ones while those are hidden). */
+    /** Tags offered in filter sheets: never list the minor ones (nor the ones a switch hides). */
     fun cleanTags(tags: List<Tag>): List<Tag> =
-        tags.filterNot { isMinorTag(it.label) || isMinorTag(it.id) || (hideAi && (isAiTag(it.label) || isAiTag(it.id))) }
+        tags.filterNot { isMinorTag(it.label) || isMinorTag(it.id) || optTag(it.label) || optTag(it.id) }
 }
