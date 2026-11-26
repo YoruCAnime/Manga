@@ -111,6 +111,7 @@ object Http {
 
     private fun build(cacheDir: File) {
         val base = OkHttpClient.Builder()
+            .dns(FallbackDns)
             .cookieJar(WebCookieJar)
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(40, TimeUnit.SECONDS)
